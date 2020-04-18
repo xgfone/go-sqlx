@@ -15,6 +15,8 @@
 package sqlx
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -36,6 +38,7 @@ type columnDefinition struct {
 
 // TableBuilder is used to build the CREATE TABLE statement.
 type TableBuilder struct {
+	sqldb     *sql.DB
 	intercept Interceptor
 	dialect   Dialect
 	defines   []columnDefinition
@@ -67,6 +70,24 @@ func (b *TableBuilder) Define(colName, colType string, colOpts ...interface{}) *
 // Option adds a table option in CREATE TABLE.
 func (b *TableBuilder) Option(options ...string) *TableBuilder {
 	b.options = append(b.options, options...)
+	return b
+}
+
+// Exec builds the sql and executes it by *sql.DB.
+func (b *TableBuilder) Exec() (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// ExecContext builds the sql and executes it by *sql.DB.
+func (b *TableBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// SetDB sets the sql.DB to db.
+func (b *TableBuilder) SetDB(db *sql.DB) *TableBuilder {
+	b.sqldb = db
 	return b
 }
 

@@ -14,6 +14,11 @@
 
 package sqlx
 
+import (
+	"context"
+	"database/sql"
+)
+
 // Delete is short for NewDeleteBuilder.
 func Delete() *DeleteBuilder {
 	return NewDeleteBuilder()
@@ -28,6 +33,7 @@ func NewDeleteBuilder() *DeleteBuilder {
 type DeleteBuilder struct {
 	Conditions
 
+	sqldb     *sql.DB
 	intercept Interceptor
 	dialect   Dialect
 	table     string
@@ -43,6 +49,24 @@ func (b *DeleteBuilder) From(table string) *DeleteBuilder {
 // Where sets the WHERE conditions.
 func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 	b.where = append(b.where, andConditions...)
+	return b
+}
+
+// Exec builds the sql and executes it by *sql.DB.
+func (b *DeleteBuilder) Exec() (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// ExecContext builds the sql and executes it by *sql.DB.
+func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// SetDB sets the sql.DB to db.
+func (b *DeleteBuilder) SetDB(db *sql.DB) *DeleteBuilder {
+	b.sqldb = db
 	return b
 }
 

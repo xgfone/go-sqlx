@@ -12,5 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package sqlx is
+// Package sqlx is a set of the simple, flexible and powerful SQL builders
+// with zero-config.
 package sqlx

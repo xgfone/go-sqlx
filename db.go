@@ -44,25 +44,30 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return Table(table).SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
+	return Table(table).SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete() *DeleteBuilder {
-	return Delete().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
+	return Delete().SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
+	return Insert().SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
-	return Select(column, alias...).SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
+	return Select(column, alias...).SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
-	return Update().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
+	return Update().SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
 }

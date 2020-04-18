@@ -14,6 +14,11 @@
 
 package sqlx
 
+import (
+	"context"
+	"database/sql"
+)
+
 // Update is short for NewUpdateBuilder.
 func Update() *UpdateBuilder {
 	return NewUpdateBuilder()
@@ -29,6 +34,7 @@ type UpdateBuilder struct {
 	Setters
 	Conditions
 
+	sqldb     *sql.DB
 	intercept Interceptor
 	dialect   Dialect
 	table     string
@@ -57,6 +63,24 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 // Where sets the WHERE conditions.
 func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
 	b.where = append(b.where, andConditions...)
+	return b
+}
+
+// Exec builds the sql and executes it by *sql.DB.
+func (b *UpdateBuilder) Exec() (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// ExecContext builds the sql and executes it by *sql.DB.
+func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// SetDB sets the sql.DB to db.
+func (b *UpdateBuilder) SetDB(db *sql.DB) *UpdateBuilder {
+	b.sqldb = db
 	return b
 }
 

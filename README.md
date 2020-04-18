@@ -43,7 +43,12 @@ You can use `sqlx.DB`, which is the proxy of builder and `sql.DB`, it will autom
 // Set the dialect to MySQL.
 db, _ := sqlx.Open("mysql", "user:password@tcp(127.0.0.1:3306)/db")
 builder := db.Select("*").From("table").Where(sqlx.Equal("id", 123))
+
 sql, args := builder.Build()
+rows, err := db.Query(sql, args...)
+
+// Or
+// rows, err := builder.Query()
 ```
 
 ### Intercept SQL
@@ -75,7 +80,7 @@ func main() {
     // Build the SELECT SQL statement
     builder := db.Select("*").From("table")
     builder.Where(builder.Equal("id", 123))
-    sql, args := builder.Build()
+    rows, err := builder.Query()
     // ...
 
     // Interceptor will output:

@@ -14,6 +14,11 @@
 
 package sqlx
 
+import (
+	"context"
+	"database/sql"
+)
+
 // Select is short for NewSelectBuilder.
 func Select(column string, alias ...string) *SelectBuilder {
 	return NewSelectBuilder(column, alias...)
@@ -64,6 +69,7 @@ type joinTable struct {
 type SelectBuilder struct {
 	Conditions
 
+	sqldb     *sql.DB
 	intercept Interceptor
 	dialect   Dialect
 	distinct  bool
@@ -191,6 +197,36 @@ func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
 // Offset sets the OFFSET to offset.
 func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
 	b.offset = offset
+	return b
+}
+
+// Query builds the sql and executes it by *sql.DB.
+func (b *SelectBuilder) Query() (*sql.Rows, error) {
+	query, args := b.Build()
+	return b.sqldb.Query(query, args...)
+}
+
+// QueryContext builds the sql and executes it by *sql.DB.
+func (b *SelectBuilder) QueryContext(ctx context.Context) (*sql.Rows, error) {
+	query, args := b.Build()
+	return b.sqldb.QueryContext(ctx, query, args...)
+}
+
+// QueryRow builds the sql and executes it by *sql.DB.
+func (b *SelectBuilder) QueryRow() *sql.Row {
+	query, args := b.Build()
+	return b.sqldb.QueryRow(query, args...)
+}
+
+// QueryRowContext builds the sql and executes it by *sql.DB.
+func (b *SelectBuilder) QueryRowContext(ctx context.Context) *sql.Row {
+	query, args := b.Build()
+	return b.sqldb.QueryRowContext(ctx, query, args...)
+}
+
+// SetDB sets the sql.DB to db.
+func (b *SelectBuilder) SetDB(db *sql.DB) *SelectBuilder {
+	b.sqldb = db
 	return b
 }
 

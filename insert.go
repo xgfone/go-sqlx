@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 )
 
@@ -33,6 +34,7 @@ func NewInsertBuilder() *InsertBuilder {
 type InsertBuilder struct {
 	intercept Interceptor
 	dialect   Dialect
+	sqldb     *sql.DB
 
 	verb    string
 	table   string
@@ -100,6 +102,24 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 		b.columns = cs
 	}
 	b.values = append(b.values, vs)
+	return b
+}
+
+// Exec builds the sql and executes it by *sql.DB.
+func (b *InsertBuilder) Exec() (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// ExecContext builds the sql and executes it by *sql.DB.
+func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	query, args := b.Build()
+	return b.sqldb.Exec(query, args...)
+}
+
+// SetDB sets the sql.DB to db.
+func (b *InsertBuilder) SetDB(db *sql.DB) *InsertBuilder {
+	b.sqldb = db
 	return b
 }
 
