@@ -14,6 +14,8 @@
 
 package sqlx
 
+import "database/sql"
+
 // ArgsDefaultCap is the default capacity to be allocated for ArgsBuilder.
 var ArgsDefaultCap = 4
 
@@ -30,7 +32,15 @@ func NewArgsBuilder(dialect Dialect) *ArgsBuilder {
 }
 
 // Add appends the argument and returns the its placeholder.
+//
+// If arg is the type of sql.NamedArg, it will use @arg.Name as the placeholder
+// and arg.Value as the value.
 func (a *ArgsBuilder) Add(arg interface{}) (placeholder string) {
+	if na, ok := arg.(sql.NamedArg); ok {
+		a.args = append(a.args, na.Value)
+		return "@" + na.Name
+	}
+
 	a.args = append(a.args, arg)
 	return a.Placeholder(len(a.args))
 }
