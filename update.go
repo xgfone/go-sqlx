@@ -29,10 +29,11 @@ type UpdateBuilder struct {
 	Setters
 	Conditions
 
-	dialect Dialect
-	table   string
-	where   []Condition
-	setters []Setter
+	intercept Interceptor
+	dialect   Dialect
+	table     string
+	where     []Condition
+	setters   []Setter
 }
 
 // Table sets the table name.
@@ -56,6 +57,12 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 // Where sets the WHERE conditions.
 func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
 	b.where = append(b.where, andConditions...)
+	return b
+}
+
+// SetInterceptor sets the interceptor to f.
+func (b *UpdateBuilder) SetInterceptor(f Interceptor) *UpdateBuilder {
+	b.intercept = f
 	return b
 }
 
@@ -114,5 +121,5 @@ func (b *UpdateBuilder) BuildWithDialect(dialect Dialect) (sql string, args []in
 	sql = buf.String()
 	args = ab.Args()
 	putBuffer(buf)
-	return
+	return intercept(b.intercept, sql, args)
 }

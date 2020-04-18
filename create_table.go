@@ -36,10 +36,11 @@ type columnDefinition struct {
 
 // TableBuilder is used to build the CREATE TABLE statement.
 type TableBuilder struct {
-	dialect Dialect
-	defines []columnDefinition
-	options []string
-	table   string
+	intercept Interceptor
+	dialect   Dialect
+	defines   []columnDefinition
+	options   []string
+	table     string
 
 	temp bool
 	ifne bool
@@ -66,6 +67,12 @@ func (b *TableBuilder) Define(colName, colType string, colOpts ...interface{}) *
 // Option adds a table option in CREATE TABLE.
 func (b *TableBuilder) Option(options ...string) *TableBuilder {
 	b.options = append(b.options, options...)
+	return b
+}
+
+// SetInterceptor sets the interceptor to f.
+func (b *TableBuilder) SetInterceptor(f Interceptor) *TableBuilder {
+	b.intercept = f
 	return b
 }
 
@@ -141,5 +148,5 @@ func (b *TableBuilder) BuildWithDialect(dialect Dialect) (sql string, args []int
 
 	sql = buf.String()
 	putBuffer(buf)
-	return
+	return intercept(b.intercept, sql, args)
 }

@@ -64,17 +64,18 @@ type joinTable struct {
 type SelectBuilder struct {
 	Conditions
 
-	dialect  Dialect
-	distinct bool
-	tables   []fromTable
-	columns  []selectedColumn
-	joins    []joinTable
-	wheres   []Condition
-	groupbys []string
-	havings  []string
-	orderbys []orderby
-	limit    int64
-	offset   int64
+	intercept Interceptor
+	dialect   Dialect
+	distinct  bool
+	tables    []fromTable
+	columns   []selectedColumn
+	joins     []joinTable
+	wheres    []Condition
+	groupbys  []string
+	havings   []string
+	orderbys  []orderby
+	limit     int64
+	offset    int64
 }
 
 // Distinct marks SELECT as DISTINCT.
@@ -190,6 +191,12 @@ func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
 // Offset sets the OFFSET to offset.
 func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
 	b.offset = offset
+	return b
+}
+
+// SetInterceptor sets the interceptor to f.
+func (b *SelectBuilder) SetInterceptor(f Interceptor) *SelectBuilder {
+	b.intercept = f
 	return b
 }
 
@@ -334,5 +341,5 @@ func (b *SelectBuilder) BuildWithDialect(dialect Dialect) (sql string, args []in
 
 	sql = buf.String()
 	putBuffer(buf)
-	return
+	return intercept(b.intercept, sql, args)
 }

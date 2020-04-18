@@ -22,3 +22,13 @@ type Builder interface {
 	// BuildWithDialect is used to build the sql statement with dialect.
 	BuildWithDialect(dialect Dialect) (sql string, args []interface{})
 }
+
+// Interceptor is used to intercept the built sql result and return a new one.
+type Interceptor func(sql string, args []interface{}) (string, []interface{})
+
+func intercept(f Interceptor, sql string, args []interface{}) (string, []interface{}) {
+	if f == nil {
+		return sql, args
+	}
+	return f(sql, args)
+}

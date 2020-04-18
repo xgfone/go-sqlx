@@ -21,8 +21,9 @@ import (
 
 // DB is the wrapper of the sql.DB.
 type DB struct {
-	Dialect
 	*sql.DB
+	Dialect
+	Interceptor
 }
 
 // Open opens a database specified by its database driver name
@@ -43,25 +44,25 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return Table(table).SetDialect(db.Dialect)
+	return Table(table).SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete() *DeleteBuilder {
-	return Delete().SetDialect(db.Dialect)
+	return Delete().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDialect(db.Dialect)
+	return Insert().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
-	return Select(column, alias...).SetDialect(db.Dialect)
+	return Select(column, alias...).SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
-	return Update().SetDialect(db.Dialect)
+	return Update().SetDialect(db.Dialect).SetInterceptor(db.Interceptor)
 }

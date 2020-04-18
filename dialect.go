@@ -39,7 +39,7 @@ type Dialect interface {
 	LimitOffset(limit, offset int64) string
 }
 
-var dialects map[string]Dialect
+var dialects = make(map[string]Dialect, 4)
 
 // RegisterDialect registers the Dialect with the name.
 //

@@ -28,9 +28,10 @@ func NewDeleteBuilder() *DeleteBuilder {
 type DeleteBuilder struct {
 	Conditions
 
-	dialect Dialect
-	table   string
-	where   []Condition
+	intercept Interceptor
+	dialect   Dialect
+	table     string
+	where     []Condition
 }
 
 // From sets the table name from where to be deleted.
@@ -42,6 +43,12 @@ func (b *DeleteBuilder) From(table string) *DeleteBuilder {
 // Where sets the WHERE conditions.
 func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 	b.where = append(b.where, andConditions...)
+	return b
+}
+
+// SetInterceptor sets the interceptor to f.
+func (b *DeleteBuilder) SetInterceptor(f Interceptor) *DeleteBuilder {
+	b.intercept = f
 	return b
 }
 
@@ -90,5 +97,5 @@ func (b *DeleteBuilder) BuildWithDialect(dialect Dialect) (sql string, args []in
 
 	sql = buf.String()
 	putBuffer(buf)
-	return
+	return intercept(b.intercept, sql, args)
 }

@@ -31,7 +31,8 @@ func NewInsertBuilder() *InsertBuilder {
 
 // InsertBuilder is used to build the INSERT statement.
 type InsertBuilder struct {
-	dialect Dialect
+	intercept Interceptor
+	dialect   Dialect
 
 	verb    string
 	table   string
@@ -99,6 +100,12 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 		b.columns = cs
 	}
 	b.values = append(b.values, vs)
+	return b
+}
+
+// SetInterceptor sets the interceptor to f.
+func (b *InsertBuilder) SetInterceptor(f Interceptor) *InsertBuilder {
+	b.intercept = f
 	return b
 }
 
@@ -179,7 +186,7 @@ func (b *InsertBuilder) BuildWithDialect(dialect Dialect) (sql string, args []in
 
 	sql = buf.String()
 	putBuffer(buf)
-	return
+	return intercept(b.intercept, sql, args)
 }
 
 func (b *InsertBuilder) addValues(dialect Dialect, buf *bytes.Buffer,
