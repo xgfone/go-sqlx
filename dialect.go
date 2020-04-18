@@ -75,15 +75,6 @@ var (
 	Postgres Dialect = dialect{pqDialect}
 )
 
-func getDialect(first, second Dialect) Dialect {
-	if first != nil {
-		return first
-	} else if second != nil {
-		return second
-	}
-	return DefaultDialect
-}
-
 const (
 	pqDialect      = "postgres"
 	mysqlDialect   = "mysql"

@@ -37,11 +37,11 @@ func ExampleInsertBuilder() {
 	insert4 := Insert().Into("table").Values("v1", "v2", "v3")
 	insert5 := Insert().Into("table").Values("v11", "v12").Values("v21", "v22")
 
-	sql1, args1 := insert1.BuildWithDialect(Postgres) // Use the PostgreSQL dialect.
-	sql2, args2 := insert2.BuildWithDialect(Postgres) // Use the PostgreSQL dialect.
-	sql3, args3 := insert3.Build()                    // Use the default dialect.
-	sql4, args4 := insert4.Build()                    // Use the default dialect.
-	sql5, args5 := insert5.Build()                    // Use the default dialect.
+	sql1, args1 := insert1.SetDialect(Postgres).Build() // Use the PostgreSQL dialect.
+	sql2, args2 := insert2.SetDialect(Postgres).Build() // Use the PostgreSQL dialect.
+	sql3, args3 := insert3.Build()                      // Use the default dialect.
+	sql4, args4 := insert4.Build()                      // Use the default dialect.
+	sql5, args5 := insert5.Build()                      // Use the default dialect.
 
 	fmt.Println(sql1)
 	fmt.Println(args1)

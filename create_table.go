@@ -27,7 +27,7 @@ func Table(table string) *TableBuilder {
 
 // NewTableBuilder returns a new CREATE TABLE builder.
 func NewTableBuilder(table string) *TableBuilder {
-	return &TableBuilder{table: table}
+	return &TableBuilder{table: table, dialect: DefaultDialect}
 }
 
 type columnDefinition struct {
@@ -109,22 +109,13 @@ func (b *TableBuilder) String() string {
 	return sql
 }
 
-// Build is equal to b.BuildWithDialect(nil).
+// Build builds the CREATE TABLE sql statement.
 func (b *TableBuilder) Build() (sql string, args []interface{}) {
-	return b.BuildWithDialect(nil)
-}
-
-// BuildWithDialect builds the sql statement with the dialect.
-//
-// If dialect is nil, it is the dialect to be set.
-// If it is also nil, use DefaultDialect instead.
-func (b *TableBuilder) BuildWithDialect(dialect Dialect) (sql string, args []interface{}) {
 	if b.table == "" {
 		panic("TableBuilder: no table name")
 	} else if len(b.defines) == 0 {
 		panic("TableBuilder: no column definition")
 	}
-	dialect = getDialect(dialect, b.dialect)
 
 	buf := getBuffer()
 
@@ -138,7 +129,7 @@ func (b *TableBuilder) BuildWithDialect(dialect Dialect) (sql string, args []int
 		buf.WriteString("IF NOT EXISTS ")
 	}
 
-	buf.WriteString(dialect.Quote(b.table))
+	buf.WriteString(b.dialect.Quote(b.table))
 	buf.WriteString(" (")
 	for i, define := range b.defines {
 		if i == 0 {
@@ -146,7 +137,7 @@ func (b *TableBuilder) BuildWithDialect(dialect Dialect) (sql string, args []int
 		} else {
 			buf.WriteString(",\n    ")
 		}
-		buf.WriteString(dialect.Quote(define.Name))
+		buf.WriteString(b.dialect.Quote(define.Name))
 		buf.WriteByte(' ')
 		buf.WriteString(define.Type)
 		for _, opt := range define.Opts {

@@ -26,7 +26,7 @@ func Delete() *DeleteBuilder {
 
 // NewDeleteBuilder returns a new DELETE builder.
 func NewDeleteBuilder() *DeleteBuilder {
-	return &DeleteBuilder{}
+	return &DeleteBuilder{dialect: DefaultDialect}
 }
 
 // DeleteBuilder is used to build the DELETE statement.
@@ -88,24 +88,15 @@ func (b *DeleteBuilder) String() string {
 	return sql
 }
 
-// Build is equal to b.BuildWithDialect(nil).
+// Build builds the DELETE FROM TABLE sql statement.
 func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
-	return b.BuildWithDialect(nil)
-}
-
-// BuildWithDialect builds the sql statement with the dialect.
-//
-// If dialect is nil, it is the dialect to be set.
-// If it is also nil, use DefaultDialect instead.
-func (b *DeleteBuilder) BuildWithDialect(dialect Dialect) (sql string, args []interface{}) {
 	if b.table == "" {
 		panic("DeleteBuilder: no table name")
 	}
-	dialect = getDialect(dialect, b.dialect)
 
 	buf := getBuffer()
 	buf.WriteString("DELETE FROM ")
-	buf.WriteString(dialect.Quote(b.table))
+	buf.WriteString(b.dialect.Quote(b.table))
 
 	if _len := len(b.where); _len > 0 {
 		expr := b.where[0]
@@ -113,7 +104,7 @@ func (b *DeleteBuilder) BuildWithDialect(dialect Dialect) (sql string, args []in
 			expr = And(b.where...)
 		}
 
-		ab := NewArgsBuilder(dialect)
+		ab := NewArgsBuilder(b.dialect)
 		buf.WriteString(" WHERE ")
 		buf.WriteString(expr.Build(ab))
 		args = ab.Args()

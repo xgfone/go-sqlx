@@ -15,7 +15,7 @@
 package sqlx
 
 // ArgsDefaultCap is the default capacity to be allocated for ArgsBuilder.
-var ArgsDefaultCap = 8
+var ArgsDefaultCap = 4
 
 // ArgsBuilder is used to build the arguments.
 type ArgsBuilder struct {

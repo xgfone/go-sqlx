@@ -16,11 +16,8 @@ package sqlx
 
 // Builder is the SQL builder interface.
 type Builder interface {
-	// Build is used to build the sql statement with default dialect.
+	// Build is used to build the sql statement.
 	Build() (sql string, args []interface{})
-
-	// BuildWithDialect is used to build the sql statement with dialect.
-	BuildWithDialect(dialect Dialect) (sql string, args []interface{})
 }
 
 // Interceptor is used to intercept the built sql result and return a new one.

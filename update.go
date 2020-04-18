@@ -26,7 +26,7 @@ func Update() *UpdateBuilder {
 
 // NewUpdateBuilder returns a new UPDATE builder.
 func NewUpdateBuilder() *UpdateBuilder {
-	return &UpdateBuilder{}
+	return &UpdateBuilder{dialect: DefaultDialect}
 }
 
 // UpdateBuilder is used to build the UPDATE statement.
@@ -102,29 +102,20 @@ func (b *UpdateBuilder) String() string {
 	return sql
 }
 
-// Build is equal to b.BuildWithDialect(nil).
+// Build builds the UPDATE sql statement.
 func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
-	return b.BuildWithDialect(nil)
-}
-
-// BuildWithDialect builds the sql statement with the dialect.
-//
-// If dialect is nil, it is the dialect to be set.
-// If it is also nil, use DefaultDialect instead.
-func (b *UpdateBuilder) BuildWithDialect(dialect Dialect) (sql string, args []interface{}) {
 	if b.table == "" {
 		panic("UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
 		panic("UpdateBuilder: no set values")
 	}
-	dialect = getDialect(dialect, b.dialect)
 
 	buf := getBuffer()
 	buf.WriteString("UPDATE ")
-	buf.WriteString(dialect.Quote(b.table))
+	buf.WriteString(b.dialect.Quote(b.table))
 	buf.WriteString(" SET ")
 
-	ab := NewArgsBuilder(dialect)
+	ab := NewArgsBuilder(b.dialect)
 	for i, setter := range b.setters {
 		if i > 0 {
 			buf.WriteString(", ")
