@@ -78,6 +78,9 @@ func (b *DeleteBuilder) SetInterceptor(f Interceptor) *DeleteBuilder {
 
 // SetDialect resets the dialect.
 func (b *DeleteBuilder) SetDialect(dialect Dialect) *DeleteBuilder {
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
 	b.dialect = dialect
 	return b
 }

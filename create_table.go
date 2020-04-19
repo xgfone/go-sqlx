@@ -99,6 +99,9 @@ func (b *TableBuilder) SetInterceptor(f Interceptor) *TableBuilder {
 
 // SetDialect resets the dialect.
 func (b *TableBuilder) SetDialect(dialect Dialect) *TableBuilder {
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
 	b.dialect = dialect
 	return b
 }

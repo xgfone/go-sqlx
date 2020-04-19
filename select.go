@@ -238,6 +238,9 @@ func (b *SelectBuilder) SetInterceptor(f Interceptor) *SelectBuilder {
 
 // SetDialect resets the dialect.
 func (b *SelectBuilder) SetDialect(dialect Dialect) *SelectBuilder {
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
 	b.dialect = dialect
 	return b
 }

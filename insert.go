@@ -131,6 +131,9 @@ func (b *InsertBuilder) SetInterceptor(f Interceptor) *InsertBuilder {
 
 // SetDialect resets the dialect.
 func (b *InsertBuilder) SetDialect(dialect Dialect) *InsertBuilder {
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
 	b.dialect = dialect
 	return b
 }
