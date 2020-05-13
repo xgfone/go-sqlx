@@ -92,9 +92,6 @@ func (b *UpdateBuilder) SetInterceptor(f Interceptor) *UpdateBuilder {
 
 // SetDialect resets the dialect.
 func (b *UpdateBuilder) SetDialect(dialect Dialect) *UpdateBuilder {
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
 	b.dialect = dialect
 	return b
 }
@@ -113,12 +110,17 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		panic("UpdateBuilder: no set values")
 	}
 
+	dialect := b.dialect
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
+
 	buf := getBuffer()
 	buf.WriteString("UPDATE ")
-	buf.WriteString(b.dialect.Quote(b.table))
+	buf.WriteString(dialect.Quote(b.table))
 	buf.WriteString(" SET ")
 
-	ab := NewArgsBuilder(b.dialect)
+	ab := NewArgsBuilder(dialect)
 	for i, setter := range b.setters {
 		if i > 0 {
 			buf.WriteString(", ")

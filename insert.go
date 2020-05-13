@@ -131,9 +131,6 @@ func (b *InsertBuilder) SetInterceptor(f Interceptor) *InsertBuilder {
 
 // SetDialect resets the dialect.
 func (b *InsertBuilder) SetDialect(dialect Dialect) *InsertBuilder {
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
 	b.dialect = dialect
 	return b
 }
@@ -167,10 +164,15 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 		panic("InsertBuilder: no table name")
 	}
 
+	dialect := b.dialect
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
+
 	buf := getBuffer()
 	buf.WriteString(b.verb)
 	buf.WriteString(" INTO ")
-	buf.WriteString(b.dialect.Quote(b.table))
+	buf.WriteString(dialect.Quote(b.table))
 
 	if colnum > 0 {
 		buf.WriteString(" (")
@@ -178,21 +180,21 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(b.dialect.Quote(col))
+			buf.WriteString(dialect.Quote(col))
 		}
 		buf.WriteByte(')')
 	}
 
 	buf.WriteString(" VALUES ")
 	if vallen == 0 {
-		b.addValues(b.dialect, buf, nil, valnum, nil)
+		b.addValues(dialect, buf, nil, valnum, nil)
 	} else {
-		ab := NewArgsBuilder(b.dialect)
+		ab := NewArgsBuilder(dialect)
 		for i, vs := range b.values {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			b.addValues(b.dialect, buf, ab, valnum, vs)
+			b.addValues(dialect, buf, ab, valnum, vs)
 		}
 		args = ab.Args()
 	}

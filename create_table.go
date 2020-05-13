@@ -99,9 +99,6 @@ func (b *TableBuilder) SetInterceptor(f Interceptor) *TableBuilder {
 
 // SetDialect resets the dialect.
 func (b *TableBuilder) SetDialect(dialect Dialect) *TableBuilder {
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
 	b.dialect = dialect
 	return b
 }
@@ -132,7 +129,12 @@ func (b *TableBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString("IF NOT EXISTS ")
 	}
 
-	buf.WriteString(b.dialect.Quote(b.table))
+	dialect := b.dialect
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
+
+	buf.WriteString(dialect.Quote(b.table))
 	buf.WriteString(" (")
 	for i, define := range b.defines {
 		if i == 0 {
@@ -140,7 +142,7 @@ func (b *TableBuilder) Build() (sql string, args []interface{}) {
 		} else {
 			buf.WriteString(",\n    ")
 		}
-		buf.WriteString(b.dialect.Quote(define.Name))
+		buf.WriteString(dialect.Quote(define.Name))
 		buf.WriteByte(' ')
 		buf.WriteString(define.Type)
 		for _, opt := range define.Opts {

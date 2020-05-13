@@ -241,9 +241,6 @@ func (b *SelectBuilder) SetInterceptor(f Interceptor) *SelectBuilder {
 
 // SetDialect resets the dialect.
 func (b *SelectBuilder) SetDialect(dialect Dialect) *SelectBuilder {
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
 	b.dialect = dialect
 	return b
 }
@@ -269,15 +266,20 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString("DISTINCT ")
 	}
 
+	dialect := b.dialect
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
+
 	// Selected Columns
 	for i, column := range b.columns {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(b.dialect.Quote(column.Column))
+		buf.WriteString(dialect.Quote(column.Column))
 		if column.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(b.dialect.Quote(column.Alias))
+			buf.WriteString(dialect.Quote(column.Alias))
 		}
 	}
 
@@ -287,10 +289,10 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(b.dialect.Quote(table.Table))
+		buf.WriteString(dialect.Quote(table.Table))
 		if table.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(b.dialect.Quote(table.Alias))
+			buf.WriteString(dialect.Quote(table.Alias))
 		}
 	}
 
@@ -302,7 +304,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		}
 
 		buf.WriteString(" JOIN ")
-		buf.WriteString(b.dialect.Quote(join.Table))
+		buf.WriteString(dialect.Quote(join.Table))
 
 		if len(join.Ons) > 0 {
 			buf.WriteString(" ON ")
@@ -310,9 +312,9 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 				if i > 0 {
 					buf.WriteString(" AND ")
 				}
-				buf.WriteString(b.dialect.Quote(on.Left))
+				buf.WriteString(dialect.Quote(on.Left))
 				buf.WriteByte('=')
-				buf.WriteString(b.dialect.Quote(on.Right))
+				buf.WriteString(dialect.Quote(on.Right))
 			}
 		}
 	}
@@ -325,7 +327,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		}
 
 		buf.WriteString(" WHERE ")
-		ab := NewArgsBuilder(b.dialect)
+		ab := NewArgsBuilder(dialect)
 		buf.WriteString(expr.Build(ab))
 		args = ab.Args()
 	}
@@ -337,7 +339,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(b.dialect.Quote(s))
+			buf.WriteString(dialect.Quote(s))
 		}
 
 		if len(b.havings) > 0 {
@@ -358,7 +360,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(b.dialect.Quote(ob.Column))
+			buf.WriteString(dialect.Quote(ob.Column))
 			if ob.Order != "" {
 				buf.WriteByte(' ')
 				buf.WriteString(string(ob.Order))
@@ -369,7 +371,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 	// Limit & Offset
 	if b.limit > 0 || b.offset > 0 {
 		buf.WriteByte(' ')
-		buf.WriteString(b.dialect.LimitOffset(b.limit, b.offset))
+		buf.WriteString(dialect.LimitOffset(b.limit, b.offset))
 	}
 
 	sql = buf.String()

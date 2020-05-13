@@ -78,9 +78,6 @@ func (b *DeleteBuilder) SetInterceptor(f Interceptor) *DeleteBuilder {
 
 // SetDialect resets the dialect.
 func (b *DeleteBuilder) SetDialect(dialect Dialect) *DeleteBuilder {
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
 	b.dialect = dialect
 	return b
 }
@@ -97,9 +94,14 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 		panic("DeleteBuilder: no table name")
 	}
 
+	dialect := b.dialect
+	if dialect == nil {
+		dialect = DefaultDialect
+	}
+
 	buf := getBuffer()
 	buf.WriteString("DELETE FROM ")
-	buf.WriteString(b.dialect.Quote(b.table))
+	buf.WriteString(dialect.Quote(b.table))
 
 	if _len := len(b.where); _len > 0 {
 		expr := b.where[0]
@@ -107,7 +109,7 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 			expr = And(b.where...)
 		}
 
-		ab := NewArgsBuilder(b.dialect)
+		ab := NewArgsBuilder(dialect)
 		buf.WriteString(" WHERE ")
 		buf.WriteString(expr.Build(ab))
 		args = ab.Args()
