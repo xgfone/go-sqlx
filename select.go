@@ -99,7 +99,10 @@ func (b *SelectBuilder) getAlias(alias []string) string {
 
 // Select appends the selected column in SELECT.
 func (b *SelectBuilder) Select(column string, alias ...string) *SelectBuilder {
-	b.columns = append(b.columns, selectedColumn{column, b.getAlias(alias)})
+	if column != "" {
+		b.columns = append(b.columns, selectedColumn{column, b.getAlias(alias)})
+	}
+
 	return b
 }
 
