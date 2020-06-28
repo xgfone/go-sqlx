@@ -100,11 +100,17 @@ func (d dialect) Placeholder(i int) string {
 	panic(fmt.Errorf("unknown sql dialect '%s'", d.name))
 }
 
-func (d dialect) quote(s string) string {
-	if s == "*" {
-		return s
+func (d dialect) isQuoted(s string) bool {
+	switch d.name {
+	case pqDialect, sqlite3Dialect:
+		return strings.IndexByte(s, '"') >= 0
+	case mysqlDialect:
+		return strings.IndexByte(s, '`') >= 0
 	}
+	panic(fmt.Errorf("unknown sql dialect '%s'", d.name))
+}
 
+func (d dialect) _quote(s string) string {
 	switch d.name {
 	case pqDialect, sqlite3Dialect:
 		return fmt.Sprintf(`"%s"`, s)
@@ -113,6 +119,28 @@ func (d dialect) quote(s string) string {
 	}
 
 	panic(fmt.Errorf("unknown sql dialect '%s'", d.name))
+}
+
+func (d dialect) quote(s string) string {
+	if s == "*" || d.isQuoted(s) {
+		return s
+	}
+
+	if i := strings.IndexByte(s, '('); i > -1 {
+		_s := s[i+1:]
+		if strings.IndexByte(_s, '(') > -1 {
+			return s
+		}
+
+		i2 := strings.IndexByte(_s, ')')
+		if i2 < 0 {
+			return s
+		}
+
+		return fmt.Sprintf("%s(%s)%s", s[:i], d._quote(_s[:i2]), _s[i2+1:])
+	}
+
+	return d._quote(s)
 }
 
 func (d dialect) Quote(s string) string {

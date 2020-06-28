@@ -29,6 +29,12 @@ func TestMySQLDialect(t *testing.T) {
 	if s := MySQL.LimitOffset(123, 456); s != "LIMIT 123 OFFSET 456" {
 		t.Errorf("expected 'LIMIT 123 OFFSET 456', got '%s'", s)
 	}
+	if s := MySQL.Quote("SUM(`number`)"); s != "SUM(`number`)" {
+		t.Errorf("expected 'SUM(`number`)', got '%s'", s)
+	}
+	if s := MySQL.Quote("SUM(number)"); s != "SUM(`number`)" {
+		t.Errorf("expected 'SUM(`number`)', got '%s'", s)
+	}
 }
 
 func TestSqliteDialect(t *testing.T) {
