@@ -478,17 +478,21 @@ type Rows struct {
 	*sql.Rows
 }
 
-// ScanStruct is the same as Scan, but the columns are scanned into the struct s.
+// ScanStruct is the same as Scan, but the columns are scanned into the struct
+// s, which uses ScanColumnsToStruct.
 func (r Row) ScanStruct(s interface{}) (err error) {
 	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
 }
 
-// ScanStruct is the same as Scan, but the columns are scanned into the struct s.
+// ScanStruct is the same as Scan, but the columns are scanned into the struct
+// s, which uses ScanColumnsToStruct.
 func (r Rows) ScanStruct(s interface{}) (err error) {
 	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
 }
 
-// ScanColumnsToStruct scans the columns into the struct s.
+// ScanColumnsToStruct scans the columns into the fields of the struct s,
+// which supports the tag named "sql" to modify the field name. If the value
+// of the tag is "-", however, the field will be ignored.
 func ScanColumnsToStruct(scan func(...interface{}) error, columns []string,
 	s interface{}) (err error) {
 	fields := getFields(s)

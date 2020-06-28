@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"reflect"
+	"strings"
 )
 
 // Insert is short for NewInsertBuilder.
@@ -103,6 +105,71 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 	}
 	b.values = append(b.values, vs)
 	return b
+}
+
+// Struct is the same as NamedValues, but extracts the fields of the struct
+// as the named values to be inserted, which supports the tag named "sql"
+// to modify the column name.
+//
+//   1. If the value of the tag is "-", however, the field will be ignored.
+//   2. If the tag value contains "omitempty", the ZERO field will be ignored.
+//
+func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
+	if s == nil {
+		return b
+	}
+
+	v := reflect.ValueOf(s)
+	switch kind := v.Kind(); kind {
+	case reflect.Ptr:
+		if v.IsNil() {
+			return b
+		}
+
+		v = v.Elem()
+		if v.Kind() != reflect.Struct {
+			panic("not a pointer to struct")
+		}
+	case reflect.Struct:
+	default:
+		panic("not a struct")
+	}
+
+	vt := v.Type()
+	_len := v.NumField()
+	args := make([]sql.NamedArg, 0, _len)
+	for i := 0; i < _len; i++ {
+		vft := vt.Field(i)
+		name := vft.Name
+
+		var notZero bool
+		tag := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tag, ','); index > -1 {
+			if strings.TrimSpace(tag[index+1:]) == "omitempty" {
+				notZero = true
+			}
+			tag = strings.TrimSpace(tag[:index])
+		}
+
+		if tag == "-" {
+			continue
+		} else if tag != "" {
+			name = tag
+		}
+
+		vf := v.Field(i)
+		if !vf.IsValid() {
+			continue
+		} else if notZero && vf.IsZero() {
+			continue
+		} else if vf.Kind() == reflect.Ptr {
+			vf = vf.Elem()
+		}
+
+		args = append(args, sql.NamedArg{Name: name, Value: vf.Interface()})
+	}
+
+	return b.NamedValues(args...)
 }
 
 // Exec builds the sql and executes it by *sql.DB.
