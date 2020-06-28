@@ -217,6 +217,14 @@ func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
 	return b
 }
 
+// Paginate is equal to Limit(pageSize).Offset(pageNum * pageSize).
+//
+// Notice: pageNum starts with 0.
+func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
+	b.Limit(pageSize).Offset(pageNum * pageSize)
+	return b
+}
+
 // Query builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) Query() (*sql.Rows, error) {
 	query, args := b.Build()
