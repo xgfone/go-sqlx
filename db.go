@@ -66,6 +66,12 @@ func (db *DB) Select(column string, alias ...string) *SelectBuilder {
 		SetInterceptor(db.Interceptor)
 }
 
+// Selects is equal to db.Select(columns[0]).Select(columns[1])...
+func (db *DB) Selects(columns ...string) *SelectBuilder {
+	return Selects(columns...).SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
+}
+
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
 	return Update().SetDialect(db.Dialect).SetDB(db.DB).

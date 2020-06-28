@@ -24,6 +24,12 @@ func Select(column string, alias ...string) *SelectBuilder {
 	return NewSelectBuilder(column, alias...)
 }
 
+// Selects is equal to Select(columns[0]).Select(columns[1])...
+func Selects(columns ...string) *SelectBuilder {
+	s := &SelectBuilder{dialect: DefaultDialect}
+	return s.Selects(columns...)
+}
+
 // NewSelectBuilder returns a new SELECT builder.
 func NewSelectBuilder(column string, alias ...string) *SelectBuilder {
 	s := &SelectBuilder{dialect: DefaultDialect}
@@ -103,6 +109,14 @@ func (b *SelectBuilder) Select(column string, alias ...string) *SelectBuilder {
 		b.columns = append(b.columns, selectedColumn{column, b.getAlias(alias)})
 	}
 
+	return b
+}
+
+// Selects is equal to Select(columns[0]).Select(columns[1])...
+func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
+	for _, c := range columns {
+		b.Select(c)
+	}
 	return b
 }
 
