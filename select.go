@@ -289,27 +289,29 @@ func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 }
 
 // Query builds the sql and executes it by *sql.DB.
-func (b *SelectBuilder) Query() (*sql.Rows, error) {
+func (b *SelectBuilder) Query() (Rows, error) {
 	query, args := b.Build()
-	return b.sqldb.Query(query, args...)
+	rows, err := b.sqldb.Query(query, args...)
+	return Rows{b, rows}, err
 }
 
 // QueryContext builds the sql and executes it by *sql.DB.
-func (b *SelectBuilder) QueryContext(ctx context.Context) (*sql.Rows, error) {
+func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
 	query, args := b.Build()
-	return b.sqldb.QueryContext(ctx, query, args...)
+	rows, err := b.sqldb.QueryContext(ctx, query, args...)
+	return Rows{b, rows}, err
 }
 
 // QueryRow builds the sql and executes it by *sql.DB.
-func (b *SelectBuilder) QueryRow() *sql.Row {
+func (b *SelectBuilder) QueryRow() Row {
 	query, args := b.Build()
-	return b.sqldb.QueryRow(query, args...)
+	return Row{b, b.sqldb.QueryRow(query, args...)}
 }
 
 // QueryRowContext builds the sql and executes it by *sql.DB.
-func (b *SelectBuilder) QueryRowContext(ctx context.Context) *sql.Row {
+func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	query, args := b.Build()
-	return b.sqldb.QueryRowContext(ctx, query, args...)
+	return Row{b, b.sqldb.QueryRowContext(ctx, query, args...)}
 }
 
 // SetDB sets the sql.DB to db.
@@ -462,4 +464,65 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 	sql = buf.String()
 	putBuffer(buf)
 	return intercept(b.intercept, sql, args)
+}
+
+// Row is used to wrap sql.Row.
+type Row struct {
+	*SelectBuilder
+	*sql.Row
+}
+
+// Rows is used to wrap sql.Rows.
+type Rows struct {
+	*SelectBuilder
+	*sql.Rows
+}
+
+// ScanStruct is the same as Scan, but the columns are scanned into the struct s.
+func (r Row) ScanStruct(s interface{}) (err error) {
+	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
+}
+
+// ScanStruct is the same as Scan, but the columns are scanned into the struct s.
+func (r Rows) ScanStruct(s interface{}) (err error) {
+	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
+}
+
+// ScanColumnsToStruct scans the columns into the struct s.
+func ScanColumnsToStruct(scan func(...interface{}) error, columns []string,
+	s interface{}) (err error) {
+	fields := getFields(s)
+	vs := make([]interface{}, len(columns))
+	for i, c := range columns {
+		vs[i] = fields[c].Addr().Interface()
+	}
+	return scan(vs...)
+}
+
+func getFields(s interface{}) map[string]reflect.Value {
+	v := reflect.ValueOf(s)
+	if v.Kind() != reflect.Ptr {
+		panic("not a pointer to struct")
+	} else if v = v.Elem(); v.Kind() != reflect.Struct {
+		panic("not a pointer to struct")
+	}
+
+	vt := v.Type()
+	_len := v.NumField()
+	vs := make(map[string]reflect.Value, _len)
+	for i := 0; i < _len; i++ {
+		vft := vt.Field(i)
+		name := vft.Name
+		switch tag := vft.Tag.Get("sql"); tag {
+		case "":
+		case "-":
+			continue
+		default:
+			name = tag
+		}
+
+		vs[name] = v.Field(i)
+	}
+
+	return vs
 }
