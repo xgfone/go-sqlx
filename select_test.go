@@ -108,3 +108,17 @@ func ExampleSelectBuilder_Join() {
 	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` LIMIT 10 OFFSET 100
 	// [123]
 }
+
+func ExampleSelectBuilder_SelectStruct() {
+	type S struct {
+		DefaultField  string
+		ModifiedField string `sql:"field"`
+		IgnoredField  string `sql:"-"`
+	}
+
+	sb := SelectStruct(S{})
+	fmt.Println(sb.SelectedColumns())
+
+	// Output:
+	// [DefaultField field]
+}

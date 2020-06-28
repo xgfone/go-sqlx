@@ -17,6 +17,7 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"reflect"
 )
 
 // Select is short for NewSelectBuilder.
@@ -28,6 +29,12 @@ func Select(column string, alias ...string) *SelectBuilder {
 func Selects(columns ...string) *SelectBuilder {
 	s := &SelectBuilder{dialect: DefaultDialect}
 	return s.Selects(columns...)
+}
+
+// SelectStruct is equal to Select().SelectStruct(s).
+func SelectStruct(s interface{}) *SelectBuilder {
+	sb := &SelectBuilder{dialect: DefaultDialect}
+	return sb.SelectStruct(s)
 }
 
 // NewSelectBuilder returns a new SELECT builder.
@@ -118,6 +125,62 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 		b.Select(c)
 	}
 	return b
+}
+
+// SelectStruct reflects and extracts the fields of the struct as the selected
+// columns, which supports the tag named "sql" to modify the column name.
+// If the value of the tag is "-", however, the field will be ignored.
+func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
+	if s == nil {
+		return b
+	}
+
+	v := reflect.ValueOf(s)
+	switch kind := v.Kind(); kind {
+	case reflect.Ptr:
+		if v.IsNil() {
+			return b
+		}
+
+		v = v.Elem()
+		if v.Kind() != reflect.Struct {
+			panic("not a pointer to struct")
+		}
+	case reflect.Struct:
+	default:
+		panic("not a struct")
+	}
+
+	vt := v.Type()
+	for i, _len := 0, v.NumField(); i < _len; i++ {
+		vft := vt.Field(i)
+		name := vft.Name
+		switch tag := vft.Tag.Get("sql"); tag {
+		case "":
+		case "-":
+			continue
+		default:
+			name = tag
+		}
+		b.Select(name)
+	}
+
+	return b
+}
+
+// SelectedColumns returns the names of the selected columns.
+//
+// Notice: if the column has the alias, the alias will be returned instead.
+func (b *SelectBuilder) SelectedColumns() []string {
+	cs := make([]string, len(b.columns))
+	for i, c := range b.columns {
+		if c.Alias == "" {
+			cs[i] = c.Column
+		} else {
+			cs[i] = c.Alias
+		}
+	}
+	return cs
 }
 
 // From sets table name in SELECT.

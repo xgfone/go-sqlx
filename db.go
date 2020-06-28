@@ -72,6 +72,12 @@ func (db *DB) Selects(columns ...string) *SelectBuilder {
 		SetInterceptor(db.Interceptor)
 }
 
+// SelectStruct is equal to db.Select().SelectStruct(s).
+func (db *DB) SelectStruct(s interface{}) *SelectBuilder {
+	return SelectStruct(s).SetDialect(db.Dialect).SetDB(db.DB).
+		SetInterceptor(db.Interceptor)
+}
+
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
 	return Update().SetDialect(db.Dialect).SetDB(db.DB).
