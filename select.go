@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"strings"
 )
 
 // Select is short for NewSelectBuilder.
@@ -155,13 +156,18 @@ func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
 		name := vft.Name
-		switch tag := vft.Tag.Get("sql"); tag {
-		case "":
-		case "-":
+
+		tag := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tag, ','); index > -1 {
+			tag = strings.TrimSpace(tag[:index])
+		}
+
+		if tag == "-" {
 			continue
-		default:
+		} else if tag != "" {
 			name = tag
 		}
+
 		b.Select(name)
 	}
 
@@ -517,11 +523,15 @@ func getFields(s interface{}) map[string]reflect.Value {
 	for i := 0; i < _len; i++ {
 		vft := vt.Field(i)
 		name := vft.Name
-		switch tag := vft.Tag.Get("sql"); tag {
-		case "":
-		case "-":
+
+		tag := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tag, ','); index > -1 {
+			tag = strings.TrimSpace(tag[:index])
+		}
+
+		if tag == "-" {
 			continue
-		default:
+		} else if tag != "" {
 			name = tag
 		}
 
