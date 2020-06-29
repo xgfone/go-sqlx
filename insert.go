@@ -20,6 +20,8 @@ import (
 	"database/sql"
 	"reflect"
 	"strings"
+
+	"github.com/xgfone/cast"
 )
 
 // Insert is short for NewInsertBuilder.
@@ -160,7 +162,7 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 		vf := v.Field(i)
 		if !vf.IsValid() {
 			continue
-		} else if notZero && vf.IsZero() {
+		} else if notZero && cast.IsZero(vf.Interface()) {
 			continue
 		} else if vf.Kind() == reflect.Ptr {
 			vf = vf.Elem()
