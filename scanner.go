@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"database/sql"
+	"database/sql/driver"
 
 	"github.com/xgfone/cast"
 )
@@ -26,7 +27,8 @@ const Datetime = "2006-01-02 15:04:05"
 // Scanner is a interface to scan and return the value.
 type Scanner interface {
 	sql.Scanner
-	Value() interface{}
+	driver.Valuer
+	Get() interface{}
 }
 
 // NewScanner returns a new Scanner.
@@ -39,7 +41,10 @@ type scanner struct {
 	scan  func(src interface{}) (dst interface{}, err error)
 }
 
-func (s *scanner) Value() interface{} { return s.value }
+func (s *scanner) Get() interface{} { return s.value }
+func (s *scanner) Value() (driver.Value, error) {
+	return driver.DefaultParameterConverter.ConvertValue(s.value)
+}
 func (s *scanner) Scan(src interface{}) error {
 	dst, err := s.scan(src)
 	if err == nil {
