@@ -17,6 +17,7 @@ package sqlx
 import (
 	"database/sql"
 	"database/sql/driver"
+	"time"
 
 	"github.com/xgfone/cast"
 )
@@ -137,5 +138,13 @@ func DurationScanner() Scanner {
 func TimeScanner(layout ...string) Scanner {
 	return NewScanner(func(src interface{}) (dst interface{}, err error) {
 		return cast.ToTime(src, layout...)
+	})
+}
+
+// TimeInLocationScanner returns a scanner to scan the source to time.Time
+// with the location.
+func TimeInLocationScanner(location *time.Location, layout ...string) Scanner {
+	return NewScanner(func(src interface{}) (dst interface{}, err error) {
+		return cast.ToTimeInLocation(location, src, layout...)
 	})
 }
