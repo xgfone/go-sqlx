@@ -35,6 +35,7 @@ type DeleteBuilder struct {
 
 	sqldb     *sql.DB
 	intercept Interceptor
+	executor  Executor
 	dialect   Dialect
 	table     string
 	where     []Condition
@@ -54,14 +55,22 @@ func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 
 // Exec builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) Exec() (sql.Result, error) {
-	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	return b.ExecContext(context.Background())
 }
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	if b.executor != nil {
+		return b.executor.ExecContext(ctx, query, args...)
+	}
+	return b.sqldb.ExecContext(ctx, query, args...)
+}
+
+// SetExecutor sets the executor to exec.
+func (b *DeleteBuilder) SetExecutor(exec Executor) *DeleteBuilder {
+	b.executor = exec
+	return b
 }
 
 // SetDB sets the sql.DB to db.

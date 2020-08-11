@@ -85,6 +85,7 @@ type SelectBuilder struct {
 
 	sqldb     *sql.DB
 	intercept Interceptor
+	executor  Executor
 	dialect   Dialect
 	distinct  bool
 	tables    []fromTable
@@ -296,28 +297,47 @@ func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 
 // Query builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) Query() (Rows, error) {
-	query, args := b.Build()
-	rows, err := b.sqldb.Query(query, args...)
-	return Rows{b, rows}, err
+	return b.QueryContext(context.Background())
 }
 
 // QueryContext builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
+	var rows *sql.Rows
+	var err error
+
 	query, args := b.Build()
-	rows, err := b.sqldb.QueryContext(ctx, query, args...)
+	if b.executor != nil {
+		rows, err = b.executor.QueryContext(ctx, query, args...)
+	} else {
+		rows, err = b.sqldb.QueryContext(ctx, query, args...)
+	}
+
 	return Rows{b, rows}, err
 }
 
 // QueryRow builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) QueryRow() Row {
-	query, args := b.Build()
-	return Row{b, b.sqldb.QueryRow(query, args...)}
+	return b.QueryRowContext(context.Background())
 }
 
 // QueryRowContext builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
+	var row *sql.Row
+
 	query, args := b.Build()
-	return Row{b, b.sqldb.QueryRowContext(ctx, query, args...)}
+	if b.executor != nil {
+		row = b.executor.QueryRowContext(ctx, query, args...)
+	} else {
+		row = b.sqldb.QueryRowContext(ctx, query, args...)
+	}
+
+	return Row{b, row}
+}
+
+// SetExecutor sets the executor to exec.
+func (b *SelectBuilder) SetExecutor(exec Executor) *SelectBuilder {
+	b.executor = exec
+	return b
 }
 
 // SetDB sets the sql.DB to db.

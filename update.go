@@ -36,6 +36,7 @@ type UpdateBuilder struct {
 
 	sqldb     *sql.DB
 	intercept Interceptor
+	executor  Executor
 	dialect   Dialect
 	table     string
 	where     []Condition
@@ -68,14 +69,22 @@ func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
 
 // Exec builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) Exec() (sql.Result, error) {
-	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	return b.ExecContext(context.Background())
 }
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	if b.executor != nil {
+		return b.executor.ExecContext(ctx, query, args...)
+	}
+	return b.sqldb.ExecContext(ctx, query, args...)
+}
+
+// SetExecutor sets the executor to exec.
+func (b *UpdateBuilder) SetExecutor(exec Executor) *UpdateBuilder {
+	b.executor = exec
+	return b
 }
 
 // SetDB sets the sql.DB to db.

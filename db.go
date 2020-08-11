@@ -23,6 +23,7 @@ import (
 type DB struct {
 	*sql.DB
 	Dialect
+	Executor
 	Interceptor
 }
 
@@ -45,41 +46,41 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
 	return Table(table).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete() *DeleteBuilder {
 	return Delete().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
 	return Insert().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
 	return Select(column, alias...).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // Selects is equal to db.Select(columns[0]).Select(columns[1])...
 func (db *DB) Selects(columns ...string) *SelectBuilder {
 	return Selects(columns...).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // SelectStruct is equal to db.Select().SelectStruct(s).
 func (db *DB) SelectStruct(s interface{}) *SelectBuilder {
 	return SelectStruct(s).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
 	return Update().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor)
+		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
 }

@@ -37,6 +37,7 @@ func NewInsertBuilder() *InsertBuilder {
 // InsertBuilder is used to build the INSERT statement.
 type InsertBuilder struct {
 	intercept Interceptor
+	executor  Executor
 	dialect   Dialect
 	sqldb     *sql.DB
 
@@ -176,14 +177,22 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 
 // Exec builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) Exec() (sql.Result, error) {
-	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	return b.ExecContext(context.Background())
 }
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return b.sqldb.Exec(query, args...)
+	if b.executor != nil {
+		return b.executor.ExecContext(ctx, query, args...)
+	}
+	return b.sqldb.ExecContext(ctx, query, args...)
+}
+
+// SetExecutor sets the executor to exec.
+func (b *InsertBuilder) SetExecutor(exec Executor) *InsertBuilder {
+	b.executor = exec
+	return b
 }
 
 // SetDB sets the sql.DB to db.
