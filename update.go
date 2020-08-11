@@ -34,7 +34,6 @@ type UpdateBuilder struct {
 	Setters
 	Conditions
 
-	sqldb     *sql.DB
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
@@ -75,21 +74,12 @@ func (b *UpdateBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	if b.executor != nil {
-		return b.executor.ExecContext(ctx, query, args...)
-	}
-	return b.sqldb.ExecContext(ctx, query, args...)
+	return b.executor.ExecContext(ctx, query, args...)
 }
 
 // SetExecutor sets the executor to exec.
 func (b *UpdateBuilder) SetExecutor(exec Executor) *UpdateBuilder {
 	b.executor = exec
-	return b
-}
-
-// SetDB sets the sql.DB to db.
-func (b *UpdateBuilder) SetDB(db *sql.DB) *UpdateBuilder {
-	b.sqldb = db
 	return b
 }
 

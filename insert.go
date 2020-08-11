@@ -39,7 +39,6 @@ type InsertBuilder struct {
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
-	sqldb     *sql.DB
 
 	verb    string
 	table   string
@@ -183,21 +182,12 @@ func (b *InsertBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	if b.executor != nil {
-		return b.executor.ExecContext(ctx, query, args...)
-	}
-	return b.sqldb.ExecContext(ctx, query, args...)
+	return b.executor.ExecContext(ctx, query, args...)
 }
 
 // SetExecutor sets the executor to exec.
 func (b *InsertBuilder) SetExecutor(exec Executor) *InsertBuilder {
 	b.executor = exec
-	return b
-}
-
-// SetDB sets the sql.DB to db.
-func (b *InsertBuilder) SetDB(db *sql.DB) *InsertBuilder {
-	b.sqldb = db
 	return b
 }
 

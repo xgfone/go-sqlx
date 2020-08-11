@@ -45,42 +45,78 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return Table(table).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Table(table).SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete() *DeleteBuilder {
-	return Delete().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Delete().SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Insert().SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
-	return Select(column, alias...).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Select(column, alias...).SetDialect(db.Dialect).
+		SetExecutor(executor).SetInterceptor(db.Interceptor)
 }
 
 // Selects is equal to db.Select(columns[0]).Select(columns[1])...
 func (db *DB) Selects(columns ...string) *SelectBuilder {
-	return Selects(columns...).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Selects(columns...).SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
 }
 
 // SelectStruct is equal to db.Select().SelectStruct(s).
 func (db *DB) SelectStruct(s interface{}) *SelectBuilder {
-	return SelectStruct(s).SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return SelectStruct(s).SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update() *UpdateBuilder {
-	return Update().SetDialect(db.Dialect).SetDB(db.DB).
-		SetInterceptor(db.Interceptor).SetExecutor(db.Executor)
+	executor := db.Executor
+	if executor == nil {
+		executor = db.DB
+	}
+
+	return Update().SetDialect(db.Dialect).SetExecutor(executor).
+		SetInterceptor(db.Interceptor)
+
 }

@@ -83,7 +83,6 @@ type joinTable struct {
 type SelectBuilder struct {
 	Conditions
 
-	sqldb     *sql.DB
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
@@ -302,16 +301,8 @@ func (b *SelectBuilder) Query() (Rows, error) {
 
 // QueryContext builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
-	var rows *sql.Rows
-	var err error
-
 	query, args := b.Build()
-	if b.executor != nil {
-		rows, err = b.executor.QueryContext(ctx, query, args...)
-	} else {
-		rows, err = b.sqldb.QueryContext(ctx, query, args...)
-	}
-
+	rows, err := b.executor.QueryContext(ctx, query, args...)
 	return Rows{b, rows}, err
 }
 
@@ -322,27 +313,13 @@ func (b *SelectBuilder) QueryRow() Row {
 
 // QueryRowContext builds the sql and executes it by *sql.DB.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
-	var row *sql.Row
-
 	query, args := b.Build()
-	if b.executor != nil {
-		row = b.executor.QueryRowContext(ctx, query, args...)
-	} else {
-		row = b.sqldb.QueryRowContext(ctx, query, args...)
-	}
-
-	return Row{b, row}
+	return Row{b, b.executor.QueryRowContext(ctx, query, args...)}
 }
 
 // SetExecutor sets the executor to exec.
 func (b *SelectBuilder) SetExecutor(exec Executor) *SelectBuilder {
 	b.executor = exec
-	return b
-}
-
-// SetDB sets the sql.DB to db.
-func (b *SelectBuilder) SetDB(db *sql.DB) *SelectBuilder {
-	b.sqldb = db
 	return b
 }
 
