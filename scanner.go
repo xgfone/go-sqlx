@@ -32,27 +32,35 @@ type Scanner interface {
 	Get() interface{}
 }
 
-// NewScanner returns a new Scanner.
-func NewScanner(scan func(src interface{}) (dst interface{}, err error)) Scanner {
-	return &scanner{scan: scan}
+// NewScanner returns a new Scanner with the cast.
+func NewScanner(cast func(src interface{}) (dst interface{}, err error)) Scanner {
+	return &scanner{scan: cast}
 }
 
 type scanner struct {
+	isset bool
 	value interface{}
 	scan  func(src interface{}) (dst interface{}, err error)
 }
 
-func (s *scanner) Get() interface{} { return s.value }
-func (s *scanner) Value() (driver.Value, error) {
-	return driver.DefaultParameterConverter.ConvertValue(s.value)
-}
-func (s *scanner) Scan(src interface{}) error {
-	dst, err := s.scan(src)
-	if err == nil {
-		s.value = dst
+func (s *scanner) setTo(v interface{}, set bool) (err error) {
+	if v, err = s.scan(v); err == nil {
+		s.value = v
+		if set {
+			s.isset = set
+		}
 	}
 	return err
 }
+func (s *scanner) Value() (driver.Value, error) {
+	return driver.DefaultParameterConverter.ConvertValue(s.value)
+}
+func (s *scanner) Get() interface{}               { return s.value }
+func (s *scanner) Scan(src interface{}) error     { return s.setTo(src, true) }
+func (s *scanner) Set(v interface{}) error        { return s.setTo(v, true) }
+func (s *scanner) SetDefault(v interface{}) error { return s.setTo(v, false) }
+func (s *scanner) IsSet() bool                    { return s.isset }
+func (s *scanner) IsZero() bool                   { return cast.IsZero(s.value) }
 
 /// --------------------------------------------------------------------------
 
