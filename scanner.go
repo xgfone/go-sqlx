@@ -17,6 +17,7 @@ package sqlx
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"github.com/xgfone/cast"
@@ -33,6 +34,9 @@ type Scanner interface {
 }
 
 // NewScanner returns a new Scanner with the cast.
+//
+// The implementation has implemented the interfaces json.Marshaler
+// and json.Unmarshaler.
 func NewScanner(cast func(src interface{}) (dst interface{}, err error)) Scanner {
 	return &scanner{scan: cast}
 }
@@ -61,6 +65,18 @@ func (s *scanner) Set(v interface{}) error        { return s.setTo(v, true) }
 func (s *scanner) SetDefault(v interface{}) error { return s.setTo(v, false) }
 func (s *scanner) IsSet() bool                    { return s.isset }
 func (s *scanner) IsZero() bool                   { return cast.IsZero(s.value) }
+
+var _ json.Marshaler = &scanner{}
+var _ json.Unmarshaler = &scanner{}
+
+func (s *scanner) MarshalJSON() ([]byte, error) { return json.Marshal(s.value) }
+func (s *scanner) UnmarshalJSON(data []byte) (err error) {
+	var v interface{}
+	if err = json.Unmarshal(data, &v); err == nil {
+		err = s.setTo(v, true)
+	}
+	return
+}
 
 /// --------------------------------------------------------------------------
 

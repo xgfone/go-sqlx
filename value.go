@@ -36,6 +36,9 @@ type Value interface {
 }
 
 // NewValue returns a new Value with the cast.
+//
+// The implementation has implemented the interfaces json.Marshaler
+// and json.Unmarshaler.
 func NewValue(cast func(src interface{}) (dst interface{}, err error)) Value {
 	return &scanner{scan: cast}
 }
