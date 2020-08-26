@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/xgfone/cast"
@@ -25,6 +26,8 @@ var _ Scanner = IntValue().(Scanner)
 
 // Value is a type to report whether is set or zero.
 type Value interface {
+	fmt.Stringer
+
 	IsSet() bool
 	IsZero() bool
 

@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/xgfone/cast"
@@ -29,6 +30,7 @@ const Datetime = "2006-01-02 15:04:05"
 // Scanner is a interface to scan and return the value.
 type Scanner interface {
 	sql.Scanner
+	fmt.Stringer
 	driver.Valuer
 	Get() interface{}
 }
@@ -74,6 +76,12 @@ func (s *scanner) Set(v interface{}) error        { return s.setTo(v, true) }
 func (s *scanner) SetDefault(v interface{}) error { return s.setTo(v, false) }
 func (s *scanner) IsSet() bool                    { return s.isset }
 func (s *scanner) IsZero() bool                   { return cast.IsZero(s.value) }
+func (s *scanner) String() string {
+	if _s, err := cast.ToString(s.value); err == nil {
+		return _s
+	}
+	return fmt.Sprint(s.value)
+}
 
 var _ json.Marshaler = &scanner{}
 var _ json.Unmarshaler = &scanner{}
