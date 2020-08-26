@@ -35,103 +35,176 @@ type Value interface {
 	SetDefault(value interface{}) error
 }
 
-// NewValue returns a new Value with the cast.
-//
-// The implementation has implemented the interfaces json.Marshaler
-// and json.Unmarshaler.
-func NewValue(cast func(src interface{}) (dst interface{}, err error)) Value {
-	return &scanner{scan: cast}
+// NewValueWithDefault returns a new Value with the initialized default value
+// and the transverter cast.
+func NewValueWithDefault(cast func(src interface{}) (dst interface{}, err error),
+	v interface{}) Value {
+	dst, err := cast(v)
+	if err != nil {
+		panic(err)
+	}
+
+	return &scanner{scan: cast, value: dst}
 }
 
-// IntValue returns a Value to set the value to int.
-func IntValue() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// IntValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to int.
+func IntValueWithDefault(n int) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToInt(src)
-	})
+	}, n)
 }
 
-// Int32Value returns a Value to set the value to int32.
-func Int32Value() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// Int32ValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to int32.
+func Int32ValueWithDefault(n int32) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToInt32(src)
-	})
+	}, n)
 }
 
-// Int64Value returns a Value to set the value to int64.
-func Int64Value() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// Int64ValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to int64.
+func Int64ValueWithDefault(n int64) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToInt64(src)
-	})
+	}, n)
 }
 
-// UintValue returns a Value to set the value to uint.
-func UintValue() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// UintValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to uint.
+func UintValueWithDefault(n uint) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToUint(src)
-	})
+	}, n)
 }
 
-// Uint32Value returns a Value to set the value to int32.
-func Uint32Value() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// Uint32ValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to uint32.
+func Uint32ValueWithDefault(n uint32) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToUint32(src)
-	})
+	}, n)
 }
 
-// Uint64Value returns a Value to set the value to int64.
-func Uint64Value() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// Uint64ValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to uint64.
+func Uint64ValueWithDefault(n uint64) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToUint64(src)
-	})
+	}, n)
 }
 
-// Float64Value returns a Value to set the value to float64.
-func Float64Value() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// Float64ValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to float64.
+func Float64ValueWithDefault(n float64) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToFloat64(src)
-	})
+	}, n)
 }
 
-// BoolValue returns a Value to set the value to bool.
-func BoolValue() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// BoolValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to bool.
+func BoolValueWithDefault(b bool) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		if bs, ok := src.([]byte); ok {
 			switch len(bs) {
 			case 0:
 				return false, nil
-			case 1:
+			default:
 				return bs[0] != 0, nil
 			}
 		}
 		return cast.ToBool(src)
-	})
+	}, b)
 }
 
-// StringValue returns a Value to set the value to string.
-func StringValue() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// StringValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to string.
+func StringValueWithDefault(s string) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToString(src)
-	})
+	}, s)
 }
 
-// DurationValue returns a Value to set the value to time.Duration.
-func DurationValue() Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// DurationValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to time.Duration.
+func DurationValueWithDefault(d time.Duration) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToDuration(src)
-	})
+	}, d)
 }
 
-// TimeValue returns a Value to set the value to time.Time.
-func TimeValue(layout ...string) Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// TimeValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to time.Time.
+func TimeValueWithDefault(t time.Time, layout ...string) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToTime(src, layout...)
-	})
+	}, t)
 }
 
-// TimeInLocationValue returns a Value to set the value to time.Time
-// with the location.
-func TimeInLocationValue(location *time.Location, layout ...string) Value {
-	return NewValue(func(src interface{}) (dst interface{}, err error) {
+// TimeInLocationValueWithDefault is the same as NewValueWithDefault,
+// but cast the value to time.Time with the location.
+func TimeInLocationValueWithDefault(t time.Time, location *time.Location,
+	layout ...string) Value {
+	return NewValueWithDefault(func(src interface{}) (interface{}, error) {
 		return cast.ToTimeInLocation(location, src, layout...)
-	})
+	}, t)
+}
+
+/// ------------------------------------------------------------------------
+
+// NewValue is equal to NewValueWithDefault(cast, nil).
+func NewValue(cast func(src interface{}) (dst interface{}, err error)) Value {
+	return NewValueWithDefault(cast, nil)
+}
+
+// IntValue is equal to IntValueWithDefault(0).
+func IntValue() Value { return IntValueWithDefault(0) }
+
+// Int32Value is equal to Int32ValueWithDefault(0).
+func Int32Value() Value { return Int32ValueWithDefault(0) }
+
+// Int64Value is equal to Int64ValueWithDefault(0).
+func Int64Value() Value { return Int64ValueWithDefault(0) }
+
+// UintValue is equal to UintValueWithDefault(0).
+func UintValue() Value { return UintValueWithDefault(0) }
+
+// Uint32Value is equal to Uint32ValueWithDefault(0).
+func Uint32Value() Value { return Uint32ValueWithDefault(0) }
+
+// Uint64Value is equal to Uint64ValueWithDefault(0).
+func Uint64Value() Value { return Uint64ValueWithDefault(0) }
+
+// Float64Value is equal to Float64ValueWithDefault(0).
+func Float64Value() Value { return Float64ValueWithDefault(0) }
+
+// BoolValue is equal to BoolValueWithDefault(false).
+func BoolValue() Value { return BoolValueWithDefault(false) }
+
+// StringValue is equal to StringValueWithDefault("").
+func StringValue() Value { return StringValueWithDefault("") }
+
+// DurationValue is equal to DurationValueWithDefault(0).
+func DurationValue() Value { return DurationValueWithDefault(0) }
+
+// TimeValue is equal to TimeValueWithDefault(time.Time{}, layout...).
+func TimeValue(layout ...string) Value {
+	return TimeValueWithDefault(time.Time{}, layout...)
+}
+
+// TimeInLocationValue is equal to TimeInLocationValueWithDefault(time.Time{}, loc, layout...).
+func TimeInLocationValue(loc *time.Location, layout ...string) Value {
+	return TimeInLocationValueWithDefault(time.Time{}, loc, layout...)
+}
+
+// TimeNowValue is equal to TimeValueWithDefault(time.Now(), layout...).
+func TimeNowValue(layout ...string) Value {
+	return TimeValueWithDefault(time.Now(), layout...)
+}
+
+// TimeNowInLocationValue is equal to TimeInLocationValueWithDefault(time.Now(), loc, layout...).
+func TimeNowInLocationValue(loc *time.Location, layout ...string) Value {
+	return TimeInLocationValueWithDefault(time.Now(), loc, layout...)
 }
