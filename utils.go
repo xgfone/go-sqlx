@@ -16,7 +16,11 @@ package sqlx
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"sync"
+	"time"
+
+	"github.com/xgfone/cast"
 )
 
 // BufferDefaultCap is the default capacity to be allocated for buffer from pool.
@@ -37,3 +41,23 @@ var slicepool = sync.Pool{New: func() interface{} {
 
 func getSlice() []interface{}   { return slicepool.Get().([]interface{}) }
 func putSlice(ss []interface{}) { ss = ss[:0]; slicepool.Put(ss) }
+
+// Time is used to read/write the time.Time from/to DB.
+type Time struct {
+	time.Time
+}
+
+// Now returns the current Time.
+func Now() Time { return Time{Time: time.Now().In(Location)} }
+
+// Value implements the interface driver.Valuer.
+func (t Time) Value() (driver.Value, error) { return t.Time, nil }
+
+// Scan implements the interface sql.Scanner.
+func (t *Time) Scan(src interface{}) (err error) {
+	_t, err := cast.ToTimeInLocation(Location, src, DatetimeLayout)
+	if err == nil {
+		t.Time = _t
+	}
+	return
+}

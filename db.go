@@ -17,10 +17,14 @@ package sqlx
 import (
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // DatetimeLayout is the time layout format of SQL DATETIME
 const DatetimeLayout = "2006-01-02 15:04:05"
+
+// Location is used to save the default location of time.Time.
+var Location = time.Local
 
 // DB is the wrapper of the sql.DB.
 type DB struct {
