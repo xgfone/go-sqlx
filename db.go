@@ -19,6 +19,9 @@ import (
 	"fmt"
 )
 
+// DatetimeLayout is the time layout format of SQL DATETIME
+const DatetimeLayout = "2006-01-02 15:04:05"
+
 // DB is the wrapper of the sql.DB.
 type DB struct {
 	*sql.DB

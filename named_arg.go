@@ -16,26 +16,26 @@ package sqlx
 
 // NamedArg is a named argument type.
 type NamedArg interface {
-	Scanner
+	Valuer
 	Name() string
 }
 
 type namedArg struct {
-	Scanner
+	Valuer
 	name string
 }
 
 func (n namedArg) Name() string { return n.name }
 
 // Named returns a new NamedArg.
-func Named(name string, scanner Scanner) NamedArg {
-	return namedArg{name: name, Scanner: scanner}
+func Named(name string, valuer Valuer) NamedArg {
+	return namedArg{name: name, Valuer: valuer}
 }
 
 // NamedFunc returns a high-order function to create a new NamedArg.
-func NamedFunc(name string, scanner Scanner) func(orgsrc ...interface{}) NamedArg {
+func NamedFunc(name string, valuer Valuer) func(orgsrc ...interface{}) NamedArg {
 	return func(src ...interface{}) NamedArg {
-		arg := Named(name, scanner)
+		arg := Named(name, valuer)
 		if len(src) > 0 {
 			if err := arg.Scan(src[0]); err != nil {
 				panic(err)

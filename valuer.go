@@ -15,24 +15,68 @@
 package sqlx
 
 import (
+	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/xgfone/cast"
 )
 
-var _ Valuer = IntScanner().(Valuer)
-var _ Scanner = IntValuer().(Scanner)
+type valuer struct {
+	isset bool
+	value interface{}
+	scan  func(src interface{}) (dst interface{}, err error)
+}
+
+func (v *valuer) setTo(value interface{}, set bool) (err error) {
+	if value, err = v.scan(value); err == nil {
+		v.value = value
+		if set {
+			v.isset = set
+		}
+	}
+	return err
+}
+func (v *valuer) Value() (driver.Value, error) {
+	return driver.DefaultParameterConverter.ConvertValue(v.value)
+}
+func (v *valuer) Get() interface{}               { return v.value }
+func (v *valuer) Scan(src interface{}) error     { return v.setTo(src, true) }
+func (v *valuer) SetDefault(d interface{}) error { return v.setTo(d, false) }
+func (v *valuer) IsSet() bool                    { return v.isset }
+func (v *valuer) IsZero() bool                   { return cast.IsZero(v.value) }
+func (v *valuer) String() string {
+	if _s, err := cast.ToString(v.value); err == nil {
+		return _s
+	}
+	return fmt.Sprint(v.value)
+}
+
+var _ json.Marshaler = &valuer{}
+var _ json.Unmarshaler = &valuer{}
+
+func (v *valuer) MarshalJSON() ([]byte, error) { return json.Marshal(v.value) }
+func (v *valuer) UnmarshalJSON(data []byte) (err error) {
+	var value interface{}
+	if err = json.Unmarshal(data, &value); err == nil {
+		err = v.setTo(value, true)
+	}
+	return
+}
+
+/// --------------------------------------------------------------------------
 
 // Valuer is a type to report whether is set or zero.
 type Valuer interface {
+	sql.Scanner
 	fmt.Stringer
+	driver.Valuer
 
 	IsSet() bool
 	IsZero() bool
-
 	Get() interface{}
-	Set(interface{}) error
 
 	// Calling SetDefault does not trigger that IsSet returns true.
 	SetDefault(value interface{}) error
@@ -40,6 +84,9 @@ type Valuer interface {
 
 // NewValuerWithDefault returns a new Valuer with the initialized default value
 // and the transverter cast.
+//
+// The returned valuer has also implemented the interface json.Unmarshaler
+// and json.Marshaler.
 func NewValuerWithDefault(cast func(src interface{}) (dst interface{}, err error),
 	v interface{}) Valuer {
 	dst, err := cast(v)
@@ -47,7 +94,7 @@ func NewValuerWithDefault(cast func(src interface{}) (dst interface{}, err error
 		panic(err)
 	}
 
-	return &scanner{scan: cast, value: dst}
+	return &valuer{scan: cast, value: dst}
 }
 
 // IntValuerWithDefault is the same as NewValuerWithDefault,
