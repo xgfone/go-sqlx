@@ -20,13 +20,18 @@ import (
 )
 
 // Update is short for NewUpdateBuilder.
-func Update() *UpdateBuilder {
-	return NewUpdateBuilder()
+func Update(table ...string) *UpdateBuilder {
+	return NewUpdateBuilder(table...)
 }
 
 // NewUpdateBuilder returns a new UPDATE builder.
-func NewUpdateBuilder() *UpdateBuilder {
-	return &UpdateBuilder{dialect: DefaultDialect}
+func NewUpdateBuilder(table ...string) *UpdateBuilder {
+	var _table string
+	if len(table) > 0 {
+		_table = table[0]
+	}
+
+	return &UpdateBuilder{dialect: DefaultDialect, table: _table}
 }
 
 // UpdateBuilder is used to build the UPDATE statement.

@@ -117,13 +117,13 @@ func (db *DB) SelectStruct(s interface{}) *SelectBuilder {
 }
 
 // Update returns a UPDATE SQL builder.
-func (db *DB) Update() *UpdateBuilder {
+func (db *DB) Update(table ...string) *UpdateBuilder {
 	executor := db.Executor
 	if executor == nil {
 		executor = db.DB
 	}
 
-	return Update().SetDialect(db.Dialect).SetExecutor(executor).
+	return Update(table...).SetDialect(db.Dialect).SetExecutor(executor).
 		SetInterceptor(db.Interceptor)
 
 }
