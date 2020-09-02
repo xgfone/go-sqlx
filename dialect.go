@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -110,7 +111,7 @@ func (d dialect) isQuoted(s string) bool {
 	panic(fmt.Errorf("unknown sql dialect '%s'", d.name))
 }
 
-func (d dialect) _quote(s string) string {
+func (d dialect) quoteByDialect(s string) string {
 	switch d.name {
 	case pqDialect, sqlite3Dialect:
 		return fmt.Sprintf(`"%s"`, s)
@@ -121,43 +122,59 @@ func (d dialect) _quote(s string) string {
 	panic(fmt.Errorf("unknown sql dialect '%s'", d.name))
 }
 
-func (d dialect) quote(s string) string {
-	if s == "*" || d.isQuoted(s) {
-		return s
-	}
-
-	if i := strings.IndexByte(s, '('); i > -1 {
-		_s := s[i+1:]
-		if strings.IndexByte(_s, '(') > -1 {
-			return s
+func (d dialect) isNumber(s string) bool {
+	for i, _len := 0, len(s); i < _len; i++ {
+		if b := s[i]; b != '.' && (b < '0' || b > '9') {
+			return false
 		}
-
-		i2 := strings.IndexByte(_s, ')')
-		if i2 < 0 {
-			return s
-		}
-
-		return fmt.Sprintf("%s(%s)%s", s[:i], d._quote(_s[:i2]), _s[i2+1:])
 	}
-
-	return d._quote(s)
+	return true
 }
 
-func (d dialect) Quote(s string) string {
-	if strings.IndexByte(s, ' ') >= 0 {
+func (d dialect) quote(s string) string {
+	if s == "*" || d.isNumber(s) || d.isQuoted(s) {
 		return s
 	}
 
 	if strings.IndexByte(s, '.') < 0 {
-		return d.quote(s)
+		return d.quoteByDialect(s)
 	}
 
 	vs := strings.Split(s, ".")
 	for i, v := range vs {
-		vs[i] = d.quote(v)
+		vs[i] = d.quoteByDialect(v)
 	}
 
 	return strings.Join(vs, ".")
+}
+
+func (d dialect) Quote(item string) string {
+	s := strings.TrimSpace(item)
+	if strings.IndexByte(s, ' ') >= 0 {
+		return s
+	}
+
+	rightIndex := strings.IndexByte(s, ')')
+	if rightIndex < 0 {
+		return d.quote(s)
+	}
+
+	buf := new(bytes.Buffer)
+	slen := len(s) * 2
+	if slen > 512 {
+		slen = 512
+	}
+	buf.Grow(slen)
+
+	leftIndex := strings.LastIndexByte(s, '(') + 1
+	if leftIndex < 1 {
+		panic(fmt.Errorf("invalid sql syntax: %s", item))
+	}
+
+	buf.WriteString(s[:leftIndex])
+	buf.WriteString(d.quote(s[leftIndex:rightIndex]))
+	buf.WriteString(s[rightIndex:])
+	return buf.String()
 }
 
 func (d dialect) LimitOffset(limit, offset int64) string {
