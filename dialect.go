@@ -15,7 +15,6 @@
 package sqlx
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 )
@@ -159,22 +158,16 @@ func (d dialect) Quote(item string) string {
 		return d.quote(s)
 	}
 
-	buf := new(bytes.Buffer)
-	slen := len(s) * 2
-	if slen > 512 {
-		slen = 512
-	}
-	buf.Grow(slen)
-
 	leftIndex := strings.LastIndexByte(s, '(') + 1
 	if leftIndex < 1 {
 		panic(fmt.Errorf("invalid sql syntax: %s", item))
 	}
 
-	buf.WriteString(s[:leftIndex])
-	buf.WriteString(d.quote(s[leftIndex:rightIndex]))
-	buf.WriteString(s[rightIndex:])
-	return buf.String()
+	return strings.Join([]string{
+		s[:leftIndex],
+		d.quote(s[leftIndex:rightIndex]),
+		s[rightIndex:],
+	}, "")
 }
 
 func (d dialect) LimitOffset(limit, offset int64) string {
