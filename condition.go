@@ -56,6 +56,26 @@ func (c twoCondition) Build(b *ArgsBuilder) string {
 
 /// --------------------------------------------------------------------------
 
+// Eq is the short for Equal.
+func Eq(column string, value interface{}) Condition { return Equal(column, value) }
+
+// NotEq is the short for NotEqual.
+func NotEq(column string, value interface{}) Condition { return NotEqual(column, value) }
+
+// Gt is the short for Greater.
+func Gt(column string, value interface{}) Condition { return Greater(column, value) }
+
+// GtEq is the short for GreaterEqual.
+func GtEq(column string, value interface{}) Condition { return GreaterEqual(column, value) }
+
+// Le is the short for Less.
+func Le(column string, value interface{}) Condition { return Less(column, value) }
+
+// LeEq is the short for LessEqual.
+func LeEq(column string, value interface{}) Condition { return LessEqual(column, value) }
+
+/// ######
+
 // Equal returns a "column=value" expression.
 func Equal(column string, value interface{}) Condition {
 	return newTwoCondition("%s=%s", column, value)
@@ -229,6 +249,26 @@ func ColumnLessEqual(column1, column2 string) Condition {
 	return Column(column1, "<=", column2)
 }
 
+/// ######
+
+// ColEq is the short for ColumnEqual.
+func ColEq(c1, c2 string) Condition { return ColumnEqual(c1, c2) }
+
+// ColNotEq is the short for ColumnNotEqual.
+func ColNotEq(c1, c2 string) Condition { return ColumnNotEqual(c1, c2) }
+
+// ColGt is the short for ColumnGreater.
+func ColGt(c1, c2 string) Condition { return ColumnGreater(c1, c2) }
+
+// ColGtEq is the short for ColumnGreaterEqual.
+func ColGtEq(c1, c2 string) Condition { return ColumnGreaterEqual(c1, c2) }
+
+// ColLe is the short for ColumnLess.
+func ColLe(c1, c2 string) Condition { return ColumnLess(c1, c2) }
+
+// ColLeEq is the short for ColumnLessEqual.
+func ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
+
 /// --------------------------------------------------------------------------
 
 // Conditions collects some WHERE conditions together.
@@ -344,3 +384,41 @@ func (c Conditions) ColumnLess(column1, column2 string) Condition {
 func (c Conditions) ColumnLessEqual(column1, column2 string) Condition {
 	return ColumnLessEqual(column1, column2)
 }
+
+/// ######
+
+// ColEq is the short for ColumnEqual.
+func (c Conditions) ColEq(c1, c2 string) Condition { return ColumnEqual(c1, c2) }
+
+// ColNotEq is the short for ColumnNotEqual.
+func (c Conditions) ColNotEq(c1, c2 string) Condition { return ColumnNotEqual(c1, c2) }
+
+// ColGt is the short for ColumnGreater.
+func (c Conditions) ColGt(c1, c2 string) Condition { return ColumnGreater(c1, c2) }
+
+// ColGtEq is the short for ColumnGreaterEqual.
+func (c Conditions) ColGtEq(c1, c2 string) Condition { return ColumnGreaterEqual(c1, c2) }
+
+// ColLe is the short for ColumnLess.
+func (c Conditions) ColLe(c1, c2 string) Condition { return ColumnLess(c1, c2) }
+
+// ColLeEq is the short for ColumnLessEqual.
+func (c Conditions) ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
+
+// Eq is the short for Equal.
+func (c Conditions) Eq(col string, v interface{}) Condition { return Equal(col, v) }
+
+// NotEq is the short for NotEqual.
+func (c Conditions) NotEq(col string, v interface{}) Condition { return NotEqual(col, v) }
+
+// Gt is the short for Greater.
+func (c Conditions) Gt(col string, v interface{}) Condition { return Greater(col, v) }
+
+// GtEq is the short for GreaterEqual.
+func (c Conditions) GtEq(col string, v interface{}) Condition { return GreaterEqual(col, v) }
+
+// Le is the short for Less.
+func (c Conditions) Le(col string, v interface{}) Condition { return Less(col, v) }
+
+// LeEq is the short for LessEqual.
+func (c Conditions) LeEq(col string, v interface{}) Condition { return LessEqual(col, v) }
