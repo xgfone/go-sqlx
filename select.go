@@ -274,6 +274,16 @@ func (b *SelectBuilder) OrderBy(column string, order ...Order) *SelectBuilder {
 	return b
 }
 
+// OrderByDesc appends the column used by ORDER BY DESC.
+func (b *SelectBuilder) OrderByDesc(column string) *SelectBuilder {
+	return b.OrderBy(column, Desc)
+}
+
+// OrderByAsc appends the column used by ORDER BY ASC.
+func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder {
+	return b.OrderBy(column, Asc)
+}
+
 // Limit sets the LIMIT to limit.
 func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
 	b.limit = limit
