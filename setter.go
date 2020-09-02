@@ -97,45 +97,45 @@ func Div(column string, value interface{}) Setter {
 
 /// -------------------------------------------------------------------------
 
-// Setters collects some UPDATE setters together.
-type Setters struct{}
+// SetterSet collects some UPDATE setters together.
+type SetterSet struct{}
 
 // Set is the alias of Assign.
-func (s Setters) Set(column string, value interface{}) Setter {
+func (s SetterSet) Set(column string, value interface{}) Setter {
 	return Assign(column, value)
 }
 
 // Assign is a proxy of Assign.
-func (s Setters) Assign(column string, value interface{}) Setter {
+func (s SetterSet) Assign(column string, value interface{}) Setter {
 	return Assign(column, value)
 }
 
 // Incr is a proxy of Incr.
-func (s Setters) Incr(column string) Setter {
+func (s SetterSet) Incr(column string) Setter {
 	return Incr(column)
 }
 
 // Decr is a proxy of Decr.
-func (s Setters) Decr(column string) Setter {
+func (s SetterSet) Decr(column string) Setter {
 	return Decr(column)
 }
 
 // Add is a proxy of Add.
-func (s Setters) Add(column string, value interface{}) Setter {
+func (s SetterSet) Add(column string, value interface{}) Setter {
 	return Add(column, value)
 }
 
 // Sub is a proxy Sub.
-func (s Setters) Sub(column string, value interface{}) Setter {
+func (s SetterSet) Sub(column string, value interface{}) Setter {
 	return Sub(column, value)
 }
 
 // Mul is a proxy of Mul.
-func (s Setters) Mul(column string, value interface{}) Setter {
+func (s SetterSet) Mul(column string, value interface{}) Setter {
 	return Mul(column, value)
 }
 
 // Div is a proxy of Div.
-func (s Setters) Div(column string, value interface{}) Setter {
+func (s SetterSet) Div(column string, value interface{}) Setter {
 	return Div(column, value)
 }

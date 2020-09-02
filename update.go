@@ -36,7 +36,7 @@ func NewUpdateBuilder(table ...string) *UpdateBuilder {
 
 // UpdateBuilder is used to build the UPDATE statement.
 type UpdateBuilder struct {
-	Setters
+	SetterSet
 	ConditionSet
 
 	intercept Interceptor
