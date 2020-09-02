@@ -65,6 +65,23 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 	return b
 }
 
+// SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
+func (b *UpdateBuilder) SetNamedArg(args ...NamedArg) *UpdateBuilder {
+	b.setters = make([]Setter, len(args))
+	for i, arg := range args {
+		b.setters[i] = Set(arg.Name(), arg.Get())
+	}
+	return b
+}
+
+// SetMoreNamedArg is the same as SetMore, but uses the NamedArg as the Setter.
+func (b *UpdateBuilder) SetMoreNamedArg(args ...NamedArg) *UpdateBuilder {
+	for _, arg := range args {
+		b.SetMore(Set(arg.Name(), arg.Get()))
+	}
+	return b
+}
+
 // WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
 func (b *UpdateBuilder) WhereNamedArgs(args ...NamedArg) *UpdateBuilder {
 	for _, arg := range args {
