@@ -61,3 +61,18 @@ func (t *Time) Scan(src interface{}) (err error) {
 	}
 	return
 }
+
+// Bool is used to read/write the BOOLEAN from/to DB.
+type Bool bool
+
+// Value implements the interface driver.Valuer.
+func (b Bool) Value() (driver.Value, error) { return bool(b), nil }
+
+// Scan implements the interface sql.Scanner.
+func (b *Bool) Scan(src interface{}) (err error) {
+	_b, err := cast.ToBool(src)
+	if err == nil {
+		*b = Bool(_b)
+	}
+	return
+}
