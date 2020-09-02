@@ -37,6 +37,9 @@ func Assign(column string, value interface{}) Setter {
 	return assignSetter{column: column, value: value}
 }
 
+// Set is the alias of Assign.
+func Set(column string, value interface{}) Setter { return Assign(column, value) }
+
 /// -------------------------------------------------------------------------
 
 type twoSetter struct {
@@ -96,6 +99,11 @@ func Div(column string, value interface{}) Setter {
 
 // Setters collects some UPDATE setters together.
 type Setters struct{}
+
+// Set is the alias of Assign.
+func (s Setters) Set(column string, value interface{}) Setter {
+	return Assign(column, value)
+}
 
 // Assign is a proxy of Assign.
 func (s Setters) Assign(column string, value interface{}) Setter {
