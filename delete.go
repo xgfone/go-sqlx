@@ -31,7 +31,7 @@ func NewDeleteBuilder() *DeleteBuilder {
 
 // DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
-	Conditions
+	ConditionSet
 
 	intercept Interceptor
 	executor  Executor

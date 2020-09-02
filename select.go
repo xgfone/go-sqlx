@@ -81,7 +81,7 @@ type joinTable struct {
 
 // SelectBuilder is used to build the SELECT statement.
 type SelectBuilder struct {
-	Conditions
+	ConditionSet
 
 	intercept Interceptor
 	executor  Executor

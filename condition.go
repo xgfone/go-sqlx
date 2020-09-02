@@ -271,154 +271,154 @@ func ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
 
 /// --------------------------------------------------------------------------
 
-// Conditions collects some WHERE conditions together.
-type Conditions struct{}
+// ConditionSet collects some WHERE conditions together.
+type ConditionSet struct{}
 
 // Equal is a proxy of Equal
-func (c Conditions) Equal(column string, value interface{}) Condition {
+func (c ConditionSet) Equal(column string, value interface{}) Condition {
 	return Equal(column, value)
 }
 
 // NotEqual is a proxy of NotEqual.
-func (c Conditions) NotEqual(column string, value interface{}) Condition {
+func (c ConditionSet) NotEqual(column string, value interface{}) Condition {
 	return NotEqual(column, value)
 }
 
 // Greater is a proxy of Greater.
-func (c Conditions) Greater(column string, value interface{}) Condition {
+func (c ConditionSet) Greater(column string, value interface{}) Condition {
 	return Greater(column, value)
 }
 
 // GreaterEqual is a proxy of GreaterEqual.
-func (c Conditions) GreaterEqual(column string, value interface{}) Condition {
+func (c ConditionSet) GreaterEqual(column string, value interface{}) Condition {
 	return GreaterEqual(column, value)
 }
 
 // Less is a proxy of Less.
-func (c Conditions) Less(column string, value interface{}) Condition {
+func (c ConditionSet) Less(column string, value interface{}) Condition {
 	return Less(column, value)
 }
 
 // LessEqual is a proxy of LessEqual.
-func (c Conditions) LessEqual(column string, value interface{}) Condition {
+func (c ConditionSet) LessEqual(column string, value interface{}) Condition {
 	return LessEqual(column, value)
 }
 
 // Like is a proxy of Like.
-func (c Conditions) Like(column string, value string) Condition {
+func (c ConditionSet) Like(column string, value string) Condition {
 	return Like(column, value)
 }
 
 // NotLike is a proxy of NotLike.
-func (c Conditions) NotLike(column string, value string) Condition {
+func (c ConditionSet) NotLike(column string, value string) Condition {
 	return NotLike(column, value)
 }
 
 // IsNull is a proxy of IsNull.
-func (c Conditions) IsNull(column string) Condition {
+func (c ConditionSet) IsNull(column string) Condition {
 	return IsNull(column)
 }
 
 // IsNotNull is a proxy of IsNotNull.
-func (c Conditions) IsNotNull(column string) Condition {
+func (c ConditionSet) IsNotNull(column string) Condition {
 	return IsNotNull(column)
 }
 
 // In is a proxy of In.
-func (c Conditions) In(column string, values ...interface{}) Condition {
+func (c ConditionSet) In(column string, values ...interface{}) Condition {
 	return In(column, values...)
 }
 
 // NotIn is a proxy of NotIn.
-func (c Conditions) NotIn(column string, values ...interface{}) Condition {
+func (c ConditionSet) NotIn(column string, values ...interface{}) Condition {
 	return NotIn(column, values...)
 }
 
 // Between is a proxy of Between.
-func (c Conditions) Between(column string, lower, upper interface{}) Condition {
+func (c ConditionSet) Between(column string, lower, upper interface{}) Condition {
 	return Between(column, lower, upper)
 }
 
 // NotBetween is a proxy of NotBetween.
-func (c Conditions) NotBetween(column string, lower, upper interface{}) Condition {
+func (c ConditionSet) NotBetween(column string, lower, upper interface{}) Condition {
 	return NotBetween(column, lower, upper)
 }
 
 // And is a proxy of And.
-func (c Conditions) And(exprs ...Condition) Condition { return And(exprs...) }
+func (c ConditionSet) And(exprs ...Condition) Condition { return And(exprs...) }
 
 // Or is a proxy of Or.
-func (c Conditions) Or(exprs ...Condition) Condition { return Or(exprs...) }
+func (c ConditionSet) Or(exprs ...Condition) Condition { return Or(exprs...) }
 
 // Column is a proxy of Column.
-func (c Conditions) Column(left, op, right string) Condition {
+func (c ConditionSet) Column(left, op, right string) Condition {
 	return Column(left, op, right)
 }
 
 // ColumnEqual is a proxy of ColumnEqual.
-func (c Conditions) ColumnEqual(column1, column2 string) Condition {
+func (c ConditionSet) ColumnEqual(column1, column2 string) Condition {
 	return ColumnEqual(column1, column2)
 }
 
 // ColumnNotEqual is a proxy of ColumnNotEqual.
-func (c Conditions) ColumnNotEqual(column1, column2 string) Condition {
+func (c ConditionSet) ColumnNotEqual(column1, column2 string) Condition {
 	return ColumnNotEqual(column1, column2)
 }
 
 // ColumnGreater is a proxy of ColumnGreater.
-func (c Conditions) ColumnGreater(column1, column2 string) Condition {
+func (c ConditionSet) ColumnGreater(column1, column2 string) Condition {
 	return ColumnGreater(column1, column2)
 }
 
 // ColumnGreaterEqual is a proxy of ColumnGreaterEqual.
-func (c Conditions) ColumnGreaterEqual(column1, column2 string) Condition {
+func (c ConditionSet) ColumnGreaterEqual(column1, column2 string) Condition {
 	return ColumnGreaterEqual(column1, column2)
 }
 
 // ColumnLess is a proxy of ColumnLess.
-func (c Conditions) ColumnLess(column1, column2 string) Condition {
+func (c ConditionSet) ColumnLess(column1, column2 string) Condition {
 	return ColumnLess(column1, column2)
 }
 
 // ColumnLessEqual is a proxy of ColumnLessEqual.
-func (c Conditions) ColumnLessEqual(column1, column2 string) Condition {
+func (c ConditionSet) ColumnLessEqual(column1, column2 string) Condition {
 	return ColumnLessEqual(column1, column2)
 }
 
 /// ######
 
 // ColEq is the short for ColumnEqual.
-func (c Conditions) ColEq(c1, c2 string) Condition { return ColumnEqual(c1, c2) }
+func (c ConditionSet) ColEq(c1, c2 string) Condition { return ColumnEqual(c1, c2) }
 
 // ColNotEq is the short for ColumnNotEqual.
-func (c Conditions) ColNotEq(c1, c2 string) Condition { return ColumnNotEqual(c1, c2) }
+func (c ConditionSet) ColNotEq(c1, c2 string) Condition { return ColumnNotEqual(c1, c2) }
 
 // ColGt is the short for ColumnGreater.
-func (c Conditions) ColGt(c1, c2 string) Condition { return ColumnGreater(c1, c2) }
+func (c ConditionSet) ColGt(c1, c2 string) Condition { return ColumnGreater(c1, c2) }
 
 // ColGtEq is the short for ColumnGreaterEqual.
-func (c Conditions) ColGtEq(c1, c2 string) Condition { return ColumnGreaterEqual(c1, c2) }
+func (c ConditionSet) ColGtEq(c1, c2 string) Condition { return ColumnGreaterEqual(c1, c2) }
 
 // ColLe is the short for ColumnLess.
-func (c Conditions) ColLe(c1, c2 string) Condition { return ColumnLess(c1, c2) }
+func (c ConditionSet) ColLe(c1, c2 string) Condition { return ColumnLess(c1, c2) }
 
 // ColLeEq is the short for ColumnLessEqual.
-func (c Conditions) ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
+func (c ConditionSet) ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
 
 // Eq is the short for Equal.
-func (c Conditions) Eq(col string, v interface{}) Condition { return Equal(col, v) }
+func (c ConditionSet) Eq(col string, v interface{}) Condition { return Equal(col, v) }
 
 // NotEq is the short for NotEqual.
-func (c Conditions) NotEq(col string, v interface{}) Condition { return NotEqual(col, v) }
+func (c ConditionSet) NotEq(col string, v interface{}) Condition { return NotEqual(col, v) }
 
 // Gt is the short for Greater.
-func (c Conditions) Gt(col string, v interface{}) Condition { return Greater(col, v) }
+func (c ConditionSet) Gt(col string, v interface{}) Condition { return Greater(col, v) }
 
 // GtEq is the short for GreaterEqual.
-func (c Conditions) GtEq(col string, v interface{}) Condition { return GreaterEqual(col, v) }
+func (c ConditionSet) GtEq(col string, v interface{}) Condition { return GreaterEqual(col, v) }
 
 // Le is the short for Less.
-func (c Conditions) Le(col string, v interface{}) Condition { return Less(col, v) }
+func (c ConditionSet) Le(col string, v interface{}) Condition { return Less(col, v) }
 
 // LeEq is the short for LessEqual.
-func (c Conditions) LeEq(col string, v interface{}) Condition { return LessEqual(col, v) }
+func (c ConditionSet) LeEq(col string, v interface{}) Condition { return LessEqual(col, v) }
