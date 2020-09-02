@@ -252,6 +252,14 @@ func (b *SelectBuilder) Where(andConditions ...Condition) *SelectBuilder {
 	return b
 }
 
+// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
+func (b *SelectBuilder) WhereNamedArgs(args ...NamedArg) *SelectBuilder {
+	for _, arg := range args {
+		b.Where(b.Equal(arg.Name(), arg.Get()))
+	}
+	return b
+}
+
 // GroupBy resets the GROUP BY columns.
 func (b *SelectBuilder) GroupBy(columns ...string) *SelectBuilder {
 	b.groupbys = columns

@@ -52,6 +52,14 @@ func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 	return b
 }
 
+// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
+func (b *DeleteBuilder) WhereNamedArgs(args ...NamedArg) *DeleteBuilder {
+	for _, arg := range args {
+		b.Where(b.Equal(arg.Name(), arg.Get()))
+	}
+	return b
+}
+
 // Exec builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) Exec() (sql.Result, error) {
 	return b.ExecContext(context.Background())

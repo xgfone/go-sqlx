@@ -65,6 +65,14 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 	return b
 }
 
+// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
+func (b *UpdateBuilder) WhereNamedArgs(args ...NamedArg) *UpdateBuilder {
+	for _, arg := range args {
+		b.Where(b.Equal(arg.Name(), arg.Get()))
+	}
+	return b
+}
+
 // Where sets the WHERE conditions.
 func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
 	b.where = append(b.where, andConditions...)
