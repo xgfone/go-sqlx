@@ -14,10 +14,13 @@
 
 package sqlx
 
+import "database/sql"
+
 // NamedArg is a named argument type.
 type NamedArg interface {
 	Valuer
 	Name() string
+	NamedArg() sql.NamedArg
 }
 
 type namedArg struct {
@@ -25,7 +28,8 @@ type namedArg struct {
 	name string
 }
 
-func (n namedArg) Name() string { return n.name }
+func (n namedArg) Name() string           { return n.name }
+func (n namedArg) NamedArg() sql.NamedArg { return sql.Named(n.name, n.Get()) }
 
 // Named returns a new NamedArg.
 func Named(name string, valuer Valuer) NamedArg {
