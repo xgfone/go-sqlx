@@ -23,6 +23,18 @@ type NamedArg interface {
 	NamedArg() sql.NamedArg
 }
 
+// NamedArgs is the slice of NamedArg.
+type NamedArgs []NamedArg
+
+// NamedArgs converts the NamedArgs to []sql.NamedArg.
+func (ns NamedArgs) NamedArgs() []sql.NamedArg {
+	sns := make([]sql.NamedArg, len(ns))
+	for i, n := range ns {
+		sns[i] = n.NamedArg()
+	}
+	return sns
+}
+
 type namedArg struct {
 	Valuer
 	name string
