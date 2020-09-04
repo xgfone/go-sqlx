@@ -26,6 +26,24 @@ type NamedArg interface {
 // NamedArgs is the slice of NamedArg.
 type NamedArgs []NamedArg
 
+// Names returns the slice of all the names.
+func (ns NamedArgs) Names() []string {
+	names := make([]string, len(ns))
+	for i, n := range ns {
+		names[i] = n.Name()
+	}
+	return names
+}
+
+// Args returns the slice of all the values.
+func (ns NamedArgs) Args() []interface{} {
+	args := make([]interface{}, len(ns))
+	for i, n := range ns {
+		args[i] = n.Get()
+	}
+	return args
+}
+
 // NamedArgs converts the NamedArgs to []sql.NamedArg.
 func (ns NamedArgs) NamedArgs() []sql.NamedArg {
 	sns := make([]sql.NamedArg, len(ns))
