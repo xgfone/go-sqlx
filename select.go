@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"reflect"
@@ -44,7 +45,7 @@ func NewSelectBuilder(column string, alias ...string) *SelectBuilder {
 	return s.Select(column, alias...)
 }
 
-type fromTable struct {
+type sqlTable struct {
 	Table string
 	Alias string
 }
@@ -68,15 +69,41 @@ const (
 	Desc Order = "DESC"
 )
 
-type joinon struct {
+// JoinOn is the join on statement.
+type JoinOn struct {
 	Left  string
 	Right string
 }
 
+// On returns a JoinOn instance.
+func On(left, right string) JoinOn { return JoinOn{Left: left, Right: right} }
+
 type joinTable struct {
 	Type  string
 	Table string
-	Ons   []joinon
+	Ons   []JoinOn
+}
+
+func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
+	if jt.Type != "" {
+		buf.WriteByte(' ')
+		buf.WriteString(jt.Type)
+	}
+
+	buf.WriteString(" JOIN ")
+	buf.WriteString(dialect.Quote(jt.Table))
+
+	if len(jt.Ons) > 0 {
+		buf.WriteString(" ON ")
+		for i, on := range jt.Ons {
+			if i > 0 {
+				buf.WriteString(" AND ")
+			}
+			buf.WriteString(dialect.Quote(on.Left))
+			buf.WriteByte('=')
+			buf.WriteString(dialect.Quote(on.Right))
+		}
+	}
 }
 
 // SelectBuilder is used to build the SELECT statement.
@@ -87,7 +114,7 @@ type SelectBuilder struct {
 	executor  Executor
 	dialect   Dialect
 	distinct  bool
-	tables    []fromTable
+	tables    []sqlTable
 	columns   []selectedColumn
 	joins     []joinTable
 	wheres    []Condition
@@ -191,57 +218,46 @@ func (b *SelectBuilder) SelectedColumns() []string {
 
 // From sets table name in SELECT.
 func (b *SelectBuilder) From(table string, alias ...string) *SelectBuilder {
-	b.tables = append(b.tables, fromTable{table, b.getAlias(alias)})
+	b.tables = append(b.tables, sqlTable{table, b.getAlias(alias)})
 	return b
 }
 
 // Join appends the "JOIN table ON on..." statement.
-func (b *SelectBuilder) Join(table string, on ...string) *SelectBuilder {
-	return b.joinTable("", table, on...)
+func (b *SelectBuilder) Join(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("", table, ons...)
 }
 
 // JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeft(table string, on ...string) *SelectBuilder {
-	return b.joinTable("LEFT", table, on...)
+func (b *SelectBuilder) JoinLeft(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("LEFT", table, ons...)
 }
 
 // JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeftOuter(table string, on ...string) *SelectBuilder {
-	return b.joinTable("LEFT OUTER", table, on...)
+func (b *SelectBuilder) JoinLeftOuter(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("LEFT OUTER", table, ons...)
 }
 
 // JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRight(table string, on ...string) *SelectBuilder {
-	return b.joinTable("RIGHT", table, on...)
+func (b *SelectBuilder) JoinRight(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("RIGHT", table, ons...)
 }
 
 // JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRightOuter(table string, on ...string) *SelectBuilder {
-	return b.joinTable("RIGHT OUTER", table, on...)
+func (b *SelectBuilder) JoinRightOuter(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("RIGHT OUTER", table, ons...)
 }
 
 // JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFull(table string, on ...string) *SelectBuilder {
-	return b.joinTable("FULL", table, on...)
+func (b *SelectBuilder) JoinFull(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("FULL", table, ons...)
 }
 
 // JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFullOuter(table string, on ...string) *SelectBuilder {
-	return b.joinTable("FULL OUTER", table, on...)
+func (b *SelectBuilder) JoinFullOuter(table string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("FULL OUTER", table, ons...)
 }
 
-func (b *SelectBuilder) joinTable(cmd, table string, on ...string) *SelectBuilder {
-	var ons []joinon
-	if _len := len(on); _len > 0 {
-		if _len%2 != 0 {
-			panic("SelectBuilder: on must be even")
-		}
-
-		for i := 0; i < _len; i += 2 {
-			ons = append(ons, joinon{Left: on[i], Right: on[i+1]})
-		}
-	}
-
+func (b *SelectBuilder) joinTable(cmd, table string, ons ...JoinOn) *SelectBuilder {
 	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Ons: ons})
 	return b
 }
@@ -406,25 +422,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 
 	// Join
 	for _, join := range b.joins {
-		if join.Type != "" {
-			buf.WriteByte(' ')
-			buf.WriteString(join.Type)
-		}
-
-		buf.WriteString(" JOIN ")
-		buf.WriteString(dialect.Quote(join.Table))
-
-		if len(join.Ons) > 0 {
-			buf.WriteString(" ON ")
-			for i, on := range join.Ons {
-				if i > 0 {
-					buf.WriteString(" AND ")
-				}
-				buf.WriteString(dialect.Quote(on.Left))
-				buf.WriteByte('=')
-				buf.WriteString(dialect.Quote(on.Right))
-			}
-		}
+		join.Build(buf, dialect)
 	}
 
 	// Where

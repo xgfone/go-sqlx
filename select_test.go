@@ -97,7 +97,7 @@ func ExampleSelectBuilder_Limit() {
 }
 
 func ExampleSelectBuilder_Join() {
-	s := Select("*").From("table1").Join("table2", "table1.id", "table2.id").
+	s := Select("*").From("table1").Join("table2", On("table1.id", "table2.id")).
 		Where(Equal("table1.id", 123)).OrderBy("table1.time").Limit(10).Offset(100)
 	sql, args := s.Build()
 

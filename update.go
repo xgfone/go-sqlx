@@ -26,12 +26,14 @@ func Update(table ...string) *UpdateBuilder {
 
 // NewUpdateBuilder returns a new UPDATE builder.
 func NewUpdateBuilder(table ...string) *UpdateBuilder {
-	var _table string
+	var tables []sqlTable
 	if len(table) > 0 {
-		_table = table[0]
+		tables = make([]sqlTable, len(table))
+		for i, _len := 0, len(table); i < _len; i++ {
+			tables[i] = sqlTable{Table: table[i]}
+		}
 	}
-
-	return &UpdateBuilder{dialect: DefaultDialect, table: _table}
+	return &UpdateBuilder{dialect: DefaultDialect, tables: tables}
 }
 
 // UpdateBuilder is used to build the UPDATE statement.
@@ -42,14 +44,20 @@ type UpdateBuilder struct {
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
-	table     string
+	tables    []sqlTable
 	where     []Condition
 	setters   []Setter
 }
 
 // Table sets the table name.
-func (b *UpdateBuilder) Table(table string) *UpdateBuilder {
-	b.table = table
+func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
+	if table != "" {
+		var talias string
+		if len(alias) != 0 {
+			talias = alias[0]
+		}
+		b.tables = append(b.tables, sqlTable{Table: table, Alias: talias})
+	}
 	return b
 }
 
@@ -133,7 +141,7 @@ func (b *UpdateBuilder) String() string {
 
 // Build builds the UPDATE sql statement.
 func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
-	if b.table == "" {
+	if len(b.tables) == 0 {
 		panic("UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
 		panic("UpdateBuilder: no set values")
@@ -146,9 +154,18 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 
 	buf := getBuffer()
 	buf.WriteString("UPDATE ")
-	buf.WriteString(dialect.Quote(b.table))
-	buf.WriteString(" SET ")
+	for i, t := range b.tables {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(dialect.Quote(t.Table))
+		if t.Alias != "" {
+			buf.WriteString(" AS ")
+			buf.WriteString(dialect.Quote(t.Alias))
+		}
+	}
 
+	buf.WriteString(" SET ")
 	ab := NewArgsBuilder(dialect)
 	for i, setter := range b.setters {
 		if i > 0 {

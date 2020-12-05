@@ -20,13 +20,13 @@ import (
 )
 
 // Delete is short for NewDeleteBuilder.
-func Delete() *DeleteBuilder {
-	return NewDeleteBuilder()
+func Delete(tables ...string) *DeleteBuilder {
+	return NewDeleteBuilder(tables...)
 }
 
 // NewDeleteBuilder returns a new DELETE builder.
-func NewDeleteBuilder() *DeleteBuilder {
-	return &DeleteBuilder{dialect: DefaultDialect}
+func NewDeleteBuilder(tables ...string) *DeleteBuilder {
+	return &DeleteBuilder{dialect: DefaultDialect, dtables: tables}
 }
 
 // DeleteBuilder is used to build the DELETE statement.
@@ -36,13 +36,64 @@ type DeleteBuilder struct {
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
-	table     string
+	dtables   []string
+	ftables   []sqlTable
+	joins     []joinTable
 	where     []Condition
 }
 
+// Table appends the table name to delete the rows from it.
+func (b *DeleteBuilder) Table(table string) *DeleteBuilder {
+	if table != "" {
+		b.dtables = append(b.dtables, table)
+	}
+	return b
+}
+
 // From sets the table name from where to be deleted.
-func (b *DeleteBuilder) From(table string) *DeleteBuilder {
-	b.table = table
+func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
+	if table != "" {
+		var talias string
+		if len(alias) != 0 {
+			talias = alias[0]
+		}
+		b.ftables = append(b.ftables, sqlTable{Table: table, Alias: talias})
+	}
+	return b
+}
+
+// JoinLeft appends the "LEFT JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinLeft(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("LEFT", table, ons...)
+}
+
+// JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinLeftOuter(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("LEFT OUTER", table, ons...)
+}
+
+// JoinRight appends the "RIGHT JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinRight(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("RIGHT", table, ons...)
+}
+
+// JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinRightOuter(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("RIGHT OUTER", table, ons...)
+}
+
+// JoinFull appends the "FULL JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinFull(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("FULL", table, ons...)
+}
+
+// JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinFullOuter(table string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("FULL OUTER", table, ons...)
+}
+
+func (b *DeleteBuilder) joinTable(cmd, table string, ons ...JoinOn) *DeleteBuilder {
+	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Ons: ons})
 	return b
 }
 
@@ -97,8 +148,8 @@ func (b *DeleteBuilder) String() string {
 
 // Build builds the DELETE FROM TABLE sql statement.
 func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
-	if b.table == "" {
-		panic("DeleteBuilder: no table name")
+	if len(b.ftables) == 0 {
+		panic("DeleteBuilder: no from table name")
 	}
 
 	dialect := b.dialect
@@ -107,9 +158,32 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	buf := getBuffer()
-	buf.WriteString("DELETE FROM ")
-	buf.WriteString(dialect.Quote(b.table))
+	buf.WriteString("DELETE ")
+	for i, table := range b.dtables {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(dialect.Quote(table))
+	}
 
+	buf.WriteString("FROM ")
+	for i, t := range b.ftables {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(dialect.Quote(t.Table))
+		if t.Alias != "" {
+			buf.WriteString(" AS ")
+			buf.WriteString(dialect.Quote(t.Alias))
+		}
+	}
+
+	// Join
+	for _, join := range b.joins {
+		join.Build(buf, dialect)
+	}
+
+	// Where
 	if _len := len(b.where); _len > 0 {
 		expr := b.where[0]
 		if _len > 1 {
