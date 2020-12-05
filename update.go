@@ -44,12 +44,13 @@ type UpdateBuilder struct {
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
+	ftables   []sqlTable
 	tables    []sqlTable
 	where     []Condition
 	setters   []Setter
 }
 
-// Table sets the table name.
+// Table appends the table name.
 func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
 	if table != "" {
 		var talias string
@@ -57,6 +58,18 @@ func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
 			talias = alias[0]
 		}
 		b.tables = append(b.tables, sqlTable{Table: table, Alias: talias})
+	}
+	return b
+}
+
+// From appends the from table name.
+func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
+	if table != "" {
+		var talias string
+		if len(alias) != 0 {
+			talias = alias[0]
+		}
+		b.ftables = append(b.ftables, sqlTable{Table: table, Alias: talias})
 	}
 	return b
 }
@@ -152,6 +165,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		dialect = DefaultDialect
 	}
 
+	// Update Table
 	buf := getBuffer()
 	buf.WriteString("UPDATE ")
 	for i, t := range b.tables {
@@ -165,6 +179,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		}
 	}
 
+	// Set
 	buf.WriteString(" SET ")
 	ab := NewArgsBuilder(dialect)
 	for i, setter := range b.setters {
@@ -174,6 +189,20 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString(setter.Build(ab))
 	}
 
+	// From
+	buf.WriteString(" FROM ")
+	for i, t := range b.ftables {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString(dialect.Quote(t.Table))
+		if t.Alias != "" {
+			buf.WriteString(" AS ")
+			buf.WriteString(dialect.Quote(t.Alias))
+		}
+	}
+
+	// Where
 	if _len := len(b.where); _len > 0 {
 		expr := b.where[0]
 		if _len > 1 {
