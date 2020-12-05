@@ -48,7 +48,7 @@ func ExampleSelectBuilder() {
 	// [123]
 	// SELECT `id` AS `c1`, `name` AS `c2` FROM `table` AS `alias` WHERE `id`=?
 	// [123]
-	// SELECT `A`.`id`, `B`.`name` FROM `table1` AS `A`, `table2` AS `B` WHERE `A`.`id`=`B`.`id`
+	// SELECT `A`.`id` AS `id`, `B`.`name` AS `name` FROM `table1` AS `A`, `table2` AS `B` WHERE `A`.`id`=`B`.`id`
 	// []
 }
 
@@ -97,7 +97,7 @@ func ExampleSelectBuilder_Limit() {
 }
 
 func ExampleSelectBuilder_Join() {
-	s := Select("*").From("table1").Join("table2", On("table1.id", "table2.id")).
+	s := Select("*").From("table1").Join("table2", "", On("table1.id", "table2.id")).
 		Where(Equal("table1.id", 123)).OrderBy("table1.time").Limit(10).Offset(100)
 	sql, args := s.Build()
 
@@ -116,9 +116,37 @@ func ExampleSelectBuilder_SelectStruct() {
 		IgnoredField  string `sql:"-"`
 	}
 
-	sb := SelectStruct(S{})
-	fmt.Println(sb.SelectedColumns())
+	s := S{}
+	sb := SelectStruct(s, "A")
+	columns := sb.SelectedColumns()
+	fmt.Println(columns)
+
+	err := ScanColumnsToStruct(func(values ...interface{}) error {
+		for i, v := range values {
+			vp := v.(*string)
+			switch i {
+			case 0:
+				*vp = "a"
+			case 1:
+				*vp = "b"
+			default:
+				fmt.Printf("unknown %dth column value\n", i)
+			}
+		}
+		return nil
+	}, columns, &s)
+
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(s.DefaultField)
+		fmt.Println(s.ModifiedField)
+		fmt.Println(s.IgnoredField)
+	}
 
 	// Output:
 	// [DefaultField field]
+	// a
+	// b
+	//
 }

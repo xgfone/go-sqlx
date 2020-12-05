@@ -63,37 +63,37 @@ func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
 }
 
 // JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinLeft(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("LEFT", table, ons...)
+func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("LEFT", table, alias, ons...)
 }
 
 // JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinLeftOuter(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("LEFT OUTER", table, ons...)
+func (b *DeleteBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("LEFT OUTER", table, alias, ons...)
 }
 
 // JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinRight(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("RIGHT", table, ons...)
+func (b *DeleteBuilder) JoinRight(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("RIGHT", table, alias, ons...)
 }
 
 // JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinRightOuter(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("RIGHT OUTER", table, ons...)
+func (b *DeleteBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("RIGHT OUTER", table, alias, ons...)
 }
 
 // JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinFull(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("FULL", table, ons...)
+func (b *DeleteBuilder) JoinFull(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("FULL", table, alias, ons...)
 }
 
 // JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinFullOuter(table string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("FULL OUTER", table, ons...)
+func (b *DeleteBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("FULL OUTER", table, alias, ons...)
 }
 
-func (b *DeleteBuilder) joinTable(cmd, table string, ons ...JoinOn) *DeleteBuilder {
-	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Ons: ons})
+func (b *DeleteBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *DeleteBuilder {
+	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
 	return b
 }
 

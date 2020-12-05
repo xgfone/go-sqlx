@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -33,10 +34,10 @@ func Selects(columns ...string) *SelectBuilder {
 	return s.Selects(columns...)
 }
 
-// SelectStruct is equal to Select().SelectStruct(s).
-func SelectStruct(s interface{}) *SelectBuilder {
+// SelectStruct is equal to Select().SelectStruct(s, table...).
+func SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	sb := &SelectBuilder{dialect: DefaultDialect}
-	return sb.SelectStruct(s)
+	return sb.SelectStruct(s, table...)
 }
 
 // NewSelectBuilder returns a new SELECT builder.
@@ -81,6 +82,7 @@ func On(left, right string) JoinOn { return JoinOn{Left: left, Right: right} }
 type joinTable struct {
 	Type  string
 	Table string
+	Alias string
 	Ons   []JoinOn
 }
 
@@ -92,6 +94,10 @@ func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
 
 	buf.WriteString(" JOIN ")
 	buf.WriteString(dialect.Quote(jt.Table))
+	if jt.Alias != "" {
+		buf.WriteString(" AS ")
+		buf.WriteString(dialect.Quote(jt.Alias))
+	}
 
 	if len(jt.Ons) > 0 {
 		buf.WriteString(" ON ")
@@ -131,17 +137,19 @@ func (b *SelectBuilder) Distinct() *SelectBuilder {
 	return b
 }
 
-func (b *SelectBuilder) getAlias(alias []string) string {
-	if len(alias) == 0 {
-		return ""
+func (b *SelectBuilder) getAlias(column string, alias []string) string {
+	if len(alias) != 0 && alias[0] != "" {
+		return alias[0]
+	} else if index := strings.IndexByte(column, '.'); index != -1 {
+		return column[index+1:]
 	}
-	return alias[0]
+	return ""
 }
 
 // Select appends the selected column in SELECT.
 func (b *SelectBuilder) Select(column string, alias ...string) *SelectBuilder {
 	if column != "" {
-		b.columns = append(b.columns, selectedColumn{column, b.getAlias(alias)})
+		b.columns = append(b.columns, selectedColumn{column, b.getAlias(column, alias)})
 	}
 
 	return b
@@ -158,7 +166,10 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 // SelectStruct reflects and extracts the fields of the struct as the selected
 // columns, which supports the tag named "sql" to modify the column name.
 // If the value of the tag is "-", however, the field will be ignored.
-func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
+//
+// If the field has the tag "table", it will be used as the table name of the field.
+// If the argument "table" is given, it will override it.
+func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	if s == nil {
 		return b
 	}
@@ -179,6 +190,11 @@ func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
 		panic("not a struct")
 	}
 
+	var ftable string
+	if len(table) != 0 {
+		ftable = table[0]
+	}
+
 	vt := v.Type()
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
@@ -195,6 +211,11 @@ func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
 			name = tag
 		}
 
+		if ftable != "" {
+			name = fmt.Sprintf("%s.%s", ftable, name)
+		} else if table := vft.Tag.Get("table"); table != "" {
+			name = fmt.Sprintf("%s.%s", table, name)
+		}
 		b.Select(name)
 	}
 
@@ -218,47 +239,47 @@ func (b *SelectBuilder) SelectedColumns() []string {
 
 // From sets table name in SELECT.
 func (b *SelectBuilder) From(table string, alias ...string) *SelectBuilder {
-	b.tables = append(b.tables, sqlTable{table, b.getAlias(alias)})
+	b.tables = append(b.tables, sqlTable{table, b.getAlias(table, alias)})
 	return b
 }
 
 // Join appends the "JOIN table ON on..." statement.
-func (b *SelectBuilder) Join(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("", table, ons...)
+func (b *SelectBuilder) Join(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("", table, alias, ons...)
 }
 
 // JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeft(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("LEFT", table, ons...)
+func (b *SelectBuilder) JoinLeft(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("LEFT", table, alias, ons...)
 }
 
 // JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeftOuter(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("LEFT OUTER", table, ons...)
+func (b *SelectBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("LEFT OUTER", table, alias, ons...)
 }
 
 // JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRight(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("RIGHT", table, ons...)
+func (b *SelectBuilder) JoinRight(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("RIGHT", table, alias, ons...)
 }
 
 // JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRightOuter(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("RIGHT OUTER", table, ons...)
+func (b *SelectBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("RIGHT OUTER", table, alias, ons...)
 }
 
 // JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFull(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("FULL", table, ons...)
+func (b *SelectBuilder) JoinFull(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("FULL", table, alias, ons...)
 }
 
 // JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFullOuter(table string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("FULL OUTER", table, ons...)
+func (b *SelectBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("FULL OUTER", table, alias, ons...)
 }
 
-func (b *SelectBuilder) joinTable(cmd, table string, ons ...JoinOn) *SelectBuilder {
-	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Ons: ons})
+func (b *SelectBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *SelectBuilder {
+	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
 	return b
 }
 
