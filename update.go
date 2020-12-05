@@ -190,9 +190,10 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	// From
-	buf.WriteString(" FROM ")
 	for i, t := range b.ftables {
-		if i > 0 {
+		if i == 0 {
+			buf.WriteString(" FROM ")
+		} else {
 			buf.WriteString(", ")
 		}
 		buf.WriteString(dialect.Quote(t.Table))
