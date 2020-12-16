@@ -46,6 +46,7 @@ type UpdateBuilder struct {
 	dialect   Dialect
 	ftables   []sqlTable
 	tables    []sqlTable
+	joins     []joinTable
 	where     []Condition
 	setters   []Setter
 }
@@ -71,6 +72,41 @@ func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
 		}
 		b.ftables = append(b.ftables, sqlTable{Table: table, Alias: talias})
 	}
+	return b
+}
+
+// JoinLeft appends the "LEFT JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("LEFT", table, alias, ons...)
+}
+
+// JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("LEFT OUTER", table, alias, ons...)
+}
+
+// JoinRight appends the "RIGHT JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinRight(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("RIGHT", table, alias, ons...)
+}
+
+// JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("RIGHT OUTER", table, alias, ons...)
+}
+
+// JoinFull appends the "FULL JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinFull(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("FULL", table, alias, ons...)
+}
+
+// JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
+func (b *UpdateBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
+	return b.joinTable("FULL OUTER", table, alias, ons...)
+}
+
+func (b *UpdateBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *UpdateBuilder {
+	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
 	return b
 }
 
@@ -177,6 +213,11 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 			buf.WriteString(" AS ")
 			buf.WriteString(dialect.Quote(t.Alias))
 		}
+	}
+
+	// Join
+	for _, join := range b.joins {
+		join.Build(buf, dialect)
 	}
 
 	// Set
