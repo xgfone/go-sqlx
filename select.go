@@ -141,7 +141,11 @@ func (b *SelectBuilder) getAlias(column string, alias []string) string {
 	if len(alias) != 0 && alias[0] != "" {
 		return alias[0]
 	} else if index := strings.IndexByte(column, '.'); index != -1 {
-		return column[index+1:]
+		column = column[index+1:]
+		if index = strings.IndexByte(column, ')'); index != -1 {
+			column = column[:index]
+		}
+		return column
 	}
 	return ""
 }
