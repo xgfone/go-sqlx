@@ -40,3 +40,6 @@ test_*
 .vscode/
 debug
 debug_test
+
+# Unix hidden files
+.*
