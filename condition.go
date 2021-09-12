@@ -208,45 +208,45 @@ func (c columnCondition) Build(b *ArgsBuilder) string {
 	return fmt.Sprintf("%s%s%s", b.Quote(c.left), c.op, b.Quote(c.right))
 }
 
-// Column returns a Condition to operate two columns.
+// ColumnCond returns a Condition to operate two columns.
 //
 // For example,
 //
 //   Column("column1", "=", "column2") ==> "column1 = column2"
 //
 // However, both column1 and column2 are escaped by the dialect.
-func Column(left, op, right string) Condition {
+func ColumnCond(left, op, right string) Condition {
 	return columnCondition{left, op, right}
 }
 
 // ColumnEqual is equal to Column(column1, "=", column2).
 func ColumnEqual(column1, column2 string) Condition {
-	return Column(column1, "=", column2)
+	return ColumnCond(column1, "=", column2)
 }
 
 // ColumnNotEqual is equal to Column(column1, "<>", column2).
 func ColumnNotEqual(column1, column2 string) Condition {
-	return Column(column1, "<>", column2)
+	return ColumnCond(column1, "<>", column2)
 }
 
 // ColumnGreater is equal to Column(column1, ">", column2).
 func ColumnGreater(column1, column2 string) Condition {
-	return Column(column1, ">", column2)
+	return ColumnCond(column1, ">", column2)
 }
 
 // ColumnGreaterEqual is equal to Column(column1, ">=", column2).
 func ColumnGreaterEqual(column1, column2 string) Condition {
-	return Column(column1, ">=", column2)
+	return ColumnCond(column1, ">=", column2)
 }
 
 // ColumnLess is equal to Column(column1, "<", column2).
 func ColumnLess(column1, column2 string) Condition {
-	return Column(column1, "<", column2)
+	return ColumnCond(column1, "<", column2)
 }
 
 // ColumnLessEqual is equal to Column(column1, "<=", column2).
 func ColumnLessEqual(column1, column2 string) Condition {
-	return Column(column1, "<=", column2)
+	return ColumnCond(column1, "<=", column2)
 }
 
 /// ######
@@ -350,9 +350,9 @@ func (c ConditionSet) And(exprs ...Condition) Condition { return And(exprs...) }
 // Or is a proxy of Or.
 func (c ConditionSet) Or(exprs ...Condition) Condition { return Or(exprs...) }
 
-// Column is a proxy of Column.
-func (c ConditionSet) Column(left, op, right string) Condition {
-	return Column(left, op, right)
+// ColumnCond is a proxy of Column.
+func (c ConditionSet) ColumnCond(left, op, right string) Condition {
+	return ColumnCond(left, op, right)
 }
 
 // ColumnEqual is a proxy of ColumnEqual.
