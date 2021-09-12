@@ -20,11 +20,11 @@ import (
 
 func ExampleUpdateBuilder() {
 	// No Where
-	update1 := Update().Table("table").Set(Assign("c1", "v1"), Incr("c2")).
+	update1 := Update().Table("table").Set(Assign("c1", "v1"), Inc("c2")).
 		SetMore(Assign("c3", 123), Add("c4", 456))
 
 	// With Where
-	update2 := Update().Table("table").Set(Assign("c1", "v1")).Set(Decr("c2")).
+	update2 := Update().Table("table").Set(Assign("c1", "v1")).Set(Dec("c2")).
 		Where(Equal("c3", 789))
 
 	sql1, args1 := update1.Build()

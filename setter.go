@@ -32,12 +32,12 @@ func (s assignSetter) Build(a *ArgsBuilder) string {
 	return fmt.Sprintf("%s=%s", a.Quote(s.column), a.Add(s.value))
 }
 
-// Assign returns a "column=value" set statement.
+// Assign is the alias of Assign.
 func Assign(column string, value interface{}) Setter {
 	return assignSetter{column: column, value: value}
 }
 
-// Set is the alias of Assign.
+// Set returns a "column=value" set statement.
 func Set(column string, value interface{}) Setter { return Assign(column, value) }
 
 /// -------------------------------------------------------------------------
@@ -52,13 +52,13 @@ func (s twoSetter) Build(a *ArgsBuilder) string {
 	return fmt.Sprintf(s.format, column, column)
 }
 
-// Incr represents SET "column = column + 1" in UPDATE.
-func Incr(column string) Setter {
+// Inc represents SET "column = column + 1" in UPDATE.
+func Inc(column string) Setter {
 	return twoSetter{format: "%s=%s+1", column: column}
 }
 
-// Decr represents SET "column = column - 1" in UPDATE.
-func Decr(column string) Setter {
+// Dec represents SET "column = column - 1" in UPDATE.
+func Dec(column string) Setter {
 	return twoSetter{format: "%s=%s-1", column: column}
 }
 
@@ -110,14 +110,14 @@ func (s SetterSet) Assign(column string, value interface{}) Setter {
 	return Assign(column, value)
 }
 
-// Incr is a proxy of Incr.
-func (s SetterSet) Incr(column string) Setter {
-	return Incr(column)
+// Inc is a proxy of Inc.
+func (s SetterSet) Inc(column string) Setter {
+	return Inc(column)
 }
 
-// Decr is a proxy of Decr.
-func (s SetterSet) Decr(column string) Setter {
-	return Decr(column)
+// Dec is a proxy of Dec.
+func (s SetterSet) Dec(column string) Setter {
+	return Dec(column)
 }
 
 // Add is a proxy of Add.
