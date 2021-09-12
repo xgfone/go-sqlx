@@ -22,196 +22,196 @@ var _ NamedArg = Column{}
 
 // Column represents the column of the SQL table.
 type Column struct {
-	ColName string
+	ColumnName string
 	Valuer
 }
 
 // Name implements the interface NamedArg to return the name of the column.
-func (c Column) Name() string { return c.ColName }
+func (c Column) Name() string { return c.ColumnName }
 
 // NamedArg implements the interface NamedArg to convert itself to sql.NamedArg.
-func (c Column) NamedArg() sql.NamedArg { return sql.Named(c.ColName, c.Get()) }
+func (c Column) NamedArg() sql.NamedArg { return sql.Named(c.ColumnName, c.Get()) }
 
 /// -----------------------------------------------------------------------
 
-// Add is equal to Add(c.ColName, value).
-func (c Column) Add(value interface{}) Setter { return Add(c.ColName, value) }
+// Add is equal to Add(c.ColumnName, value).
+func (c Column) Add(value interface{}) Setter { return Add(c.ColumnName, value) }
 
-// Sub is equal to Sub(c.ColName, value).
-func (c Column) Sub(value interface{}) Setter { return Sub(c.ColName, value) }
+// Sub is equal to Sub(c.ColumnName, value).
+func (c Column) Sub(value interface{}) Setter { return Sub(c.ColumnName, value) }
 
-// Mul is equal to Mul(c.ColName, value).
-func (c Column) Mul(value interface{}) Setter { return Mul(c.ColName, value) }
+// Mul is equal to Mul(c.ColumnName, value).
+func (c Column) Mul(value interface{}) Setter { return Mul(c.ColumnName, value) }
 
-// Div is equal to Div(c.ColName, value).
-func (c Column) Div(value interface{}) Setter { return Div(c.ColName, value) }
+// Div is equal to Div(c.ColumnName, value).
+func (c Column) Div(value interface{}) Setter { return Div(c.ColumnName, value) }
 
-// Inc is equal to Inc(c.ColName, value).
-func (c Column) Inc() Setter { return Inc(c.ColName) }
+// Inc is equal to Inc(c.ColumnName, value).
+func (c Column) Inc() Setter { return Inc(c.ColumnName) }
 
-// Dec is equal to Dec(c.ColName, value).
-func (c Column) Dec() Setter { return Dec(c.ColName) }
+// Dec is equal to Dec(c.ColumnName, value).
+func (c Column) Dec() Setter { return Dec(c.ColumnName) }
 
-// Set is equal to Set(c.ColName, value).
-func (c Column) Set(value interface{}) Setter { return Set(c.ColName, value) }
+// Set is equal to Set(c.ColumnName, value).
+func (c Column) Set(value interface{}) Setter { return Set(c.ColumnName, value) }
 
 // Assign is the alias of the method Set.
 func (c Column) Assign(value interface{}) Setter { return c.Set(value) }
 
 /// -----------------------------------------------------------------------
 
-// Between is equal to Between(c.ColName, lower, upper).
+// Between is equal to Between(c.ColumnName, lower, upper).
 func (c Column) Between(lower, upper interface{}) Condition {
-	return Between(c.ColName, lower, upper)
+	return Between(c.ColumnName, lower, upper)
 }
 
-// ColEq is equal to ColEq(c.ColName, otherColumn).
+// ColEq is equal to ColEq(c.ColumnName, otherColumn).
 func (c Column) ColEq(otherColumn string) Condition {
-	return ColEq(c.ColName, otherColumn)
+	return ColEq(c.ColumnName, otherColumn)
 }
 
-// ColGt is equal to ColGt(c.ColName, otherColumn).
+// ColGt is equal to ColGt(c.ColumnName, otherColumn).
 func (c Column) ColGt(otherColumn string) Condition {
-	return ColGt(c.ColName, otherColumn)
+	return ColGt(c.ColumnName, otherColumn)
 }
 
-// ColGtEq is equal to ColGtEq(c.ColName, otherColumn).
+// ColGtEq is equal to ColGtEq(c.ColumnName, otherColumn).
 func (c Column) ColGtEq(otherColumn string) Condition {
-	return ColGtEq(c.ColName, otherColumn)
+	return ColGtEq(c.ColumnName, otherColumn)
 }
 
-// ColLe is equal to ColLe(c.ColName, otherColumn).
+// ColLe is equal to ColLe(c.ColumnName, otherColumn).
 func (c Column) ColLe(otherColumn string) Condition {
-	return ColLe(c.ColName, otherColumn)
+	return ColLe(c.ColumnName, otherColumn)
 }
 
-// ColLeEq is equal to ColLeEq(c.ColName, otherColumn).
+// ColLeEq is equal to ColLeEq(c.ColumnName, otherColumn).
 func (c Column) ColLeEq(otherColumn string) Condition {
-	return ColLeEq(c.ColName, otherColumn)
+	return ColLeEq(c.ColumnName, otherColumn)
 }
 
-// ColNotEq is equal to ColNotEq(c.ColName, otherColumn).
+// ColNotEq is equal to ColNotEq(c.ColumnName, otherColumn).
 func (c Column) ColNotEq(otherColumn string) Condition {
-	return ColNotEq(c.ColName, otherColumn)
+	return ColNotEq(c.ColumnName, otherColumn)
 }
 
-// ColumnEqual is equal to ColumnEqual(c.ColName, otherColumn).
+// ColumnEqual is equal to ColumnEqual(c.ColumnName, otherColumn).
 func (c Column) ColumnEqual(otherColumn string) Condition {
-	return ColumnEqual(c.ColName, otherColumn)
+	return ColumnEqual(c.ColumnName, otherColumn)
 }
 
-// ColumnGreater is equal to ColumnGreater(c.ColName, otherColumn).
+// ColumnGreater is equal to ColumnGreater(c.ColumnName, otherColumn).
 func (c Column) ColumnGreater(otherColumn string) Condition {
-	return ColumnGreater(c.ColName, otherColumn)
+	return ColumnGreater(c.ColumnName, otherColumn)
 }
 
-// ColumnGreaterEqual is equal to ColumnGreaterEqual(c.ColName, otherColumn).
+// ColumnGreaterEqual is equal to ColumnGreaterEqual(c.ColumnName, otherColumn).
 func (c Column) ColumnGreaterEqual(otherColumn string) Condition {
-	return ColumnGreaterEqual(c.ColName, otherColumn)
+	return ColumnGreaterEqual(c.ColumnName, otherColumn)
 }
 
-// ColumnLess is equal to ColumnLess(c.ColName, otherColumn).
+// ColumnLess is equal to ColumnLess(c.ColumnName, otherColumn).
 func (c Column) ColumnLess(otherColumn string) Condition {
-	return ColumnLess(c.ColName, otherColumn)
+	return ColumnLess(c.ColumnName, otherColumn)
 }
 
-// ColumnLessEqual is equal to ColumnLessEqual(c.ColName, otherColumn).
+// ColumnLessEqual is equal to ColumnLessEqual(c.ColumnName, otherColumn).
 func (c Column) ColumnLessEqual(otherColumn string) Condition {
-	return ColumnLessEqual(c.ColName, otherColumn)
+	return ColumnLessEqual(c.ColumnName, otherColumn)
 }
 
-// ColumnNotEqual is equal to ColumnNotEqual(c.ColName, otherColumn).
+// ColumnNotEqual is equal to ColumnNotEqual(c.ColumnName, otherColumn).
 func (c Column) ColumnNotEqual(otherColumn string) Condition {
-	return ColumnNotEqual(c.ColName, otherColumn)
+	return ColumnNotEqual(c.ColumnName, otherColumn)
 }
 
-// Eq is equal to Eq(c.ColName, value).
+// Eq is equal to Eq(c.ColumnName, value).
 func (c Column) Eq(value interface{}) Condition {
-	return Eq(c.ColName, value)
+	return Eq(c.ColumnName, value)
 }
 
-// Equal is equal to Equal(c.ColName, value).
+// Equal is equal to Equal(c.ColumnName, value).
 func (c Column) Equal(value interface{}) Condition {
-	return Equal(c.ColName, value)
+	return Equal(c.ColumnName, value)
 }
 
-// Greater is equal to Greater(c.ColName, value).
+// Greater is equal to Greater(c.ColumnName, value).
 func (c Column) Greater(value interface{}) Condition {
-	return Greater(c.ColName, value)
+	return Greater(c.ColumnName, value)
 }
 
-// GreaterEqual is equal to GreaterEqual(c.ColName, value).
+// GreaterEqual is equal to GreaterEqual(c.ColumnName, value).
 func (c Column) GreaterEqual(value interface{}) Condition {
-	return GreaterEqual(c.ColName, value)
+	return GreaterEqual(c.ColumnName, value)
 }
 
-// Gt is equal to Gt(c.ColName, value).
+// Gt is equal to Gt(c.ColumnName, value).
 func (c Column) Gt(value interface{}) Condition {
-	return Gt(c.ColName, value)
+	return Gt(c.ColumnName, value)
 }
 
-// GtEq is equal to GtEq(c.ColName, value).
+// GtEq is equal to GtEq(c.ColumnName, value).
 func (c Column) GtEq(value interface{}) Condition {
-	return GtEq(c.ColName, value)
+	return GtEq(c.ColumnName, value)
 }
 
-// In is equal to In(c.ColName, value).
+// In is equal to In(c.ColumnName, value).
 func (c Column) In(values ...interface{}) Condition {
-	return In(c.ColName, values)
+	return In(c.ColumnName, values)
 }
 
-// IsNotNull is equal to IsNotNull(c.ColName).
-func (c Column) IsNotNull() Condition { return IsNotNull(c.ColName) }
+// IsNotNull is equal to IsNotNull(c.ColumnName).
+func (c Column) IsNotNull() Condition { return IsNotNull(c.ColumnName) }
 
-// IsNull is equal to IsNull(c.ColName).
-func (c Column) IsNull() Condition { return IsNull(c.ColName) }
+// IsNull is equal to IsNull(c.ColumnName).
+func (c Column) IsNull() Condition { return IsNull(c.ColumnName) }
 
-// Le is equal to Le(c.ColName, value).
+// Le is equal to Le(c.ColumnName, value).
 func (c Column) Le(value interface{}) Condition {
-	return Le(c.ColName, value)
+	return Le(c.ColumnName, value)
 }
 
-// LeEq is equal to LeEq(c.ColName, value).
+// LeEq is equal to LeEq(c.ColumnName, value).
 func (c Column) LeEq(value interface{}) Condition {
-	return LeEq(c.ColName, value)
+	return LeEq(c.ColumnName, value)
 }
 
-// Less is equal to Less(c.ColName, value).
+// Less is equal to Less(c.ColumnName, value).
 func (c Column) Less(value interface{}) Condition {
-	return Less(c.ColName, value)
+	return Less(c.ColumnName, value)
 }
 
-// LessEqual is equal to LessEqual(c.ColName, value).
+// LessEqual is equal to LessEqual(c.ColumnName, value).
 func (c Column) LessEqual(value interface{}) Condition {
-	return LessEqual(c.ColName, value)
+	return LessEqual(c.ColumnName, value)
 }
 
-// Like is equal to Like(c.ColName, value).
+// Like is equal to Like(c.ColumnName, value).
 func (c Column) Like(value string) Condition {
-	return Like(c.ColName, value)
+	return Like(c.ColumnName, value)
 }
 
-// NotBetween is equal to NotBetween(c.ColName, lower, upper).
+// NotBetween is equal to NotBetween(c.ColumnName, lower, upper).
 func (c Column) NotBetween(lower, upper interface{}) Condition {
-	return NotBetween(c.ColName, lower, upper)
+	return NotBetween(c.ColumnName, lower, upper)
 }
 
-// NotEq is equal to NotEq(c.ColName, value).
+// NotEq is equal to NotEq(c.ColumnName, value).
 func (c Column) NotEq(value interface{}) Condition {
-	return NotEq(c.ColName, value)
+	return NotEq(c.ColumnName, value)
 }
 
-// NotEqual is equal to NotEqual(c.ColName, value).
+// NotEqual is equal to NotEqual(c.ColumnName, value).
 func (c Column) NotEqual(value interface{}) Condition {
-	return NotEqual(c.ColName, value)
+	return NotEqual(c.ColumnName, value)
 }
 
-// NotIn is equal to NotIn(c.ColName, values...).
+// NotIn is equal to NotIn(c.ColumnName, values...).
 func (c Column) NotIn(values ...interface{}) Condition {
-	return NotIn(c.ColName, values...)
+	return NotIn(c.ColumnName, values...)
 }
 
-// NotLike is equal to NotLike(c.ColName, value).
+// NotLike is equal to NotLike(c.ColumnName, value).
 func (c Column) NotLike(value string) Condition {
-	return NotLike(c.ColName, value)
+	return NotLike(c.ColumnName, value)
 }
