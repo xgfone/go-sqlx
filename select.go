@@ -506,6 +506,28 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 	return intercept(b.intercept, sql, args)
 }
 
+// BindRow is equal to b.BindRowContext(context.Background(), dest...).
+func (b *SelectBuilder) BindRow(dest ...interface{}) error {
+	return b.BindRowContext(context.Background(), dest...)
+}
+
+// BindRowStruct is equal to b.BindRowStructContext(context.Background(), dest).
+func (b *SelectBuilder) BindRowStruct(dest interface{}) error {
+	return b.BindRowStructContext(context.Background(), dest)
+}
+
+// BindRowContext is convenient function, which is equal to
+// b.QueryRowContext(c).Scan(dest...).
+func (b *SelectBuilder) BindRowContext(c context.Context, dest ...interface{}) error {
+	return b.QueryRowContext(c).Scan(dest...)
+}
+
+// BindRowStructContext is convenient function, which is equal to
+// b.QueryRowContext(c).ScanStruct(dest).
+func (b *SelectBuilder) BindRowStructContext(c context.Context, dest interface{}) error {
+	return b.QueryRowContext(c).ScanStruct(dest)
+}
+
 // Row is used to wrap sql.Row.
 type Row struct {
 	*SelectBuilder
