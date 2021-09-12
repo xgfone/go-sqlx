@@ -65,7 +65,7 @@ func ExampleSelectBuilder_GroupBy() {
 }
 
 func ExampleSelectBuilder_OrderBy() {
-	s1 := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time")
+	s1 := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time", Asc)
 	s2 := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time", Desc)
 
 	sql1, args1 := s1.Build()
@@ -78,34 +78,35 @@ func ExampleSelectBuilder_OrderBy() {
 	fmt.Println(args2)
 
 	// Output:
-	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time`
+	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` ASC
 	// [123]
 	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` DESC
 	// [123]
 }
 
 func ExampleSelectBuilder_Limit() {
-	s := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time").Limit(10).Offset(100)
+	s := Select("*").From("table").Where(Equal("id", 123)).
+		OrderByAsc("time").Limit(10).Offset(100)
 	sql, args := s.Build()
 
 	fmt.Println(sql)
 	fmt.Println(args)
 
 	// Output:
-	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` LIMIT 10 OFFSET 100
+	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` ASC LIMIT 10 OFFSET 100
 	// [123]
 }
 
 func ExampleSelectBuilder_Join() {
 	s := Select("*").From("table1").Join("table2", "", On("table1.id", "table2.id")).
-		Where(Equal("table1.id", 123)).OrderBy("table1.time").Limit(10).Offset(100)
+		Where(Equal("table1.id", 123)).OrderByAsc("table1.time").Limit(10).Offset(100)
 	sql, args := s.Build()
 
 	fmt.Println(sql)
 	fmt.Println(args)
 
 	// Output:
-	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` LIMIT 10 OFFSET 100
+	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` ASC LIMIT 10 OFFSET 100
 	// [123]
 }
 

@@ -314,12 +314,8 @@ func (b *SelectBuilder) Having(exprs ...string) *SelectBuilder {
 }
 
 // OrderBy appends the column used by ORDER BY.
-func (b *SelectBuilder) OrderBy(column string, order ...Order) *SelectBuilder {
-	ob := orderby{Column: column}
-	if len(order) > 0 {
-		ob.Order = order[0]
-	}
-	b.orderbys = append(b.orderbys, ob)
+func (b *SelectBuilder) OrderBy(column string, order Order) *SelectBuilder {
+	b.orderbys = append(b.orderbys, orderby{Column: column, Order: order})
 	return b
 }
 
