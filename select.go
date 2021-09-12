@@ -169,10 +169,8 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 
 // SelectStruct reflects and extracts the fields of the struct as the selected
 // columns, which supports the tag named "sql" to modify the column name.
-// If the value of the tag is "-", however, the field will be ignored.
 //
-// If the field has the tag "table", it will be used as the table name of the field.
-// If the argument "table" is given, it will override it.
+// If the value of the tag is "-", however, the field will be ignored.
 func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	if s == nil {
 		return b
@@ -217,8 +215,6 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 
 		if ftable != "" {
 			name = fmt.Sprintf("%s.%s", ftable, name)
-		} else if table := vft.Tag.Get("table"); table != "" {
-			name = fmt.Sprintf("%s.%s", table, name)
 		}
 		b.Select(name)
 	}
