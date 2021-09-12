@@ -107,12 +107,24 @@ func LessEqual(column string, value interface{}) Condition {
 }
 
 // Like returns a "column LIKE value" expression.
+//
+// Notice: if value does not contain the character '%', it will be formatted
+// to fmt.Sprintf("%%%s%%", value).
 func Like(column string, value string) Condition {
+	if strings.IndexByte(value, '%') < 0 {
+		value = strings.Join([]string{"%", "%"}, value)
+	}
 	return newTwoCondition("%s LIKE %s", column, value)
 }
 
 // NotLike returns a "column NOT LIKE value" expression.
+//
+// Notice: if value does not contain the character '%', it will be formatted
+// to fmt.Sprintf("%%%s%%", value).
 func NotLike(column string, value string) Condition {
+	if strings.IndexByte(value, '%') < 0 {
+		value = strings.Join([]string{"%", "%"}, value)
+	}
 	return newTwoCondition("%s NOT LIKE %s", column, value)
 }
 
