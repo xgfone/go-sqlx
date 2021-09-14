@@ -28,6 +28,31 @@ type Column struct {
 	Valuer
 }
 
+// NewColumn returns the new Column with the column name.
+func NewColumn(colName string) Column { return Column{ColumnName: colName} }
+
+// WithTable returns a new Column, based on the old column, with the table name.
+func (c Column) WithTable(tname string) Column {
+	c.TableName = tname
+	return c
+}
+
+// WithValuer returns a new Column, based on the old column, with the valuer.
+func (c Column) WithValuer(valuer Valuer) Column {
+	c.Valuer = valuer
+	return c
+}
+
+// WithValue clones itself and returns the new one that the valuer is set
+// to value.
+func (c Column) WithValue(value interface{}) Column {
+	c.Valuer = c.Valuer.Clone()
+	if err := c.Valuer.Scan(value); err != nil {
+		panic(err)
+	}
+	return c
+}
+
 // Name implements the interface NamedArg to return the name of the column.
 //
 // If TableName is not empty, it returns "TableName.ColumnName".
