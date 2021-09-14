@@ -86,8 +86,44 @@ func (b *InsertBuilder) Values(values ...interface{}) *InsertBuilder {
 	return b
 }
 
+// ColumnValues is the same as Values. But it will set it if the columns
+// are not set. Or it will check whether the columns are consistent.
+func (b *InsertBuilder) ColumnValues(columns ...Column) *InsertBuilder {
+	_len := len(b.columns)
+	if _len == 0 {
+		_len = len(columns)
+		b.columns = make([]string, _len)
+		for i := 0; i < _len; i++ {
+			b.columns[i] = columns[i].Name()
+		}
+	} else if _len != len(columns) {
+		panic("InsertBuilder: the numbers of the values for INSERT are not consistent")
+	} else {
+		for i := 0; i < _len; i++ {
+			if b.columns[i] != columns[i].Name() {
+				panic("InsertBuilder: inconsistent columns")
+			}
+		}
+	}
+
+	values := make([]interface{}, _len)
+	for i := 0; i < _len; i++ {
+		values[i] = columns[i].Get()
+	}
+
+	if b.values == nil {
+		b.values = [][]interface{}{values}
+	} else {
+		b.values = append(b.values, values)
+	}
+
+	return b
+}
+
 // NamedValues is the same as Values. But it will set it if the columns
 // are not set.
+//
+// DEPRECATED!!!
 func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 	_len := len(values)
 	if len(b.values) > 0 {

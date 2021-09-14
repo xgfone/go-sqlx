@@ -34,6 +34,12 @@ func Selects(columns ...string) *SelectBuilder {
 	return s.Selects(columns...)
 }
 
+// SelectColumns is equal to Select(columns[0].Name()).Select(columns[1].Name())...
+func SelectColumns(columns ...Column) *SelectBuilder {
+	s := &SelectBuilder{dialect: DefaultDialect}
+	return s.SelectColumns(columns...)
+}
+
 // SelectStruct is equal to Select().SelectStruct(s, table...).
 func SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	sb := &SelectBuilder{dialect: DefaultDialect}
@@ -159,10 +165,18 @@ func (b *SelectBuilder) Select(column string, alias ...string) *SelectBuilder {
 	return b
 }
 
-// Selects is equal to Select(columns[0]).Select(columns[1])...
+// Selects is equal to b.Select(columns[0]).Select(columns[1])...
 func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 	for _, c := range columns {
 		b.Select(c)
+	}
+	return b
+}
+
+// SelectColumns is equal to b.Select(columns[0].Name()).Select(columns[1].Name())...
+func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
+	for _, c := range columns {
+		b.Select(c.Name())
 	}
 	return b
 }
