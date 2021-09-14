@@ -54,6 +54,12 @@ func (v *valuer) String() string {
 	return fmt.Sprint(v.value)
 }
 
+func (v *valuer) Clone() Valuer {
+	var newv valuer
+	newv = *v
+	return &newv
+}
+
 var _ json.Marshaler = &valuer{}
 var _ json.Unmarshaler = &valuer{}
 
@@ -77,6 +83,7 @@ type Valuer interface {
 	IsSet() bool
 	IsZero() bool
 	Get() interface{}
+	Clone() Valuer
 
 	// Calling SetDefault does not trigger that IsSet returns true.
 	SetDefault(value interface{}) error
