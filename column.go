@@ -25,6 +25,7 @@ var _ NamedArg = Column{}
 type Column struct {
 	TableName  string
 	ColumnName string
+	AliasName  string
 	Valuer
 }
 
@@ -34,6 +35,12 @@ func NewColumn(colName string) Column { return Column{ColumnName: colName} }
 // WithTable returns a new Column, based on the old column, with the table name.
 func (c Column) WithTable(tname string) Column {
 	c.TableName = tname
+	return c
+}
+
+// WithAlias returns a new Column, based on the old column, with the alias name.
+func (c Column) WithAlias(alias string) Column {
+	c.AliasName = alias
 	return c
 }
 

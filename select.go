@@ -176,7 +176,7 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 // SelectColumns is equal to b.Select(columns[0].Name()).Select(columns[1].Name())...
 func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
 	for _, c := range columns {
-		b.Select(c.Name())
+		b.Select(c.Name(), c.AliasName)
 	}
 	return b
 }
