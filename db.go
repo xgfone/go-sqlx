@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2022 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -26,6 +29,54 @@ const DatetimeLayout = "2006-01-02 15:04:05"
 
 // Location is used to save the default location of time.Time.
 var Location = time.Local
+
+// SetConnURLLocation sets the argument "loc" in the connection url if missing.
+//
+// If loc is nil, use Location instead.
+func SetConnURLLocation(connURL string, loc *time.Location) string {
+	if loc == nil {
+		if loc = Location; loc == nil {
+			return connURL
+		}
+	}
+
+	if index := strings.IndexByte(connURL, '?') + 1; index > 0 {
+		query, err := url.ParseQuery(connURL[index:])
+		if err == nil && query.Get("loc") == "" {
+			query.Set("loc", loc.String())
+			return connURL[:index] + query.Encode()
+		}
+		return connURL
+	}
+
+	return fmt.Sprintf("%s?loc=%s", connURL, loc.String())
+}
+
+// Config is used to configure the DB.
+type Config func(*DB)
+
+// DefaultConfigs is the default configs.
+var DefaultConfigs = []Config{MaxOpenConns(0)}
+
+// MaxOpenConns returns a Config to set the maximum number of the open connection.
+//
+// If maxnum is equal to or less than 0, it is runtime.NumCPU()*2 by default.
+func MaxOpenConns(maxnum int) Config {
+	if maxnum <= 0 {
+		maxnum = runtime.NumCPU() * 2
+	}
+	return func(db *DB) { db.SetMaxOpenConns(maxnum) }
+}
+
+// MaxIdleConns returns a Config to set the maximum number of the idle connection.
+func MaxIdleConns(n int) Config {
+	return func(db *DB) { db.SetMaxIdleConns(n) }
+}
+
+// ConnMaxLifetime returns a Config to set the maximum lifetime of the connection.
+func ConnMaxLifetime(d time.Duration) Config {
+	return func(db *DB) { db.SetConnMaxLifetime(d) }
+}
 
 // DB is the wrapper of the sql.DB.
 type DB struct {
@@ -37,7 +88,7 @@ type DB struct {
 
 // Open opens a database specified by its database driver name
 // and a driver-specific data source name,
-func Open(driverName, dataSourceName string) (*DB, error) {
+func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 	dialect := GetDialect(driverName)
 	if dialect == nil {
 		return nil, fmt.Errorf("the dialect '%s' has not been registered",
@@ -48,7 +99,16 @@ func Open(driverName, dataSourceName string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DB{Dialect: dialect, DB: db}, nil
+
+	xdb := &DB{Dialect: dialect, DB: db}
+	if configs == nil {
+		configs = DefaultConfigs
+	}
+	for _, c := range configs {
+		c(xdb)
+	}
+
+	return xdb, nil
 }
 
 func (db *DB) getExecutor() Executor {
