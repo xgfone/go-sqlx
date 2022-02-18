@@ -20,11 +20,6 @@ import (
 	"fmt"
 )
 
-// Table is short for NewUpdateBuilder.
-func Table(table string) *TableBuilder {
-	return NewTableBuilder(table)
-}
-
 // NewTableBuilder returns a new CREATE TABLE builder.
 func NewTableBuilder(table string) *TableBuilder {
 	return &TableBuilder{table: table, dialect: DefaultDialect}
