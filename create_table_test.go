@@ -19,7 +19,7 @@ import (
 )
 
 func ExampleTableBuilder() {
-	table := Table("table").IfNotExist().
+	table := NewTableBuilder("table").IfNotExist().
 		Define("id", "BIGINT", "PRIMARY KEY", "AUTO_INCREMENT").
 		Define("name", "VARCHAR(255)", "NOT NULL", `COMMENT "user name"`).
 		Define("age", "INTEGER", "NOT NULL", "DEFAULT", 123).

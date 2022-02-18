@@ -120,7 +120,7 @@ func (db *DB) getExecutor() Executor {
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return Table(table).SetDialect(db.Dialect).SetExecutor(db.getExecutor()).
+	return NewTableBuilder(table).SetDialect(db.Dialect).SetExecutor(db.getExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
