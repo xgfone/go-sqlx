@@ -42,6 +42,9 @@ var slicepool = sync.Pool{New: func() interface{} {
 func getSlice() []interface{}   { return slicepool.Get().([]interface{}) }
 func putSlice(ss []interface{}) { ss = ss[:0]; slicepool.Put(ss) }
 
+// TimeFormat is used to format time.Time.
+var TimeFormat = time.RFC3339Nano
+
 // Time is used to read/write the time.Time from/to DB.
 type Time struct {
 	time.Time
@@ -60,6 +63,17 @@ func (t *Time) Scan(src interface{}) (err error) {
 		t.Time = _t
 	}
 	return
+}
+
+func (t Time) String() string { return t.In(Location).Format(TimeFormat) }
+
+// MarshalJSON implements the interface json.Marshaler.
+func (t Time) MarshalJSON() ([]byte, error) {
+	b := make([]byte, 0, len(TimeFormat)+2)
+	b = append(b, '"')
+	b = t.In(Location).AppendFormat(b, TimeFormat)
+	b = append(b, '"')
+	return b, nil
 }
 
 // Bool is used to read/write the BOOLEAN from/to DB.
