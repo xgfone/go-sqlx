@@ -21,6 +21,12 @@ type Setter interface {
 	Build(*ArgsBuilder) string
 }
 
+// ColumnSetter is the same as Setter with the column.
+type ColumnSetter interface {
+	Column() string
+	Setter
+}
+
 /// -------------------------------------------------------------------------
 
 type assignSetter struct {
@@ -28,17 +34,18 @@ type assignSetter struct {
 	value  interface{}
 }
 
+func (s assignSetter) Column() string { return s.column }
 func (s assignSetter) Build(a *ArgsBuilder) string {
 	return fmt.Sprintf("%s=%s", a.Quote(s.column), a.Add(s.value))
 }
 
 // Assign is the alias of Assign.
-func Assign(column string, value interface{}) Setter {
+func Assign(column string, value interface{}) ColumnSetter {
 	return assignSetter{column: column, value: value}
 }
 
 // Set returns a "column=value" set statement.
-func Set(column string, value interface{}) Setter { return Assign(column, value) }
+func Set(column string, value interface{}) ColumnSetter { return Assign(column, value) }
 
 /// -------------------------------------------------------------------------
 
@@ -47,18 +54,19 @@ type twoSetter struct {
 	column string
 }
 
+func (s twoSetter) Column() string { return s.column }
 func (s twoSetter) Build(a *ArgsBuilder) string {
 	column := a.Quote(s.column)
 	return fmt.Sprintf(s.format, column, column)
 }
 
 // Inc represents SET "column = column + 1" in UPDATE.
-func Inc(column string) Setter {
+func Inc(column string) ColumnSetter {
 	return twoSetter{format: "%s=%s+1", column: column}
 }
 
 // Dec represents SET "column = column - 1" in UPDATE.
-func Dec(column string) Setter {
+func Dec(column string) ColumnSetter {
 	return twoSetter{format: "%s=%s-1", column: column}
 }
 
@@ -70,28 +78,29 @@ type threeSetter struct {
 	value  interface{}
 }
 
+func (s threeSetter) Column() string { return s.column }
 func (s threeSetter) Build(a *ArgsBuilder) string {
 	column := a.Quote(s.column)
 	return fmt.Sprintf(s.format, column, column, a.Add(s.value))
 }
 
 // Add represents SET "column = column + value" in UPDATE.
-func Add(column string, value interface{}) Setter {
+func Add(column string, value interface{}) ColumnSetter {
 	return threeSetter{format: "%s=%s+%s", column: column, value: value}
 }
 
 // Sub represents SET "column = column - value" in UPDATE.
-func Sub(column string, value interface{}) Setter {
+func Sub(column string, value interface{}) ColumnSetter {
 	return threeSetter{format: "%s=%s-%s", column: column, value: value}
 }
 
 // Mul represents SET "column = column * value" in UPDATE.
-func Mul(column string, value interface{}) Setter {
+func Mul(column string, value interface{}) ColumnSetter {
 	return threeSetter{format: "%s=%s*%s", column: column, value: value}
 }
 
 // Div represents SET "column = column / value" in UPDATE.
-func Div(column string, value interface{}) Setter {
+func Div(column string, value interface{}) ColumnSetter {
 	return threeSetter{format: "%s=%s/%s", column: column, value: value}
 }
 
@@ -101,41 +110,41 @@ func Div(column string, value interface{}) Setter {
 type SetterSet struct{}
 
 // Set is the alias of Assign.
-func (s SetterSet) Set(column string, value interface{}) Setter {
+func (s SetterSet) Set(column string, value interface{}) ColumnSetter {
 	return Assign(column, value)
 }
 
 // Assign is a proxy of Assign.
-func (s SetterSet) Assign(column string, value interface{}) Setter {
+func (s SetterSet) Assign(column string, value interface{}) ColumnSetter {
 	return Assign(column, value)
 }
 
 // Inc is a proxy of Inc.
-func (s SetterSet) Inc(column string) Setter {
+func (s SetterSet) Inc(column string) ColumnSetter {
 	return Inc(column)
 }
 
 // Dec is a proxy of Dec.
-func (s SetterSet) Dec(column string) Setter {
+func (s SetterSet) Dec(column string) ColumnSetter {
 	return Dec(column)
 }
 
 // Add is a proxy of Add.
-func (s SetterSet) Add(column string, value interface{}) Setter {
+func (s SetterSet) Add(column string, value interface{}) ColumnSetter {
 	return Add(column, value)
 }
 
 // Sub is a proxy Sub.
-func (s SetterSet) Sub(column string, value interface{}) Setter {
+func (s SetterSet) Sub(column string, value interface{}) ColumnSetter {
 	return Sub(column, value)
 }
 
 // Mul is a proxy of Mul.
-func (s SetterSet) Mul(column string, value interface{}) Setter {
+func (s SetterSet) Mul(column string, value interface{}) ColumnSetter {
 	return Mul(column, value)
 }
 
 // Div is a proxy of Div.
-func (s SetterSet) Div(column string, value interface{}) Setter {
+func (s SetterSet) Div(column string, value interface{}) ColumnSetter {
 	return Div(column, value)
 }

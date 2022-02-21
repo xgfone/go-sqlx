@@ -27,15 +27,22 @@ type Condition interface {
 	Build(*ArgsBuilder) string
 }
 
+// ColumnCondition is the same as Condition with the column.
+type ColumnCondition interface {
+	Column() string
+	Condition
+}
+
 type oneCondition struct {
 	format string
 	column string
 }
 
-func newOneCondition(format, column string) Condition {
+func newOneCondition(format, column string) ColumnCondition {
 	return oneCondition{format: format, column: column}
 }
 
+func (c oneCondition) Column() string { return c.column }
 func (c oneCondition) Build(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column))
 }
@@ -46,10 +53,11 @@ type twoCondition struct {
 	value  interface{}
 }
 
-func newTwoCondition(format, column string, value interface{}) Condition {
+func newTwoCondition(format, column string, value interface{}) ColumnCondition {
 	return twoCondition{format: format, column: column, value: value}
 }
 
+func (c twoCondition) Column() string { return c.column }
 func (c twoCondition) Build(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column), b.Add(c.value))
 }
@@ -57,52 +65,52 @@ func (c twoCondition) Build(b *ArgsBuilder) string {
 /// --------------------------------------------------------------------------
 
 // Eq is the short for Equal.
-func Eq(column string, value interface{}) Condition { return Equal(column, value) }
+func Eq(column string, value interface{}) ColumnCondition { return Equal(column, value) }
 
 // NotEq is the short for NotEqual.
-func NotEq(column string, value interface{}) Condition { return NotEqual(column, value) }
+func NotEq(column string, value interface{}) ColumnCondition { return NotEqual(column, value) }
 
 // Gt is the short for Greater.
-func Gt(column string, value interface{}) Condition { return Greater(column, value) }
+func Gt(column string, value interface{}) ColumnCondition { return Greater(column, value) }
 
 // GtEq is the short for GreaterEqual.
-func GtEq(column string, value interface{}) Condition { return GreaterEqual(column, value) }
+func GtEq(column string, value interface{}) ColumnCondition { return GreaterEqual(column, value) }
 
 // Le is the short for Less.
-func Le(column string, value interface{}) Condition { return Less(column, value) }
+func Le(column string, value interface{}) ColumnCondition { return Less(column, value) }
 
 // LeEq is the short for LessEqual.
-func LeEq(column string, value interface{}) Condition { return LessEqual(column, value) }
+func LeEq(column string, value interface{}) ColumnCondition { return LessEqual(column, value) }
 
 /// ######
 
 // Equal returns a "column=value" expression.
-func Equal(column string, value interface{}) Condition {
+func Equal(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s=%s", column, value)
 }
 
 // NotEqual returns a "column<>value" expression.
-func NotEqual(column string, value interface{}) Condition {
+func NotEqual(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s<>%s", column, value)
 }
 
 // Greater returns a "column>value" expression.
-func Greater(column string, value interface{}) Condition {
+func Greater(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s>%s", column, value)
 }
 
 // GreaterEqual returns a "column>=value" expression.
-func GreaterEqual(column string, value interface{}) Condition {
+func GreaterEqual(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s>=%s", column, value)
 }
 
 // Less returns a "column<value" expression.
-func Less(column string, value interface{}) Condition {
+func Less(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s<%s", column, value)
 }
 
 // LessEqual returns a "column<=value" expression.
-func LessEqual(column string, value interface{}) Condition {
+func LessEqual(column string, value interface{}) ColumnCondition {
 	return newTwoCondition("%s<=%s", column, value)
 }
 
@@ -110,7 +118,7 @@ func LessEqual(column string, value interface{}) Condition {
 //
 // Notice: if value does not contain the character '%', it will be formatted
 // to fmt.Sprintf("%%%s%%", value).
-func Like(column string, value string) Condition {
+func Like(column string, value string) ColumnCondition {
 	if strings.IndexByte(value, '%') < 0 {
 		value = strings.Join([]string{"%", "%"}, value)
 	}
@@ -121,7 +129,7 @@ func Like(column string, value string) Condition {
 //
 // Notice: if value does not contain the character '%', it will be formatted
 // to fmt.Sprintf("%%%s%%", value).
-func NotLike(column string, value string) Condition {
+func NotLike(column string, value string) ColumnCondition {
 	if strings.IndexByte(value, '%') < 0 {
 		value = strings.Join([]string{"%", "%"}, value)
 	}
@@ -129,12 +137,12 @@ func NotLike(column string, value string) Condition {
 }
 
 // IsNull returns a "column IS NULL" expression.
-func IsNull(column string) Condition {
+func IsNull(column string) ColumnCondition {
 	return newOneCondition("%s IS NULL", column)
 }
 
 // IsNotNull returns a "column IS NOT NULL" expression.
-func IsNotNull(column string) Condition {
+func IsNotNull(column string) ColumnCondition {
 	return newOneCondition("%s IS NOT NULL", column)
 }
 
@@ -146,6 +154,7 @@ type inCondition struct {
 	values []interface{}
 }
 
+func (c inCondition) Column() string { return c.column }
 func (c inCondition) Build(b *ArgsBuilder) string {
 	ss := make([]string, 0, len(c.values))
 	for _, v := range c.values {
@@ -155,12 +164,12 @@ func (c inCondition) Build(b *ArgsBuilder) string {
 }
 
 // In returns a "column IN (values...)" expression.
-func In(column string, values ...interface{}) Condition {
+func In(column string, values ...interface{}) ColumnCondition {
 	return inCondition{"%s IN (%s)", column, values}
 }
 
 // NotIn returns a "column NOT IN (values...)" expression.
-func NotIn(column string, values ...interface{}) Condition {
+func NotIn(column string, values ...interface{}) ColumnCondition {
 	return inCondition{"%s NOT IN (%s)", column, values}
 }
 
@@ -173,17 +182,18 @@ type betweenCondition struct {
 	upper  interface{}
 }
 
+func (c betweenCondition) Column() string { return c.column }
 func (c betweenCondition) Build(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column), b.Add(c.lower), b.Add(c.upper))
 }
 
 // Between returns a "column BETWEEN lower AND upper" expression.
-func Between(column string, lower, upper interface{}) Condition {
+func Between(column string, lower, upper interface{}) ColumnCondition {
 	return betweenCondition{"%s BETWEEN %s AND %s", column, lower, upper}
 }
 
 // NotBetween returns a "column NOT BETWEEN lower AND upper" expression.
-func NotBetween(column string, lower, upper interface{}) Condition {
+func NotBetween(column string, lower, upper interface{}) ColumnCondition {
 	return betweenCondition{"%s NOT BETWEEN %s AND %s", column, lower, upper}
 }
 
@@ -287,72 +297,72 @@ func ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
 type ConditionSet struct{}
 
 // Equal is a proxy of Equal
-func (c ConditionSet) Equal(column string, value interface{}) Condition {
+func (c ConditionSet) Equal(column string, value interface{}) ColumnCondition {
 	return Equal(column, value)
 }
 
 // NotEqual is a proxy of NotEqual.
-func (c ConditionSet) NotEqual(column string, value interface{}) Condition {
+func (c ConditionSet) NotEqual(column string, value interface{}) ColumnCondition {
 	return NotEqual(column, value)
 }
 
 // Greater is a proxy of Greater.
-func (c ConditionSet) Greater(column string, value interface{}) Condition {
+func (c ConditionSet) Greater(column string, value interface{}) ColumnCondition {
 	return Greater(column, value)
 }
 
 // GreaterEqual is a proxy of GreaterEqual.
-func (c ConditionSet) GreaterEqual(column string, value interface{}) Condition {
+func (c ConditionSet) GreaterEqual(column string, value interface{}) ColumnCondition {
 	return GreaterEqual(column, value)
 }
 
 // Less is a proxy of Less.
-func (c ConditionSet) Less(column string, value interface{}) Condition {
+func (c ConditionSet) Less(column string, value interface{}) ColumnCondition {
 	return Less(column, value)
 }
 
 // LessEqual is a proxy of LessEqual.
-func (c ConditionSet) LessEqual(column string, value interface{}) Condition {
+func (c ConditionSet) LessEqual(column string, value interface{}) ColumnCondition {
 	return LessEqual(column, value)
 }
 
 // Like is a proxy of Like.
-func (c ConditionSet) Like(column string, value string) Condition {
+func (c ConditionSet) Like(column string, value string) ColumnCondition {
 	return Like(column, value)
 }
 
 // NotLike is a proxy of NotLike.
-func (c ConditionSet) NotLike(column string, value string) Condition {
+func (c ConditionSet) NotLike(column string, value string) ColumnCondition {
 	return NotLike(column, value)
 }
 
 // IsNull is a proxy of IsNull.
-func (c ConditionSet) IsNull(column string) Condition {
+func (c ConditionSet) IsNull(column string) ColumnCondition {
 	return IsNull(column)
 }
 
 // IsNotNull is a proxy of IsNotNull.
-func (c ConditionSet) IsNotNull(column string) Condition {
+func (c ConditionSet) IsNotNull(column string) ColumnCondition {
 	return IsNotNull(column)
 }
 
 // In is a proxy of In.
-func (c ConditionSet) In(column string, values ...interface{}) Condition {
+func (c ConditionSet) In(column string, values ...interface{}) ColumnCondition {
 	return In(column, values...)
 }
 
 // NotIn is a proxy of NotIn.
-func (c ConditionSet) NotIn(column string, values ...interface{}) Condition {
+func (c ConditionSet) NotIn(column string, values ...interface{}) ColumnCondition {
 	return NotIn(column, values...)
 }
 
 // Between is a proxy of Between.
-func (c ConditionSet) Between(column string, lower, upper interface{}) Condition {
+func (c ConditionSet) Between(column string, lower, upper interface{}) ColumnCondition {
 	return Between(column, lower, upper)
 }
 
 // NotBetween is a proxy of NotBetween.
-func (c ConditionSet) NotBetween(column string, lower, upper interface{}) Condition {
+func (c ConditionSet) NotBetween(column string, lower, upper interface{}) ColumnCondition {
 	return NotBetween(column, lower, upper)
 }
 
@@ -418,19 +428,19 @@ func (c ConditionSet) ColLe(c1, c2 string) Condition { return ColumnLess(c1, c2)
 func (c ConditionSet) ColLeEq(c1, c2 string) Condition { return ColumnLessEqual(c1, c2) }
 
 // Eq is the short for Equal.
-func (c ConditionSet) Eq(col string, v interface{}) Condition { return Equal(col, v) }
+func (c ConditionSet) Eq(col string, v interface{}) ColumnCondition { return Equal(col, v) }
 
 // NotEq is the short for NotEqual.
-func (c ConditionSet) NotEq(col string, v interface{}) Condition { return NotEqual(col, v) }
+func (c ConditionSet) NotEq(col string, v interface{}) ColumnCondition { return NotEqual(col, v) }
 
 // Gt is the short for Greater.
-func (c ConditionSet) Gt(col string, v interface{}) Condition { return Greater(col, v) }
+func (c ConditionSet) Gt(col string, v interface{}) ColumnCondition { return Greater(col, v) }
 
 // GtEq is the short for GreaterEqual.
-func (c ConditionSet) GtEq(col string, v interface{}) Condition { return GreaterEqual(col, v) }
+func (c ConditionSet) GtEq(col string, v interface{}) ColumnCondition { return GreaterEqual(col, v) }
 
 // Le is the short for Less.
-func (c ConditionSet) Le(col string, v interface{}) Condition { return Less(col, v) }
+func (c ConditionSet) Le(col string, v interface{}) ColumnCondition { return Less(col, v) }
 
 // LeEq is the short for LessEqual.
-func (c ConditionSet) LeEq(col string, v interface{}) Condition { return LessEqual(col, v) }
+func (c ConditionSet) LeEq(col string, v interface{}) ColumnCondition { return LessEqual(col, v) }

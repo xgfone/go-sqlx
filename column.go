@@ -77,33 +77,33 @@ func (c Column) NamedArg() sql.NamedArg { return sql.Named(c.Name(), c.Get()) }
 /// -----------------------------------------------------------------------
 
 // Add is equal to Add(c.Name(), value).
-func (c Column) Add(value interface{}) Setter { return Add(c.Name(), value) }
+func (c Column) Add(value interface{}) ColumnSetter { return Add(c.Name(), value) }
 
 // Sub is equal to Sub(c.Name(), value).
-func (c Column) Sub(value interface{}) Setter { return Sub(c.Name(), value) }
+func (c Column) Sub(value interface{}) ColumnSetter { return Sub(c.Name(), value) }
 
 // Mul is equal to Mul(c.Name(), value).
-func (c Column) Mul(value interface{}) Setter { return Mul(c.Name(), value) }
+func (c Column) Mul(value interface{}) ColumnSetter { return Mul(c.Name(), value) }
 
 // Div is equal to Div(c.Name(), value).
-func (c Column) Div(value interface{}) Setter { return Div(c.Name(), value) }
+func (c Column) Div(value interface{}) ColumnSetter { return Div(c.Name(), value) }
 
 // Inc is equal to Inc(c.Name(), value).
-func (c Column) Inc() Setter { return Inc(c.Name()) }
+func (c Column) Inc() ColumnSetter { return Inc(c.Name()) }
 
 // Dec is equal to Dec(c.Name(), value).
-func (c Column) Dec() Setter { return Dec(c.Name()) }
+func (c Column) Dec() ColumnSetter { return Dec(c.Name()) }
 
 // Set is equal to Set(c.Name(), value).
-func (c Column) Set(value interface{}) Setter { return Set(c.Name(), value) }
+func (c Column) Set(value interface{}) ColumnSetter { return Set(c.Name(), value) }
 
 // Assign is the alias of the method Set.
-func (c Column) Assign(value interface{}) Setter { return c.Set(value) }
+func (c Column) Assign(value interface{}) ColumnSetter { return c.Set(value) }
 
 /// -----------------------------------------------------------------------
 
 // Between is equal to Between(c.Name(), lower, upper).
-func (c Column) Between(lower, upper interface{}) Condition {
+func (c Column) Between(lower, upper interface{}) ColumnCondition {
 	return Between(c.Name(), lower, upper)
 }
 
@@ -168,92 +168,92 @@ func (c Column) ColumnNotEqual(otherColumn string) Condition {
 }
 
 // Eq is equal to Eq(c.Name(), value).
-func (c Column) Eq(value interface{}) Condition {
+func (c Column) Eq(value interface{}) ColumnCondition {
 	return Eq(c.Name(), value)
 }
 
 // Equal is equal to Equal(c.Name(), value).
-func (c Column) Equal(value interface{}) Condition {
+func (c Column) Equal(value interface{}) ColumnCondition {
 	return Equal(c.Name(), value)
 }
 
 // Greater is equal to Greater(c.Name(), value).
-func (c Column) Greater(value interface{}) Condition {
+func (c Column) Greater(value interface{}) ColumnCondition {
 	return Greater(c.Name(), value)
 }
 
 // GreaterEqual is equal to GreaterEqual(c.Name(), value).
-func (c Column) GreaterEqual(value interface{}) Condition {
+func (c Column) GreaterEqual(value interface{}) ColumnCondition {
 	return GreaterEqual(c.Name(), value)
 }
 
 // Gt is equal to Gt(c.Name(), value).
-func (c Column) Gt(value interface{}) Condition {
+func (c Column) Gt(value interface{}) ColumnCondition {
 	return Gt(c.Name(), value)
 }
 
 // GtEq is equal to GtEq(c.Name(), value).
-func (c Column) GtEq(value interface{}) Condition {
+func (c Column) GtEq(value interface{}) ColumnCondition {
 	return GtEq(c.Name(), value)
 }
 
 // In is equal to In(c.Name(), value).
-func (c Column) In(values ...interface{}) Condition {
+func (c Column) In(values ...interface{}) ColumnCondition {
 	return In(c.Name(), values)
 }
 
 // IsNotNull is equal to IsNotNull(c.Name()).
-func (c Column) IsNotNull() Condition { return IsNotNull(c.Name()) }
+func (c Column) IsNotNull() ColumnCondition { return IsNotNull(c.Name()) }
 
 // IsNull is equal to IsNull(c.Name()).
-func (c Column) IsNull() Condition { return IsNull(c.Name()) }
+func (c Column) IsNull() ColumnCondition { return IsNull(c.Name()) }
 
 // Le is equal to Le(c.Name(), value).
-func (c Column) Le(value interface{}) Condition {
+func (c Column) Le(value interface{}) ColumnCondition {
 	return Le(c.Name(), value)
 }
 
 // LeEq is equal to LeEq(c.Name(), value).
-func (c Column) LeEq(value interface{}) Condition {
+func (c Column) LeEq(value interface{}) ColumnCondition {
 	return LeEq(c.Name(), value)
 }
 
 // Less is equal to Less(c.Name(), value).
-func (c Column) Less(value interface{}) Condition {
+func (c Column) Less(value interface{}) ColumnCondition {
 	return Less(c.Name(), value)
 }
 
 // LessEqual is equal to LessEqual(c.Name(), value).
-func (c Column) LessEqual(value interface{}) Condition {
+func (c Column) LessEqual(value interface{}) ColumnCondition {
 	return LessEqual(c.Name(), value)
 }
 
 // Like is equal to Like(c.Name(), value).
-func (c Column) Like(value string) Condition {
+func (c Column) Like(value string) ColumnCondition {
 	return Like(c.Name(), value)
 }
 
 // NotBetween is equal to NotBetween(c.Name(), lower, upper).
-func (c Column) NotBetween(lower, upper interface{}) Condition {
+func (c Column) NotBetween(lower, upper interface{}) ColumnCondition {
 	return NotBetween(c.Name(), lower, upper)
 }
 
 // NotEq is equal to NotEq(c.Name(), value).
-func (c Column) NotEq(value interface{}) Condition {
+func (c Column) NotEq(value interface{}) ColumnCondition {
 	return NotEq(c.Name(), value)
 }
 
 // NotEqual is equal to NotEqual(c.Name(), value).
-func (c Column) NotEqual(value interface{}) Condition {
+func (c Column) NotEqual(value interface{}) ColumnCondition {
 	return NotEqual(c.Name(), value)
 }
 
 // NotIn is equal to NotIn(c.Name(), values...).
-func (c Column) NotIn(values ...interface{}) Condition {
+func (c Column) NotIn(values ...interface{}) ColumnCondition {
 	return NotIn(c.Name(), values...)
 }
 
 // NotLike is equal to NotLike(c.Name(), value).
-func (c Column) NotLike(value string) Condition {
+func (c Column) NotLike(value string) ColumnCondition {
 	return NotLike(c.Name(), value)
 }
