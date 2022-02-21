@@ -173,10 +173,14 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 		panic("not a struct")
 	}
 
+	args := make([]sql.NamedArg, 0, v.NumField())
+	args = b.insertStruct(v, args)
+	return b.NamedValues(args...)
+}
+
+func (b *InsertBuilder) insertStruct(v reflect.Value, args []sql.NamedArg) []sql.NamedArg {
 	vt := v.Type()
-	_len := v.NumField()
-	args := make([]sql.NamedArg, 0, _len)
-	for i := 0; i < _len; i++ {
+	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
 		name := vft.Name
 
@@ -195,6 +199,11 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 			name = tag
 		}
 
+		if vft.Anonymous {
+			args = b.insertStruct(v.Field(i), args)
+			continue
+		}
+
 		vf := v.Field(i)
 		if !vf.IsValid() {
 			continue
@@ -207,7 +216,7 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 		args = append(args, sql.NamedArg{Name: name, Value: vf.Interface()})
 	}
 
-	return b.NamedValues(args...)
+	return args
 }
 
 // Exec builds the sql and executes it by *sql.DB.

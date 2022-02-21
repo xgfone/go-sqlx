@@ -211,6 +211,11 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 		ftable = table[0]
 	}
 
+	b.selectStruct(v, ftable)
+	return b
+}
+
+func (b *SelectBuilder) selectStruct(v reflect.Value, ftable string) {
 	vt := v.Type()
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
@@ -227,13 +232,16 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 			name = tag
 		}
 
+		if vft.Anonymous {
+			b.selectStruct(v.Field(i), ftable)
+			continue
+		}
+
 		if ftable != "" {
 			name = fmt.Sprintf("%s.%s", ftable, name)
 		}
 		b.Select(name)
 	}
-
-	return b
 }
 
 // SelectedColumns returns the names of the selected columns.
@@ -583,9 +591,14 @@ func getFields(s interface{}) map[string]reflect.Value {
 		panic("not a pointer to struct")
 	}
 
+	vs := make(map[string]reflect.Value, v.NumField()*2)
+	getFieldsFromStruct(v, vs)
+	return vs
+}
+
+func getFieldsFromStruct(v reflect.Value, vs map[string]reflect.Value) {
 	vt := v.Type()
 	_len := v.NumField()
-	vs := make(map[string]reflect.Value, _len)
 	for i := 0; i < _len; i++ {
 		vft := vt.Field(i)
 		name := vft.Name
@@ -601,8 +614,11 @@ func getFields(s interface{}) map[string]reflect.Value {
 			name = tag
 		}
 
+		if vft.Anonymous {
+			getFieldsFromStruct(v.Field(i), vs)
+			continue
+		}
+
 		vs[name] = v.Field(i)
 	}
-
-	return vs
 }
