@@ -35,8 +35,7 @@ func (e noopExecutor) QueryRowContext(context.Context, string, ...interface{}) *
 
 func ExampleExecutor() {
 	db := DB{Dialect: MySQL}
-	executor := noopExecutor{} // It should be db.DB, but we use noopExecutor for test.
-	db.Executor = OpenTracingExecutor(executor, nil)
+	db.Executor = noopExecutor{} // It should be db.DB, but we use noopExecutor for test.
 	db.Insert().Into("table").Columns("c1", "c2", "c3").Values("v1", "v2", "v3").Exec()
 	db.Update().Table("table").Set(Assign("c1", "n1")).Where(Equal("c2", "v2")).Exec()
 	db.Selects("c1", "c2", "c3").From("table").Query()
