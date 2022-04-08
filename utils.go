@@ -47,6 +47,7 @@ var TimeFormat = time.RFC3339Nano
 
 // Time is used to read/write the time.Time from/to DB.
 type Time struct {
+	Layout string // If empty, use TimeFormat instead
 	time.Time
 }
 
@@ -71,13 +72,21 @@ func (t *Time) Scan(src interface{}) (err error) {
 	return
 }
 
-func (t Time) String() string { return t.In(Location).Format(TimeFormat) }
+func (t Time) String() string { return t.In(Location).Format(t.layout()) }
+
+func (t Time) layout() string {
+	if len(t.Layout) > 0 {
+		return t.Layout
+	}
+	return TimeFormat
+}
 
 // MarshalJSON implements the interface json.Marshaler.
 func (t Time) MarshalJSON() ([]byte, error) {
-	b := make([]byte, 0, len(TimeFormat)+2)
+	layout := t.layout()
+	b := make([]byte, 0, len(layout)+2)
 	b = append(b, '"')
-	b = t.In(Location).AppendFormat(b, TimeFormat)
+	b = t.In(Location).AppendFormat(b, layout)
 	b = append(b, '"')
 	return b, nil
 }
