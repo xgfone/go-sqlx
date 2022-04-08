@@ -56,6 +56,12 @@ func Now() Time { return Time{Time: time.Now().In(Location)} }
 // Value implements the interface driver.Valuer.
 func (t Time) Value() (driver.Value, error) { return t.Time, nil }
 
+// Get returns the inner time.Time.
+func (t Time) Get() time.Time { return t.Time }
+
+// Set sets itself to nt.
+func (t *Time) Set(nt time.Time) { t.Time = nt }
+
 // Scan implements the interface sql.Scanner.
 func (t *Time) Scan(src interface{}) (err error) {
 	_t, err := cast.ToTimeInLocation(Location, src, DatetimeLayout)
@@ -81,6 +87,15 @@ type Bool bool
 
 // Value implements the interface driver.Valuer.
 func (b Bool) Value() (driver.Value, error) { return bool(b), nil }
+
+// Bool is the alias of Get.
+func (b Bool) Bool() bool { return bool(b) }
+
+// Get returns the itself as the bool type.
+func (b Bool) Get() bool { return bool(b) }
+
+// Set sets itself to nb.
+func (b *Bool) Set(nb bool) { *b = Bool(nb) }
 
 // Scan implements the interface sql.Scanner.
 func (b *Bool) Scan(src interface{}) (err error) {
