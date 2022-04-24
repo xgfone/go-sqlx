@@ -29,6 +29,18 @@ type Column struct {
 	Valuer
 }
 
+// ColumnsContain reports whether the columns contains the column.
+//
+// Notice: it only compares the field ColumnName.
+func ColumnsContain(columns []Column, column Column) bool {
+	for i, _len := 0, len(columns); i < _len; i++ {
+		if columns[i].ColumnName == column.ColumnName {
+			return true
+		}
+	}
+	return false
+}
+
 // NewColumn returns the new Column with the column name.
 func NewColumn(colName string) Column { return Column{ColumnName: colName} }
 

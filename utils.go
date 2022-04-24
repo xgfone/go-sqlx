@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"bytes"
+	"database/sql"
 	"database/sql/driver"
 	"sync"
 	"time"
@@ -41,6 +42,27 @@ var slicepool = sync.Pool{New: func() interface{} {
 
 func getSlice() []interface{}   { return slicepool.Get().([]interface{}) }
 func putSlice(ss []interface{}) { ss = ss[:0]; slicepool.Put(ss) }
+
+// CheckErrNoRows extracts the error sql.ErrNoRows as the bool, which returns
+//
+//   - (true, nil) if err is equal to nil
+//   - (false, nil) if err is equal to sql.ErrNoRows
+//   - (false, err) if err is equal to others
+//
+func CheckErrNoRows(err error) (exist bool, e error) {
+	switch err {
+	case nil:
+		exist = true
+
+	case sql.ErrNoRows:
+		e = nil
+
+	default:
+		e = err
+	}
+
+	return
+}
 
 // TimeFormat is used to format time.Time.
 var TimeFormat = time.RFC3339Nano
