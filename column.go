@@ -44,6 +44,12 @@ func ColumnsContain(columns []Column, column Column) bool {
 // NewColumn returns the new Column with the column name.
 func NewColumn(colName string) Column { return Column{ColumnName: colName} }
 
+// FromTable returns a new Column wit the table name from t.
+func (c Column) FromTable(t Table) Column {
+	c.TableName = t.Name
+	return c
+}
+
 // WithTable returns a new Column, based on the old column, with the table name.
 func (c Column) WithTable(tname string) Column {
 	c.TableName = tname
