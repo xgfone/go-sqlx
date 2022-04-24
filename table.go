@@ -17,12 +17,67 @@ package sqlx
 // Table represents a SQL table.
 type Table struct {
 	Name string
+	*DB
 }
 
 // NewTable returns a new Table with the name.
 func NewTable(name string) Table { return Table{Name: name} }
 
-// Column returns a new Column with the table name and the column name.
-func (t Table) Column(colName string) Column {
+// NewTable returns a new Table with the db.
+func (db *DB) NewTable(name string) Table { return NewTable(name).WithDB(db) }
+
+// WithDB returns a new Table with the given db.
+func (t Table) WithDB(db *DB) Table { t.DB = db; return t }
+
+// NewColumn returns a new Column with the table name and the column name.
+func (t Table) NewColumn(colName string) Column {
 	return NewColumn(colName).WithTable(t.Name)
+}
+
+// GetDB returns the set DB. Or returns DefaultDB instead if not set.
+func (t Table) GetDB() *DB {
+	if t.DB != nil {
+		return t.DB
+	}
+	return DefaultDB
+}
+
+// CreateTable returns a table builder.
+func (t Table) CreateTable() *TableBuilder {
+	return t.GetDB().CreateTable(t.Name)
+}
+
+// DeleteFrom returns a DELETE FROM builder.
+func (t Table) DeleteFrom(conds ...Condition) *DeleteBuilder {
+	return t.GetDB().Delete().From(t.Name).Where(conds...)
+}
+
+// InsertInto returns a INSERT INTO builder.
+func (t Table) InsertInto() *InsertBuilder {
+	return t.GetDB().Insert().Into(t.Name)
+}
+
+// Update returns a UPDATE builder.
+func (t Table) Update(setters ...Setter) *UpdateBuilder {
+	return t.GetDB().Update(t.Name).Set(setters...)
+}
+
+// Select returns a SELECT FROM builder.
+func (t Table) Select(column string, alias ...string) *SelectBuilder {
+	return t.GetDB().Select(column, alias...).From(t.Name)
+}
+
+// SelectColumns returns a SELECT FROM builder.
+func (t Table) SelectColumns(columns ...Column) *SelectBuilder {
+	return t.GetDB().SelectColumns(columns...).From(t.Name)
+}
+
+// SelectStruct returns a SELECT FROM builder.
+func (t Table) SelectStruct(s interface{}, table ...string) *SelectBuilder {
+	return t.GetDB().SelectStruct(s, table...).From(t.Name)
+}
+
+// Selects returns a SELECT FROM builder.
+func (t Table) Selects(columns ...string) *SelectBuilder {
+	return t.GetDB().Selects(columns...).From(t.Name)
 }

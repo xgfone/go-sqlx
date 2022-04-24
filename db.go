@@ -30,6 +30,9 @@ const DatetimeLayout = "2006-01-02 15:04:05"
 // Location is used to save the default location of time.Time.
 var Location = time.Local
 
+// DefaultDB is the default global DB.
+var DefaultDB *DB
+
 // SetConnURLLocation sets the argument "loc" in the connection url if missing.
 //
 // If loc is nil, use Location instead.
