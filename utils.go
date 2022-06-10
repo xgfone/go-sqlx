@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"database/sql"
 	"database/sql/driver"
+	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -134,5 +136,214 @@ func (b *Bool) Scan(src interface{}) (err error) {
 	if err == nil {
 		*b = Bool(_b)
 	}
+	return
+}
+
+func scanValuers(scan func(...interface{}) error, dests ...interface{}) error {
+	results := make([]interface{}, len(dests))
+	for i, dest := range dests {
+		switch dest.(type) {
+		case *time.Duration, *time.Time,
+			*bool, *float32, *float64, *string,
+			*int, *int8, *int16, *int32, *int64,
+			*uint, *uint8, *uint16, *uint32, *uint64:
+			results[i] = nullScanner{Value: dest}
+
+		case sql.Scanner:
+			results[i] = dest
+
+		default:
+			results[i] = dest
+		}
+	}
+	return scan(results...)
+}
+
+type nullScanner struct{ Value interface{} }
+
+// Supports value types:
+//   *time.Duration:
+//     - string: time.ParseDuration(src)
+//     - int64: time.Duration(src) * time.Millisecond
+//   *time.Time:
+//     - time.Time: =>src
+//     - string: time.ParseInLocation(DatetimeLayout, src, Location))
+//     - int64: time.Unix(s, 0)
+//   *bool:
+//     - cast.ToBool(src)
+//   *string:
+//     - string: =>src
+//     - []byte: =>string(src)
+//     - bool: "true" or "false"
+//     - int64: strconv.FormatInt(src, 64)
+//     - float64: strconv.FormatFloat(src, 'f', -1, 64)
+//     - time.Time: src.In(Location).Format(DatetimeLayout)
+//   *float32, *flaot64:
+//     - float64, int64: =>src
+//   *int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64:
+//     - int64: =>src
+//
+func (s nullScanner) Scan(src interface{}) (err error) {
+	if src == nil {
+		return
+	}
+
+	switch v := s.Value.(type) {
+	case *time.Duration:
+		switch s := src.(type) {
+		case string:
+			*v, err = time.ParseDuration(s)
+
+		case int64:
+			*v = time.Duration(s) * time.Millisecond
+
+		default:
+			err = fmt.Errorf("converting %T to time.Duration is unsupported", src)
+		}
+
+	case *time.Time:
+		switch s := src.(type) {
+		case string:
+			*v, err = cast.StringToTimeInLocation(Location, s, DatetimeLayout)
+
+		case int64:
+			*v = time.Unix(s, 0)
+
+		case time.Time:
+			*v = s
+
+		default:
+			err = fmt.Errorf("converting %T to time.Time is unsupported", src)
+		}
+
+	case *bool:
+		*v, err = cast.ToBool(src)
+
+	case *int:
+		if s, ok := src.(int64); ok {
+			*v = int(s)
+		} else {
+			err = fmt.Errorf("converting %T to int is unsupported", src)
+		}
+
+	case *int8:
+		if s, ok := src.(int64); ok {
+			*v = int8(s)
+		} else {
+			err = fmt.Errorf("converting %T to int8 is unsupported", src)
+		}
+
+	case *int16:
+		if s, ok := src.(int64); ok {
+			*v = int16(s)
+		} else {
+			err = fmt.Errorf("converting %T to int16 is unsupported", src)
+		}
+
+	case *int32:
+		if s, ok := src.(int64); ok {
+			*v = int32(s)
+		} else {
+			err = fmt.Errorf("converting %T to int32 is unsupported", src)
+		}
+
+	case *int64:
+		if s, ok := src.(int64); ok {
+			*v = s
+		} else {
+			err = fmt.Errorf("converting %T to int64 is unsupported", src)
+		}
+
+	case *uint:
+		if s, ok := src.(int64); ok {
+			*v = uint(s)
+		} else {
+			err = fmt.Errorf("converting %T to uint is unsupported", src)
+		}
+
+	case *uint8:
+		if s, ok := src.(int64); ok {
+			*v = uint8(s)
+		} else {
+			err = fmt.Errorf("converting %T to uint8 is unsupported", src)
+		}
+
+	case *uint16:
+		if s, ok := src.(int64); ok {
+			*v = uint16(s)
+		} else {
+			err = fmt.Errorf("converting %T to uint16 is unsupported", src)
+		}
+
+	case *uint32:
+		if s, ok := src.(int64); ok {
+			*v = uint32(s)
+		} else {
+			err = fmt.Errorf("converting %T to uint32 is unsupported", src)
+		}
+
+	case *uint64:
+		if s, ok := src.(int64); ok {
+			*v = uint64(s)
+		} else {
+			err = fmt.Errorf("converting %T to uint64 is unsupported", src)
+		}
+
+	case *float32:
+		switch s := src.(type) {
+		case int64:
+			*v = float32(s)
+
+		case float64:
+			*v = float32(s)
+
+		default:
+			err = fmt.Errorf("converting %T to float32 is unsupported", src)
+		}
+
+	case *float64:
+		switch s := src.(type) {
+		case int64:
+			*v = float64(s)
+
+		case float64:
+			*v = s
+
+		default:
+			err = fmt.Errorf("converting %T to float64 is unsupported", src)
+		}
+
+	case *string:
+		switch s := src.(type) {
+		case int64:
+			*v = strconv.FormatInt(s, 64)
+
+		case float64:
+			*v = strconv.FormatFloat(s, 'f', -1, 64)
+
+		case string:
+			*v = s
+
+		case []byte:
+			*v = string(s)
+
+		case bool:
+			if s {
+				*v = "true"
+			} else {
+				*v = "false"
+			}
+
+		case time.Time:
+			*v = s.In(Location).Format(DatetimeLayout)
+
+		default:
+			err = fmt.Errorf("converting %T to string is unsupported", src)
+		}
+
+	default:
+		panic(fmt.Errorf("unsupported type '%T'", src))
+	}
+
 	return
 }
