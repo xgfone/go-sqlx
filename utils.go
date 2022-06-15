@@ -139,7 +139,44 @@ func (b *Bool) Scan(src interface{}) (err error) {
 	return
 }
 
-func scanValuers(scan func(...interface{}) error, dests ...interface{}) error {
+// ScanRow uses the function scan to scan the sql row into dests,
+// which may be used as a proxy of the function sql.Row.Scan or sql.Rows.Scan.
+//
+// If the dest value is the basic builtin types as follow, it will be wrapped
+// to support the sql NULL and the converting from other types.
+//
+//   - *time.Duration:
+//       - string: time.ParseDuration(src)
+//       - []byte: time.ParseDuration(string(src))
+//       - int64: time.Duration(src) * time.Millisecond
+//   - *time.Time:
+//       - time.Time: =>src
+//       - int64: time.Unix(src, 0)
+//       - string: time.ParseInLocation(DatetimeLayout, src, Location))
+//       - []byte: time.ParseInLocation(DatetimeLayout, string(src), Location))
+//   - *bool:
+//       - cast.ToBool(src)
+//   - *string:
+//       - string: =>src
+//       - []byte: =>string(src)
+//       - bool: "true" or "false"
+//       - int64: strconv.FormatInt(src, 64)
+//       - float64: strconv.FormatFloat(src, 'f', -1, 64)
+//       - time.Time: src.In(Location).Format(DatetimeLayout)
+//   - *float32, *float64:
+//       - float64, int64: =>src
+//       - string: strconv.ParseFloat(src, 64)
+//       - []byte: strconv.ParseFloat(string(src), 64)
+//   - *int, *int8, *int16, *int32, *int64:
+//       - int64, float64: =>src
+//       - string: strconv.ParseInt(src, 10, 64)
+//       - []byte: strconv.ParseInt(string(src), 10, 64)
+//   - *uint, *uint8, *uint16, *uint32, *uint64:
+//       - int64, float64: =>src
+//       - string: strconv.ParseUint(src, 10, 64)
+//       - []byte: strconv.ParseUint(string(src), 10, 64)
+//
+func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error {
 	results := make([]interface{}, len(dests))
 	for i, dest := range dests {
 		switch dest.(type) {
@@ -161,28 +198,6 @@ func scanValuers(scan func(...interface{}) error, dests ...interface{}) error {
 
 type nullScanner struct{ Value interface{} }
 
-// Supports value types:
-//   *time.Duration:
-//     - string: time.ParseDuration(src)
-//     - int64: time.Duration(src) * time.Millisecond
-//   *time.Time:
-//     - time.Time: =>src
-//     - string: time.ParseInLocation(DatetimeLayout, src, Location))
-//     - int64: time.Unix(s, 0)
-//   *bool:
-//     - cast.ToBool(src)
-//   *string:
-//     - string: =>src
-//     - []byte: =>string(src)
-//     - bool: "true" or "false"
-//     - int64: strconv.FormatInt(src, 64)
-//     - float64: strconv.FormatFloat(src, 'f', -1, 64)
-//     - time.Time: src.In(Location).Format(DatetimeLayout)
-//   *float32, *flaot64:
-//     - float64, int64: =>src
-//   *int, *int8, *int16, *int32, *int64, *uint, *uint8, *uint16, *uint32, *uint64:
-//     - int64: =>src
-//
 func (s nullScanner) Scan(src interface{}) (err error) {
 	if src == nil {
 		return
@@ -193,6 +208,9 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 		switch s := src.(type) {
 		case string:
 			*v, err = time.ParseDuration(s)
+
+		case []byte:
+			*v, err = time.ParseDuration(string(s))
 
 		case int64:
 			*v = time.Duration(s) * time.Millisecond
@@ -205,6 +223,9 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 		switch s := src.(type) {
 		case string:
 			*v, err = cast.StringToTimeInLocation(Location, s, DatetimeLayout)
+
+		case []byte:
+			*v, err = cast.StringToTimeInLocation(Location, string(s), DatetimeLayout)
 
 		case int64:
 			*v = time.Unix(s, 0)
@@ -220,72 +241,230 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 		*v, err = cast.ToBool(src)
 
 	case *int:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = int(s)
-		} else {
+
+		case float64:
+			*v = int(s)
+
+		case string:
+			var i int64
+			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+				*v = int(i)
+			}
+
+		case []byte:
+			var i int64
+			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+				*v = int(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to int is unsupported", src)
 		}
 
 	case *int8:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = int8(s)
-		} else {
+
+		case float64:
+			*v = int8(s)
+
+		case string:
+			var i int64
+			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+				*v = int8(i)
+			}
+
+		case []byte:
+			var i int64
+			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+				*v = int8(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to int8 is unsupported", src)
 		}
 
 	case *int16:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = int16(s)
-		} else {
+
+		case float64:
+			*v = int16(s)
+
+		case string:
+			var i int64
+			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+				*v = int16(i)
+			}
+
+		case []byte:
+			var i int64
+			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+				*v = int16(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to int16 is unsupported", src)
 		}
 
 	case *int32:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = int32(s)
-		} else {
+
+		case float64:
+			*v = int32(s)
+
+		case string:
+			var i int64
+			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+				*v = int32(i)
+			}
+
+		case []byte:
+			var i int64
+			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+				*v = int32(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to int32 is unsupported", src)
 		}
 
 	case *int64:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = s
-		} else {
+
+		case float64:
+			*v = int64(s)
+
+		case string:
+			*v, err = strconv.ParseInt(s, 10, 64)
+
+		case []byte:
+			*v, err = strconv.ParseInt(string(s), 10, 64)
+
+		default:
 			err = fmt.Errorf("converting %T to int64 is unsupported", src)
 		}
 
 	case *uint:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = uint(s)
-		} else {
+
+		case float64:
+			*v = uint(s)
+
+		case string:
+			var i uint64
+			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+				*v = uint(i)
+			}
+
+		case []byte:
+			var i uint64
+			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+				*v = uint(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to uint is unsupported", src)
 		}
 
 	case *uint8:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = uint8(s)
-		} else {
+
+		case float64:
+			*v = uint8(s)
+
+		case string:
+			var i uint64
+			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+				*v = uint8(i)
+			}
+
+		case []byte:
+			var i uint64
+			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+				*v = uint8(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to uint8 is unsupported", src)
 		}
 
 	case *uint16:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = uint16(s)
-		} else {
+
+		case float64:
+			*v = uint16(s)
+
+		case string:
+			var i uint64
+			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+				*v = uint16(i)
+			}
+
+		case []byte:
+			var i uint64
+			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+				*v = uint16(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to uint16 is unsupported", src)
 		}
 
 	case *uint32:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = uint32(s)
-		} else {
+
+		case float64:
+			*v = uint32(s)
+
+		case string:
+			var i uint64
+			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+				*v = uint32(i)
+			}
+
+		case []byte:
+			var i uint64
+			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+				*v = uint32(i)
+			}
+
+		default:
 			err = fmt.Errorf("converting %T to uint32 is unsupported", src)
 		}
 
 	case *uint64:
-		if s, ok := src.(int64); ok {
+		switch s := src.(type) {
+		case int64:
 			*v = uint64(s)
-		} else {
+
+		case float64:
+			*v = uint64(s)
+
+		case string:
+			*v, err = strconv.ParseUint(s, 10, 64)
+
+		case []byte:
+			*v, err = strconv.ParseUint(string(s), 10, 64)
+
+		default:
 			err = fmt.Errorf("converting %T to uint64 is unsupported", src)
 		}
 
@@ -296,6 +475,18 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case float64:
 			*v = float32(s)
+
+		case string:
+			var f float64
+			if f, err = strconv.ParseFloat(s, 64); err == nil {
+				*v = float32(f)
+			}
+
+		case []byte:
+			var f float64
+			if f, err = strconv.ParseFloat(string(s), 64); err == nil {
+				*v = float32(f)
+			}
 
 		default:
 			err = fmt.Errorf("converting %T to float32 is unsupported", src)
@@ -308,6 +499,12 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case float64:
 			*v = s
+
+		case string:
+			*v, err = strconv.ParseFloat(s, 64)
+
+		case []byte:
+			*v, err = strconv.ParseFloat(string(s), 64)
 
 		default:
 			err = fmt.Errorf("converting %T to float64 is unsupported", src)

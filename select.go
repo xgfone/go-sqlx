@@ -561,13 +561,13 @@ type Rows struct {
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Row
 // and supports that the sql value is NULL.
 func (r Row) Scan(dests ...interface{}) (err error) {
-	return scanValuers(r.Row.Scan, dests...)
+	return ScanRow(r.Row.Scan, dests...)
 }
 
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
 // and supports that the sql value is NULL.
 func (r Rows) Scan(dests ...interface{}) (err error) {
-	return scanValuers(r.Rows.Scan, dests...)
+	return ScanRow(r.Rows.Scan, dests...)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
