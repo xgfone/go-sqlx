@@ -160,7 +160,7 @@ func (b *Bool) Scan(src interface{}) (err error) {
 //       - string: =>src
 //       - []byte: =>string(src)
 //       - bool: "true" or "false"
-//       - int64: strconv.FormatInt(src, 64)
+//       - int64: strconv.FormatInt(src, 10)
 //       - float64: strconv.FormatFloat(src, 'f', -1, 64)
 //       - time.Time: src.In(Location).Format(DatetimeLayout)
 //   - *float32, *float64:
@@ -513,7 +513,7 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 	case *string:
 		switch s := src.(type) {
 		case int64:
-			*v = strconv.FormatInt(s, 64)
+			*v = strconv.FormatInt(s, 10)
 
 		case float64:
 			*v = strconv.FormatFloat(s, 'f', -1, 64)
