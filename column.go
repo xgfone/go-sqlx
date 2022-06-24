@@ -217,7 +217,7 @@ func (c Column) GtEq(value interface{}) ColumnCondition {
 
 // In is equal to In(c.Name(), value).
 func (c Column) In(values ...interface{}) ColumnCondition {
-	return In(c.Name(), values)
+	return In(c.Name(), values...)
 }
 
 // IsNotNull is equal to IsNotNull(c.Name()).
