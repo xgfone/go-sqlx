@@ -265,6 +265,27 @@ func (b *SelectBuilder) From(table string, alias ...string) *SelectBuilder {
 	return b
 }
 
+// Froms is the same as b.From(table0).From(table1)...
+func (b *SelectBuilder) Froms(tables ...string) *SelectBuilder {
+	for _, table := range tables {
+		b.From(table)
+	}
+	return b
+}
+
+// FromTable is equal to b.From(table.Name, alias...).
+func (b *SelectBuilder) FromTable(table Table, alias ...string) *SelectBuilder {
+	return b.From(table.Name, alias...)
+}
+
+// FromTables is the same as b.FromTable(table0).FromTable(table1)...
+func (b *SelectBuilder) FromTables(tables ...Table) *SelectBuilder {
+	for _, table := range tables {
+		b.From(table.Name)
+	}
+	return b
+}
+
 // Join appends the "JOIN table ON on..." statement.
 func (b *SelectBuilder) Join(table, alias string, ons ...JoinOn) *SelectBuilder {
 	return b.joinTable("", table, alias, ons...)
