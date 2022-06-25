@@ -31,7 +31,7 @@ const DatetimeLayout = "2006-01-02 15:04:05"
 var Location = time.Local
 
 // DefaultDB is the default global DB.
-var DefaultDB *DB
+var DefaultDB = new(DB)
 
 // SetConnURLLocation sets the argument "loc" in the connection url if missing.
 //
