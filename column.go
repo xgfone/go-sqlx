@@ -185,6 +185,36 @@ func (c Column) ColumnNotEqual(otherColumn string) Condition {
 	return ColumnNotEqual(c.Name(), otherColumn)
 }
 
+// EqualColumn is equal to ColumnEqual(c.Name(), other.Name()).
+func (c Column) EqualColumn(other Column) Condition {
+	return ColumnEqual(c.Name(), other.Name())
+}
+
+// GreaterColumn is equal to ColumnGreater(c.Name(), other.Name()).
+func (c Column) GreaterColumn(other Column) Condition {
+	return ColumnGreater(c.Name(), other.Name())
+}
+
+// GreaterEqualColumn is equal to ColumnGreaterEqual(c.Name(), other.Name()).
+func (c Column) GreaterEqualColumn(other Column) Condition {
+	return ColumnGreaterEqual(c.Name(), other.Name())
+}
+
+// LessColumn is equal to ColumnLess(c.Name(), other.Name()).
+func (c Column) LessColumn(other Column) Condition {
+	return ColumnLess(c.Name(), other.Name())
+}
+
+// LessEqualColumn is equal to ColumnLessEqual(c.Name(), other.Name()).
+func (c Column) LessEqualColumn(other Column) Condition {
+	return ColumnLessEqual(c.Name(), other.Name())
+}
+
+// NotEqualColumn is equal to ColumnNotEqual(c.Name(), other.Name()).
+func (c Column) NotEqualColumn(other Column) Condition {
+	return ColumnNotEqual(c.Name(), other.Name())
+}
+
 // Eq is equal to Eq(c.Name(), value).
 func (c Column) Eq(value interface{}) ColumnCondition {
 	return Eq(c.Name(), value)
