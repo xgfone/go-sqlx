@@ -14,10 +14,21 @@
 
 package sqlx
 
-// Base is the common columns of the table.
+// DateTimeZero is the ZERO of the sql datetime.
+const DateTimeZero = "0000-00-00 00:00:00"
+
+// Pre-define some common columns.
+var (
+	ColumnID        = NewColumn("id")
+	ColumnCreatedAt = NewColumn("created_at")
+	ColumnDeletedAt = NewColumn("deleted_at")
+	ColumnUpdatedAt = NewColumn("updated_at")
+)
+
+// Base is the common columns of the sql table.
 type Base struct {
-	ID         int  `sql:"id,omitempty" json:"Id"`
-	IsDeleted  bool `sql:"is_deleted" json:"-"`
-	CreateTime Time `sql:"create_time,omitempty"`
-	UpdateTime Time `sql:"update_time,omitempty"`
+	ID        int  `sql:"id,omitempty" json:"Id,omitempty"`
+	DeletedAt Time `sql:"deleted_at,omitempty" json:"-"`
+	CreatedAt Time `sql:"created_at,omitempty"`
+	UpdatedAt Time `sql:"updated_at,omitempty"`
 }
