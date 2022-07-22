@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/xgfone/cast"
 )
@@ -151,6 +152,8 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 //
 //   1. If the value of the tag is "-", however, the field will be ignored.
 //   2. If the tag value contains "omitempty", the ZERO field will be ignored.
+//   3. If the tag is equal to "noinline", for the embeded struct, do not scan
+//      the fields of the embeded struct.
 //
 func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 	if s == nil {
@@ -174,11 +177,11 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 	}
 
 	args := make([]sql.NamedArg, 0, v.NumField())
-	args = b.insertStruct(v, args)
+	args = b.insertStruct("", v, args)
 	return b.NamedValues(args...)
 }
 
-func (b *InsertBuilder) insertStruct(v reflect.Value, args []sql.NamedArg) []sql.NamedArg {
+func (b *InsertBuilder) insertStruct(prefix string, v reflect.Value, args []sql.NamedArg) []sql.NamedArg {
 	vt := v.Type()
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
@@ -199,12 +202,18 @@ func (b *InsertBuilder) insertStruct(v reflect.Value, args []sql.NamedArg) []sql
 			name = tag
 		}
 
-		if vft.Anonymous {
-			args = b.insertStruct(v.Field(i), args)
-			continue
+		vf := v.Field(i)
+		if vft.Type.Kind() == reflect.Struct {
+			if tag != "noinline" {
+				switch vf.Interface().(type) {
+				case time.Time, Time:
+				default:
+					args = b.insertStruct(formatFieldName(prefix, tag), vf, args)
+					continue
+				}
+			}
 		}
 
-		vf := v.Field(i)
 		if !vf.IsValid() {
 			continue
 		} else if notZero && cast.IsZero(vf.Interface()) {

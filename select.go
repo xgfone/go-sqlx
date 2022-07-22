@@ -21,7 +21,11 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
+
+// Sep is the separator by the select struct.
+var Sep = "_"
 
 // Select is short for NewSelectBuilder.
 func Select(column string, alias ...string) *SelectBuilder {
@@ -185,6 +189,8 @@ func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
 // columns, which supports the tag named "sql" to modify the column name.
 //
 // If the value of the tag is "-", however, the field will be ignored.
+// If the tag is equal to "noinline", for the embeded struct, do not scan
+// the fields of the embeded struct.
 func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	if s == nil {
 		return b
@@ -192,6 +198,7 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 
 	v := reflect.ValueOf(s)
 	switch kind := v.Kind(); kind {
+	case reflect.Struct:
 	case reflect.Ptr:
 		if v.IsNil() {
 			return b
@@ -201,7 +208,6 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 		if v.Kind() != reflect.Struct {
 			panic("not a pointer to struct")
 		}
-	case reflect.Struct:
 	default:
 		panic("not a struct")
 	}
@@ -211,11 +217,11 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 		ftable = table[0]
 	}
 
-	b.selectStruct(v, ftable)
+	b.selectStruct(v, ftable, "")
 	return b
 }
 
-func (b *SelectBuilder) selectStruct(v reflect.Value, ftable string) {
+func (b *SelectBuilder) selectStruct(v reflect.Value, ftable, prefix string) {
 	vt := v.Type()
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
@@ -232,11 +238,18 @@ func (b *SelectBuilder) selectStruct(v reflect.Value, ftable string) {
 			name = tag
 		}
 
-		if vft.Anonymous {
-			b.selectStruct(v.Field(i), ftable)
-			continue
+		if vft.Type.Kind() == reflect.Struct {
+			if tag != "noinline" {
+				switch vf := v.Field(i); vf.Interface().(type) {
+				case time.Time, Time:
+				default:
+					b.selectStruct(vf, ftable, formatFieldName(prefix, tag))
+					continue
+				}
+			}
 		}
 
+		name = formatFieldName(prefix, name)
 		if ftable != "" {
 			name = fmt.Sprintf("%s.%s", ftable, name)
 		}
@@ -604,8 +617,11 @@ func (r Rows) ScanStruct(s interface{}) (err error) {
 }
 
 // ScanColumnsToStruct scans the columns into the fields of the struct s,
-// which supports the tag named "sql" to modify the field name. If the value
-// of the tag is "-", however, the field will be ignored.
+// which supports the tag named "sql" to modify the field name.
+//
+// If the value of the tag is "-", however, the field will be ignored.
+// If the tag is equal to "noinline", for the embeded struct, do not scan
+// the fields of the embeded struct.
 func ScanColumnsToStruct(scan func(...interface{}) error, columns []string,
 	s interface{}) (err error) {
 	fields := getFields(s)
@@ -625,11 +641,11 @@ func getFields(s interface{}) map[string]reflect.Value {
 	}
 
 	vs := make(map[string]reflect.Value, v.NumField()*2)
-	getFieldsFromStruct(v, vs)
+	getFieldsFromStruct("", v, vs)
 	return vs
 }
 
-func getFieldsFromStruct(v reflect.Value, vs map[string]reflect.Value) {
+func getFieldsFromStruct(prefix string, v reflect.Value, vs map[string]reflect.Value) {
 	vt := v.Type()
 	_len := v.NumField()
 	for i := 0; i < _len; i++ {
@@ -647,11 +663,30 @@ func getFieldsFromStruct(v reflect.Value, vs map[string]reflect.Value) {
 			name = tag
 		}
 
-		if vft.Anonymous {
-			getFieldsFromStruct(v.Field(i), vs)
-			continue
+		vf := v.Field(i)
+		if vft.Type.Kind() == reflect.Struct {
+			if tag != "noinline" {
+				switch vf.Interface().(type) {
+				case time.Time, Time:
+				default:
+					getFieldsFromStruct(formatFieldName(prefix, tag), vf, vs)
+					continue
+				}
+			}
 		}
 
-		vs[name] = v.Field(i)
+		if vf.CanSet() {
+			vs[formatFieldName(prefix, name)] = v.Field(i)
+		}
 	}
+}
+
+func formatFieldName(prefix, name string) string {
+	if len(prefix) == 0 {
+		return name
+	}
+	if len(name) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s%s%s", prefix, Sep, name)
 }
