@@ -152,8 +152,8 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 //
 //   1. If the value of the tag is "-", however, the field will be ignored.
 //   2. If the tag value contains "omitempty", the ZERO field will be ignored.
-//   3. If the tag is equal to "noinline", for the embeded struct, do not scan
-//      the fields of the embeded struct.
+//   3. If the tag contains the attribute "notpropagate", for the embeded struct,
+//      do not scan the fields of the embeded struct.
 //
 func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 	if s == nil {
@@ -183,40 +183,44 @@ func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 
 func (b *InsertBuilder) insertStruct(prefix string, v reflect.Value, args []sql.NamedArg) []sql.NamedArg {
 	vt := v.Type()
+
+LOOP:
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
-		name := vft.Name
 
-		var notZero bool
-		tag := vft.Tag.Get("sql")
-		if index := strings.IndexByte(tag, ','); index > -1 {
-			if strings.TrimSpace(tag[index+1:]) == "omitempty" {
-				notZero = true
-			}
-			tag = strings.TrimSpace(tag[:index])
+		var targs string
+		tname := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tname, ','); index > -1 {
+			targs = tname[index+1:]
+			tname = strings.TrimSpace(tname[:index])
 		}
 
-		if tag == "-" {
+		if tname == "-" {
 			continue
-		} else if tag != "" {
-			name = tag
+		}
+
+		name := vft.Name
+		if tname != "" {
+			name = tname
 		}
 
 		vf := v.Field(i)
 		if vft.Type.Kind() == reflect.Struct {
-			if tag != "noinline" {
-				switch vf.Interface().(type) {
-				case time.Time, Time:
-				default:
-					args = b.insertStruct(formatFieldName(prefix, tag), vf, args)
-					continue
-				}
+			if tagContainAttr(targs, "notpropagate") {
+				continue
+			}
+
+			switch vf.Interface().(type) {
+			case time.Time, Time:
+			default:
+				args = b.insertStruct(formatFieldName(prefix, tname), vf, args)
+				continue LOOP
 			}
 		}
 
 		if !vf.IsValid() {
 			continue
-		} else if notZero && cast.IsZero(vf.Interface()) {
+		} else if tagContainAttr(targs, "omitempty") && cast.IsZero(vf.Interface()) {
 			continue
 		} else if vf.Kind() == reflect.Ptr {
 			vf = vf.Elem()

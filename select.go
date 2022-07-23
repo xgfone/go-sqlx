@@ -189,8 +189,8 @@ func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
 // columns, which supports the tag named "sql" to modify the column name.
 //
 // If the value of the tag is "-", however, the field will be ignored.
-// If the tag is equal to "noinline", for the embeded struct, do not scan
-// the fields of the embeded struct.
+// If the tag contains the attribute "notpropagate", for the embeded struct,
+// do not scan the fields of the embeded struct.
 func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuilder {
 	if s == nil {
 		return b
@@ -223,29 +223,37 @@ func (b *SelectBuilder) SelectStruct(s interface{}, table ...string) *SelectBuil
 
 func (b *SelectBuilder) selectStruct(v reflect.Value, ftable, prefix string) {
 	vt := v.Type()
+
+LOOP:
 	for i, _len := 0, v.NumField(); i < _len; i++ {
 		vft := vt.Field(i)
-		name := vft.Name
 
-		tag := vft.Tag.Get("sql")
-		if index := strings.IndexByte(tag, ','); index > -1 {
-			tag = strings.TrimSpace(tag[:index])
+		var targs string
+		tname := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tname, ','); index > -1 {
+			targs = tname[index+1:]
+			tname = strings.TrimSpace(tname[:index])
 		}
 
-		if tag == "-" {
+		if tname == "-" {
 			continue
-		} else if tag != "" {
-			name = tag
+		}
+
+		name := vft.Name
+		if tname != "" {
+			name = tname
 		}
 
 		if vft.Type.Kind() == reflect.Struct {
-			if tag != "noinline" {
-				switch vf := v.Field(i); vf.Interface().(type) {
-				case time.Time, Time:
-				default:
-					b.selectStruct(vf, ftable, formatFieldName(prefix, tag))
-					continue
-				}
+			if tagContainAttr(targs, "notpropagate") {
+				continue
+			}
+
+			switch vf := v.Field(i); vf.Interface().(type) {
+			case time.Time, Time:
+			default:
+				b.selectStruct(vf, ftable, formatFieldName(prefix, tname))
+				continue LOOP
 			}
 		}
 
@@ -620,8 +628,8 @@ func (r Rows) ScanStruct(s interface{}) (err error) {
 // which supports the tag named "sql" to modify the field name.
 //
 // If the value of the tag is "-", however, the field will be ignored.
-// If the tag is equal to "noinline", for the embeded struct, do not scan
-// the fields of the embeded struct.
+// If the tag contains the attribute "notpropagate", for the embeded struct,
+// do not scan the fields of the embeded struct.
 func ScanColumnsToStruct(scan func(...interface{}) error, columns []string,
 	s interface{}) (err error) {
 	fields := getFields(s)
@@ -648,30 +656,38 @@ func getFields(s interface{}) map[string]reflect.Value {
 func getFieldsFromStruct(prefix string, v reflect.Value, vs map[string]reflect.Value) {
 	vt := v.Type()
 	_len := v.NumField()
+
+LOOP:
 	for i := 0; i < _len; i++ {
 		vft := vt.Field(i)
-		name := vft.Name
 
-		tag := vft.Tag.Get("sql")
-		if index := strings.IndexByte(tag, ','); index > -1 {
-			tag = strings.TrimSpace(tag[:index])
+		var targs string
+		tname := vft.Tag.Get("sql")
+		if index := strings.IndexByte(tname, ','); index > -1 {
+			targs = tname[index+1:]
+			tname = strings.TrimSpace(tname[:index])
 		}
 
-		if tag == "-" {
+		if tname == "-" {
 			continue
-		} else if tag != "" {
-			name = tag
+		}
+
+		name := vft.Name
+		if tname != "" {
+			name = tname
 		}
 
 		vf := v.Field(i)
 		if vft.Type.Kind() == reflect.Struct {
-			if tag != "noinline" {
-				switch vf.Interface().(type) {
-				case time.Time, Time:
-				default:
-					getFieldsFromStruct(formatFieldName(prefix, tag), vf, vs)
-					continue
-				}
+			if tagContainAttr(targs, "notpropagate") {
+				continue
+			}
+
+			switch vf.Interface().(type) {
+			case time.Time, Time:
+			default:
+				getFieldsFromStruct(formatFieldName(prefix, tname), vf, vs)
+				continue LOOP
 			}
 		}
 

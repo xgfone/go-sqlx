@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2022 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,18 @@ var slicepool = sync.Pool{New: func() interface{} {
 
 func getSlice() []interface{}   { return slicepool.Get().([]interface{}) }
 func putSlice(ss []interface{}) { ss = ss[:0]; slicepool.Put(ss) }
+
+func tagContainAttr(targ, attr string) bool {
+	for {
+		if index := strings.IndexByte(targ, ','); index == -1 {
+			return targ == attr
+		} else if targ[:index] == attr {
+			return true
+		} else {
+			targ = targ[index+1:]
+		}
+	}
+}
 
 // CheckErrNoRows extracts the error sql.ErrNoRows as the bool, which returns
 //
