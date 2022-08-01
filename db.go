@@ -58,8 +58,14 @@ func SetConnURLLocation(connURL string, loc *time.Location) string {
 // Config is used to configure the DB.
 type Config func(*DB)
 
+// Opener is used to open a *sql.DB.
+type Opener func(driverName, dataSourceName string) (*sql.DB, error)
+
 // DefaultConfigs is the default configs.
 var DefaultConfigs = []Config{MaxOpenConns(0)}
+
+// DefaultOpener is used to open a *sql.DB.
+var DefaultOpener Opener = sql.Open
 
 // MaxOpenConns returns a Config to set the maximum number of the open connection.
 //
@@ -98,7 +104,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 			driverName)
 	}
 
-	db, err := sql.Open(driverName, dataSourceName)
+	db, err := DefaultOpener(driverName, dataSourceName)
 	if err != nil {
 		return nil, err
 	}
