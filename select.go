@@ -409,27 +409,47 @@ func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 	return b
 }
 
-// Query builds the sql and executes it by *sql.DB.
+// Query builds the sql and executes it.
 func (b *SelectBuilder) Query() (Rows, error) {
 	return b.QueryContext(context.Background())
 }
 
-// QueryContext builds the sql and executes it by *sql.DB.
+// QueryContext builds the sql and executes it.
 func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
 	query, args := b.Build()
-	rows, err := b.executor.QueryContext(ctx, query, args...)
-	return Rows{b, rows}, err
+	return b.QueryRawContext(ctx, query, args...)
 }
 
-// QueryRow builds the sql and executes it by *sql.DB.
+// QueryRow builds the sql and executes it.
 func (b *SelectBuilder) QueryRow() Row {
 	return b.QueryRowContext(context.Background())
 }
 
-// QueryRowContext builds the sql and executes it by *sql.DB.
+// QueryRowContext builds the sql and executes it.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	query, args := b.Build()
-	return Row{b, b.executor.QueryRowContext(ctx, query, args...)}
+	return b.QueryRowRawContext(ctx, query, args...)
+}
+
+// QueryRaw executes the raw sql with the arguments.
+func (b *SelectBuilder) QueryRaw(rawsql string, args ...interface{}) (Rows, error) {
+	return b.QueryRawContext(context.Background(), rawsql, args...)
+}
+
+// QueryRawContext executes the raw sql with the arguments.
+func (b *SelectBuilder) QueryRawContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
+	rows, err := b.executor.QueryContext(ctx, rawsql, args...)
+	return Rows{b, rows}, err
+}
+
+// QueryRowRaw executes the raw sql with the arguments.
+func (b *SelectBuilder) QueryRowRaw(rawsql string, args ...interface{}) Row {
+	return b.QueryRowRawContext(context.Background(), rawsql, args...)
+}
+
+// QueryRowRawContext executes the raw sql with the arguments.
+func (b *SelectBuilder) QueryRowRawContext(ctx context.Context, rawsql string, args ...interface{}) Row {
+	return Row{b, b.executor.QueryRowContext(ctx, rawsql, args...)}
 }
 
 // SetExecutor sets the executor to exec.
