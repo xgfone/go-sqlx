@@ -50,27 +50,22 @@ func (r Rows) ScanSlice(slice interface{}) (err error) {
 		panic("Rows.ScanSlice: the value must be a pointer to a slice")
 	}
 
+	scan := r.scansingle
 	et := vf.Type().Elem()
-	var elemIsStruct bool
 	if et.Kind() == reflect.Struct {
-		elemIsStruct = true
+		scan = r.ScanStruct
 	}
 
 	for r.Next() {
 		e := reflect.New(et)
-		if elemIsStruct {
-			if err := r.ScanStruct(e.Interface()); err != nil {
-				return err
-			}
-		} else {
-			if err := r.Scan(e.Interface()); err != nil {
-				return err
-			}
+		if err := scan(e.Interface()); err != nil {
+			return err
 		}
-
 		vf = reflect.Append(vf, e.Elem())
 	}
 
 	oldvf.Elem().Set(vf)
 	return nil
 }
+
+func (r Rows) scansingle(v interface{}) error { return r.Scan(v) }
