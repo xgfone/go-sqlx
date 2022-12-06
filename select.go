@@ -646,13 +646,25 @@ func (r Rows) Scan(dests ...interface{}) (err error) {
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Row) ScanStruct(s interface{}) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
+	columns := r.SelectedColumns()
+	if len(columns) == 0 {
+		if columns, err = r.Columns(); err != nil {
+			return
+		}
+	}
+	return ScanColumnsToStruct(r.Scan, columns, s)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Rows) ScanStruct(s interface{}) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
+	columns := r.SelectedColumns()
+	if len(columns) == 0 {
+		if columns, err = r.Columns(); err != nil {
+			return
+		}
+	}
+	return ScanColumnsToStruct(r.Scan, columns, s)
 }
 
 // ScanColumnsToStruct scans the columns into the fields of the struct s,
