@@ -43,3 +43,4 @@ debug_test
 
 # Unix hidden files
 .*
+_*
