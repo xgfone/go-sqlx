@@ -37,7 +37,7 @@ func TestAndOr(t *testing.T) {
 		NotBetween("c13", "u", "v"),
 	)
 
-	if sql := expr.Build(&args); sql != andors {
+	if sql := expr.BuildCondition(&args); sql != andors {
 		t.Errorf("expected '%s', got '%s'", andors, sql)
 	} else if _len := len(args.args); _len != 18 {
 		t.Errorf("expected '%d', got '%d'", 18, _len)

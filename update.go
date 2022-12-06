@@ -227,7 +227,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(setter.Build(ab))
+		buf.WriteString(setter.BuildSetter(ab))
 	}
 
 	// From
@@ -252,7 +252,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		}
 
 		buf.WriteString(" WHERE ")
-		buf.WriteString(expr.Build(ab))
+		buf.WriteString(expr.BuildCondition(ab))
 	}
 
 	sql = buf.String()

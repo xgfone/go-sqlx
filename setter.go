@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2022 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import "fmt"
 
 // Setter is the setter interface by Update.
 type Setter interface {
-	Build(*ArgsBuilder) string
+	BuildSetter(*ArgsBuilder) string
 }
 
 // ColumnSetter is the same as Setter with the column.
@@ -35,7 +35,7 @@ type assignSetter struct {
 }
 
 func (s assignSetter) Column() string { return s.column }
-func (s assignSetter) Build(a *ArgsBuilder) string {
+func (s assignSetter) BuildSetter(a *ArgsBuilder) string {
 	return fmt.Sprintf("%s=%s", a.Quote(s.column), a.Add(s.value))
 }
 
@@ -55,7 +55,7 @@ type twoSetter struct {
 }
 
 func (s twoSetter) Column() string { return s.column }
-func (s twoSetter) Build(a *ArgsBuilder) string {
+func (s twoSetter) BuildSetter(a *ArgsBuilder) string {
 	column := a.Quote(s.column)
 	return fmt.Sprintf(s.format, column, column)
 }
@@ -79,7 +79,7 @@ type threeSetter struct {
 }
 
 func (s threeSetter) Column() string { return s.column }
-func (s threeSetter) Build(a *ArgsBuilder) string {
+func (s threeSetter) BuildSetter(a *ArgsBuilder) string {
 	column := a.Quote(s.column)
 	return fmt.Sprintf(s.format, column, column, a.Add(s.value))
 }

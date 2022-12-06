@@ -197,7 +197,7 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 
 		ab := NewArgsBuilder(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(expr.Build(ab))
+		buf.WriteString(expr.BuildCondition(ab))
 		args = ab.Args()
 	}
 

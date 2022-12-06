@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2022 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ import (
 
 // Condition represents a condition of the WHERE statement.
 type Condition interface {
-	// Build builds and returns the condition expression.
+	// BuildCondition builds and returns the condition expression.
 	//
 	// If there are some arguments, they should be added into ArgsBuilder.
-	Build(*ArgsBuilder) string
+	BuildCondition(*ArgsBuilder) string
 }
 
 // ColumnCondition is the same as Condition with the column.
@@ -55,7 +55,7 @@ func newOneCondition(format, column string) ColumnCondition {
 }
 
 func (c oneCondition) Column() string { return c.column }
-func (c oneCondition) Build(b *ArgsBuilder) string {
+func (c oneCondition) BuildCondition(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column))
 }
 
@@ -70,7 +70,7 @@ func newTwoCondition(format, column string, value interface{}) ColumnCondition {
 }
 
 func (c twoCondition) Column() string { return c.column }
-func (c twoCondition) Build(b *ArgsBuilder) string {
+func (c twoCondition) BuildCondition(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column), b.Add(c.value))
 }
 
@@ -167,7 +167,7 @@ type inCondition struct {
 }
 
 func (c inCondition) Column() string { return c.column }
-func (c inCondition) Build(b *ArgsBuilder) string {
+func (c inCondition) BuildCondition(b *ArgsBuilder) string {
 	ss := make([]string, 0, len(c.values))
 	for _, v := range c.values {
 		ss = append(ss, b.Add(v))
@@ -195,7 +195,7 @@ type betweenCondition struct {
 }
 
 func (c betweenCondition) Column() string { return c.column }
-func (c betweenCondition) Build(b *ArgsBuilder) string {
+func (c betweenCondition) BuildCondition(b *ArgsBuilder) string {
 	return fmt.Sprintf(c.format, b.Quote(c.column), b.Add(c.lower), b.Add(c.upper))
 }
 
@@ -216,10 +216,10 @@ type groupCondition struct {
 	exprs []Condition
 }
 
-func (c groupCondition) Build(b *ArgsBuilder) string {
+func (c groupCondition) BuildCondition(b *ArgsBuilder) string {
 	ss := make([]string, len(c.exprs))
 	for i, expr := range c.exprs {
-		ss[i] = expr.Build(b)
+		ss[i] = expr.BuildCondition(b)
 	}
 	return fmt.Sprintf("(%s)", strings.Join(ss, c.join))
 }
@@ -238,7 +238,7 @@ type columnCondition struct {
 	right string
 }
 
-func (c columnCondition) Build(b *ArgsBuilder) string {
+func (c columnCondition) BuildCondition(b *ArgsBuilder) string {
 	return fmt.Sprintf("%s%s%s", b.Quote(c.left), c.op, b.Quote(c.right))
 }
 
@@ -246,7 +246,7 @@ func (c columnCondition) Build(b *ArgsBuilder) string {
 //
 // For example,
 //
-//   Column("column1", "=", "column2") ==> "column1 = column2"
+//	Column("column1", "=", "column2") ==> "column1 = column2"
 //
 // However, both column1 and column2 are escaped by the dialect.
 func ColumnCond(left, op, right string) Condition {

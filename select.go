@@ -546,7 +546,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 
 		buf.WriteString(" WHERE ")
 		ab := NewArgsBuilder(dialect)
-		buf.WriteString(expr.Build(ab))
+		buf.WriteString(expr.BuildCondition(ab))
 		args = ab.Args()
 	}
 
