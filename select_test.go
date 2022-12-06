@@ -49,7 +49,7 @@ func ExampleSelectBuilder() {
 	// [123]
 	// SELECT `id` AS `c1`, `name` AS `c2` FROM `table` AS `alias` WHERE `id`=?
 	// [123]
-	// SELECT `A`.`id` AS `id`, `B`.`name` AS `name` FROM `table1` AS `A`, `table2` AS `B` WHERE `A`.`id`=`B`.`id`
+	// SELECT `A`.`id`, `B`.`name` FROM `table1` AS `A`, `table2` AS `B` WHERE `A`.`id`=`B`.`id`
 	// []
 }
 

@@ -71,6 +71,20 @@ func appendTable(tables []sqlTable, table, alias string) []sqlTable {
 	return append(tables, sqlTable{Table: table, Alias: alias})
 }
 
+func compactAlias(aliases []string) string {
+	if len(aliases) == 0 {
+		return ""
+	}
+	return aliases[0]
+}
+
+func extractName(name string) string {
+	if index := strings.LastIndexByte(name, '.'); index > -1 {
+		return name[index+1:]
+	}
+	return name
+}
+
 type selectedColumn struct {
 	Column string
 	Alias  string
@@ -157,25 +171,11 @@ func (b *SelectBuilder) Distinct() *SelectBuilder {
 	return b
 }
 
-func (b *SelectBuilder) getAlias(column string, alias []string) string {
-	if len(alias) != 0 && alias[0] != "" {
-		return alias[0]
-	} else if index := strings.IndexByte(column, '.'); index != -1 {
-		column = column[index+1:]
-		if index = strings.IndexByte(column, ')'); index != -1 {
-			column = column[:index]
-		}
-		return column
-	}
-	return ""
-}
-
 // Select appends the selected column in SELECT.
 func (b *SelectBuilder) Select(column string, alias ...string) *SelectBuilder {
 	if column != "" {
-		b.columns = append(b.columns, selectedColumn{column, b.getAlias(column, alias)})
+		b.columns = append(b.columns, selectedColumn{column, compactAlias(alias)})
 	}
-
 	return b
 }
 
@@ -275,10 +275,10 @@ LOOP:
 	}
 }
 
-// SelectedColumns returns the names of the selected columns.
+// SelectedFullColumns returns the full names of the selected columns.
 //
 // Notice: if the column has the alias, the alias will be returned instead.
-func (b *SelectBuilder) SelectedColumns() []string {
+func (b *SelectBuilder) SelectedFullColumns() []string {
 	cs := make([]string, len(b.columns))
 	for i, c := range b.columns {
 		if c.Alias == "" {
@@ -290,10 +290,23 @@ func (b *SelectBuilder) SelectedColumns() []string {
 	return cs
 }
 
+// SelectedColumns is the same as SelectedFullColumns, but returns the short
+// names instead.
+func (b *SelectBuilder) SelectedColumns() []string {
+	cs := make([]string, len(b.columns))
+	for i, c := range b.columns {
+		if c.Alias == "" {
+			cs[i] = extractName(c.Column)
+		} else {
+			cs[i] = c.Alias
+		}
+	}
+	return cs
+}
+
 // From sets table name in SELECT.
 func (b *SelectBuilder) From(table string, alias ...string) *SelectBuilder {
-	_alias := b.getAlias(table, alias)
-	b.tables = appendTable(b.tables, table, _alias)
+	b.tables = appendTable(b.tables, table, compactAlias(alias))
 	return b
 }
 

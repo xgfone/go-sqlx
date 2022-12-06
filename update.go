@@ -54,11 +54,7 @@ type UpdateBuilder struct {
 // Table appends the table name.
 func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
 	if table != "" {
-		var talias string
-		if len(alias) != 0 {
-			talias = alias[0]
-		}
-		b.tables = appendTable(b.tables, table, talias)
+		b.tables = appendTable(b.tables, table, compactAlias(alias))
 	}
 	return b
 }
@@ -66,11 +62,7 @@ func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
 // From appends the from table name.
 func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
 	if table != "" {
-		var talias string
-		if len(alias) != 0 {
-			talias = alias[0]
-		}
-		b.ftables = appendTable(b.ftables, table, talias)
+		b.ftables = appendTable(b.ftables, table, compactAlias(alias))
 	}
 	return b
 }

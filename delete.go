@@ -58,11 +58,7 @@ func (b *DeleteBuilder) Table(table string) *DeleteBuilder {
 // From sets the table name from where to be deleted.
 func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
 	if table != "" {
-		var talias string
-		if len(alias) != 0 {
-			talias = alias[0]
-		}
-		b.ftables = appendTable(b.ftables, table, talias)
+		b.ftables = appendTable(b.ftables, table, compactAlias(alias))
 	}
 	return b
 }
