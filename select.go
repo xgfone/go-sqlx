@@ -667,6 +667,18 @@ func (r Rows) ScanStruct(s interface{}) (err error) {
 	return ScanColumnsToStruct(r.Scan, columns, s)
 }
 
+// ScanStructWithColumns is the same as Scan, but the columns are scanned
+// into the struct s by using ScanColumnsToStruct.
+func (r Row) ScanStructWithColumns(s interface{}, columns ...string) (err error) {
+	return ScanColumnsToStruct(r.Scan, columns, s)
+}
+
+// ScanStructWithColumns is the same as Scan, but the columns are scanned
+// into the struct s by using ScanColumnsToStruct.
+func (r Rows) ScanStructWithColumns(s interface{}, columns ...string) (err error) {
+	return ScanColumnsToStruct(r.Scan, columns, s)
+}
+
 // ScanColumnsToStruct scans the columns into the fields of the struct s,
 // which supports the tag named "sql" to modify the field name.
 //
