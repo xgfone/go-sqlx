@@ -35,7 +35,7 @@ type ColumnCondition interface {
 
 // ConditionsContain reports whether the conditions contains the column.
 func ConditionsContain(conditions []Condition, column Column) bool {
-	name := column.Name()
+	name := column.FullName()
 	for _len := len(conditions) - 1; _len >= 0; _len-- {
 		cc, ok := conditions[_len].(ColumnCondition)
 		if ok && cc.Column() == name {

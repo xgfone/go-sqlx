@@ -38,7 +38,8 @@ func Selects(columns ...string) *SelectBuilder {
 	return s.Selects(columns...)
 }
 
-// SelectColumns is equal to Select(columns[0].Name()).Select(columns[1].Name())...
+// SelectColumns is equal to
+// Select(columns[0].FullName()).Select(columns[1].FullName())...
 func SelectColumns(columns ...Column) *SelectBuilder {
 	s := &SelectBuilder{dialect: DefaultDialect}
 	return s.SelectColumns(columns...)
@@ -187,10 +188,11 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 	return b
 }
 
-// SelectColumns is equal to b.Select(columns[0].Name()).Select(columns[1].Name())...
+// SelectColumns is equal to
+// b.Select(columns[0].FullName()).Select(columns[1].FullName())...
 func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
 	for _, c := range columns {
-		b.Select(c.Name(), c.AliasName)
+		b.Select(c.FullName(), c.Alias)
 	}
 	return b
 }

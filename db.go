@@ -157,7 +157,7 @@ func (db *DB) Selects(columns ...string) *SelectBuilder {
 		SetInterceptor(db.Interceptor)
 }
 
-// SelectColumns is equal to db.Select(columns[0].Name()).Select(columns[1].Name())...
+// SelectColumns is equal to db.Select(columns[0].FullName()).Select(columns[1].FullName())...
 func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
 	return SelectColumns(columns...).SetDialect(db.Dialect).
 		SetExecutor(db.getExecutor()).SetInterceptor(db.Interceptor)

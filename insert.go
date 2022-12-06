@@ -95,13 +95,13 @@ func (b *InsertBuilder) ColumnValues(columns ...Column) *InsertBuilder {
 		_len = len(columns)
 		b.columns = make([]string, _len)
 		for i := 0; i < _len; i++ {
-			b.columns[i] = columns[i].Name()
+			b.columns[i] = columns[i].FullName()
 		}
 	} else if _len != len(columns) {
 		panic("InsertBuilder: the numbers of the values for INSERT are not consistent")
 	} else {
 		for i := 0; i < _len; i++ {
-			if b.columns[i] != columns[i].Name() {
+			if b.columns[i] != columns[i].FullName() {
 				panic("InsertBuilder: inconsistent columns")
 			}
 		}
