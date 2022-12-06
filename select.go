@@ -80,7 +80,9 @@ func compactAlias(aliases []string) string {
 }
 
 func extractName(name string) string {
-	if index := strings.LastIndexByte(name, '.'); index > -1 {
+	if strings.IndexByte(name, '(') > -1 {
+		return name
+	} else if index := strings.LastIndexByte(name, '.'); index > -1 {
 		return name[index+1:]
 	}
 	return name
