@@ -61,6 +61,16 @@ type sqlTable struct {
 	Alias string
 }
 
+func appendTable(tables []sqlTable, table, alias string) []sqlTable {
+	for i, t := range tables {
+		if t.Table == table {
+			tables[i].Alias = alias
+			return tables
+		}
+	}
+	return append(tables, sqlTable{Table: table, Alias: alias})
+}
+
 type selectedColumn struct {
 	Column string
 	Alias  string
@@ -282,7 +292,8 @@ func (b *SelectBuilder) SelectedColumns() []string {
 
 // From sets table name in SELECT.
 func (b *SelectBuilder) From(table string, alias ...string) *SelectBuilder {
-	b.tables = append(b.tables, sqlTable{table, b.getAlias(table, alias)})
+	_alias := b.getAlias(table, alias)
+	b.tables = appendTable(b.tables, table, _alias)
 	return b
 }
 

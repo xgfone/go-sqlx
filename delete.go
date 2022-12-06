@@ -45,6 +45,11 @@ type DeleteBuilder struct {
 // Table appends the table name to delete the rows from it.
 func (b *DeleteBuilder) Table(table string) *DeleteBuilder {
 	if table != "" {
+		for _, t := range b.dtables {
+			if t == table {
+				return b
+			}
+		}
 		b.dtables = append(b.dtables, table)
 	}
 	return b
@@ -57,7 +62,7 @@ func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
 		if len(alias) != 0 {
 			talias = alias[0]
 		}
-		b.ftables = append(b.ftables, sqlTable{Table: table, Alias: talias})
+		b.ftables = appendTable(b.ftables, table, talias)
 	}
 	return b
 }

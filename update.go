@@ -58,7 +58,7 @@ func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
 		if len(alias) != 0 {
 			talias = alias[0]
 		}
-		b.tables = append(b.tables, sqlTable{Table: table, Alias: talias})
+		b.tables = appendTable(b.tables, table, talias)
 	}
 	return b
 }
@@ -70,7 +70,7 @@ func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
 		if len(alias) != 0 {
 			talias = alias[0]
 		}
-		b.ftables = append(b.ftables, sqlTable{Table: table, Alias: talias})
+		b.ftables = appendTable(b.ftables, table, talias)
 	}
 	return b
 }
