@@ -19,14 +19,12 @@ import (
 	"strings"
 )
 
-var _ NamedArg = Column{}
-
 // Column represents the column of the SQL table.
 type Column struct {
 	TableName  string
 	ColumnName string
 	AliasName  string
-	Valuer
+	Value      interface{}
 }
 
 // ColumnsContain reports whether the columns contains the column.
@@ -62,19 +60,9 @@ func (c Column) WithAlias(alias string) Column {
 	return c
 }
 
-// WithValuer returns a new Column, based on the old column, with the valuer.
-func (c Column) WithValuer(valuer Valuer) Column {
-	c.Valuer = valuer
-	return c
-}
-
-// WithValue clones itself and returns the new one that the valuer is set
-// to value.
+// WithValue returns a new Column, based on the old column, with the value.
 func (c Column) WithValue(value interface{}) Column {
-	c.Valuer = c.Valuer.Clone()
-	if err := c.Valuer.Scan(value); err != nil {
-		panic(err)
-	}
+	c.Value = value
 	return c
 }
 
@@ -90,7 +78,7 @@ func (c Column) Name() string {
 }
 
 // NamedArg implements the interface NamedArg to convert itself to sql.NamedArg.
-func (c Column) NamedArg() sql.NamedArg { return sql.Named(c.Name(), c.Get()) }
+func (c Column) NamedArg() sql.NamedArg { return sql.Named(c.Name(), c.Value) }
 
 /// -----------------------------------------------------------------------
 

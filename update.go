@@ -123,26 +123,26 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 }
 
 // SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
-func (b *UpdateBuilder) SetNamedArg(args ...NamedArg) *UpdateBuilder {
+func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	b.setters = make([]Setter, len(args))
 	for i, arg := range args {
-		b.setters[i] = Set(arg.Name(), arg.Get())
+		b.setters[i] = Set(arg.Name, arg.Value)
 	}
 	return b
 }
 
 // SetMoreNamedArg is the same as SetMore, but uses the NamedArg as the Setter.
-func (b *UpdateBuilder) SetMoreNamedArg(args ...NamedArg) *UpdateBuilder {
+func (b *UpdateBuilder) SetMoreNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	for _, arg := range args {
-		b.SetMore(Set(arg.Name(), arg.Get()))
+		b.SetMore(Set(arg.Name, arg.Value))
 	}
 	return b
 }
 
 // WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *UpdateBuilder) WhereNamedArgs(args ...NamedArg) *UpdateBuilder {
+func (b *UpdateBuilder) WhereNamedArgs(args ...sql.NamedArg) *UpdateBuilder {
 	for _, arg := range args {
-		b.Where(b.Equal(arg.Name(), arg.Get()))
+		b.Where(b.Equal(arg.Name, arg.Value))
 	}
 	return b
 }

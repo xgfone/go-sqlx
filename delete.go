@@ -109,9 +109,9 @@ func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 }
 
 // WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *DeleteBuilder) WhereNamedArgs(args ...NamedArg) *DeleteBuilder {
+func (b *DeleteBuilder) WhereNamedArgs(args ...sql.NamedArg) *DeleteBuilder {
 	for _, arg := range args {
-		b.Where(b.Equal(arg.Name(), arg.Get()))
+		b.Where(b.Equal(arg.Name, arg.Value))
 	}
 	return b
 }

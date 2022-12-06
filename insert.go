@@ -109,7 +109,7 @@ func (b *InsertBuilder) ColumnValues(columns ...Column) *InsertBuilder {
 
 	values := make([]interface{}, _len)
 	for i := 0; i < _len; i++ {
-		values[i] = columns[i].Get()
+		values[i] = columns[i].Value
 	}
 
 	if b.values == nil {
@@ -150,11 +150,10 @@ func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
 // as the named values to be inserted, which supports the tag named "sql"
 // to modify the column name.
 //
-//   1. If the value of the tag is "-", however, the field will be ignored.
-//   2. If the tag value contains "omitempty", the ZERO field will be ignored.
-//   3. If the tag contains the attribute "notpropagate", for the embeded struct,
-//      do not scan the fields of the embeded struct.
-//
+//  1. If the value of the tag is "-", however, the field will be ignored.
+//  2. If the tag value contains "omitempty", the ZERO field will be ignored.
+//  3. If the tag contains the attribute "notpropagate", for the embeded struct,
+//     do not scan the fields of the embeded struct.
 func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
 	if s == nil {
 		return b

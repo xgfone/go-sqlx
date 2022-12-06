@@ -365,9 +365,9 @@ func (b *SelectBuilder) Where(andConditions ...Condition) *SelectBuilder {
 }
 
 // WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *SelectBuilder) WhereNamedArgs(args ...NamedArg) *SelectBuilder {
+func (b *SelectBuilder) WhereNamedArgs(args ...sql.NamedArg) *SelectBuilder {
 	for _, arg := range args {
-		b.Where(b.Equal(arg.Name(), arg.Get()))
+		b.Where(b.Equal(arg.Name, arg.Value))
 	}
 	return b
 }
