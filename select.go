@@ -466,7 +466,7 @@ func (b *SelectBuilder) QueryRaw(rawsql string, args ...interface{}) (Rows, erro
 
 // QueryRawContext executes the raw sql with the arguments.
 func (b *SelectBuilder) QueryRawContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
-	rows, err := b.executor.QueryContext(ctx, rawsql, args...)
+	rows, err := getExecutor(b.executor).QueryContext(ctx, rawsql, args...)
 	return Rows{b, rows}, err
 }
 
@@ -477,7 +477,7 @@ func (b *SelectBuilder) QueryRowRaw(rawsql string, args ...interface{}) Row {
 
 // QueryRowRawContext executes the raw sql with the arguments.
 func (b *SelectBuilder) QueryRowRawContext(ctx context.Context, rawsql string, args ...interface{}) Row {
-	return Row{b, b.executor.QueryRowContext(ctx, rawsql, args...)}
+	return Row{b, getExecutor(b.executor).QueryRowContext(ctx, rawsql, args...)}
 }
 
 // SetExecutor sets the executor to exec.

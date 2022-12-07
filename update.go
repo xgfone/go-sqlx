@@ -153,7 +153,7 @@ func (b *UpdateBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return b.executor.ExecContext(ctx, query, args...)
+	return getExecutor(b.executor).ExecContext(ctx, query, args...)
 }
 
 // SetExecutor sets the executor to exec.
