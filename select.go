@@ -638,13 +638,13 @@ func (b *SelectBuilder) BindRowStructContext(c context.Context, dest interface{}
 
 // Row is used to wrap sql.Row.
 type Row struct {
-	*SelectBuilder
+	SelectBuilder *SelectBuilder
 	*sql.Row
 }
 
 // Rows is used to wrap sql.Rows.
 type Rows struct {
-	*SelectBuilder
+	SelectBuilder *SelectBuilder
 	*sql.Rows
 }
 
@@ -663,13 +663,13 @@ func (r Rows) Scan(dests ...interface{}) (err error) {
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Row) ScanStruct(s interface{}) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.SelectedColumns(), s)
+	return ScanColumnsToStruct(r.Scan, r.SelectBuilder.SelectedColumns(), s)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Rows) ScanStruct(s interface{}) (err error) {
-	columns := r.SelectedColumns()
+	columns := r.SelectBuilder.SelectedColumns()
 	if len(columns) == 0 {
 		if columns, err = r.Columns(); err != nil {
 			return
