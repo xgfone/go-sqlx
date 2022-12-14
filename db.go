@@ -127,72 +127,73 @@ func getExecutor(executor Executor) Executor {
 	return executor
 }
 
-func getExecutor2(executor, backup Executor) Executor {
-	if executor == nil {
-		return backup
+// GetExecutor returns the executor if set. Or, return sql.DB instead.
+func (db *DB) GetExecutor() Executor {
+	if db.Executor == nil {
+		return db.DB
 	}
-	return executor
+	return db.Executor
 }
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return NewTableBuilder(table).SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return NewTableBuilder(table).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete(tables ...string) *DeleteBuilder {
-	return Delete(tables...).SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return Delete(tables...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return Insert().SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
 	return Select(column, alias...).SetDialect(db.Dialect).
-		SetExecutor(db.Executor).SetInterceptor(db.Interceptor)
+		SetExecutor(db.GetExecutor()).SetInterceptor(db.Interceptor)
 }
 
 // Selects is equal to db.Select(columns[0]).Select(columns[1])...
 func (db *DB) Selects(columns ...string) *SelectBuilder {
-	return Selects(columns...).SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return Selects(columns...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // SelectColumns is equal to db.Select(columns[0].FullName()).Select(columns[1].FullName())...
 func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
 	return SelectColumns(columns...).SetDialect(db.Dialect).
-		SetExecutor(db.Executor).SetInterceptor(db.Interceptor)
+		SetExecutor(db.GetExecutor()).SetInterceptor(db.Interceptor)
 }
 
 // SelectStruct is equal to db.Select().SelectStruct(s, table...).
 func (db *DB) SelectStruct(s interface{}, table ...string) *SelectBuilder {
-	return SelectStruct(s, table...).SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return SelectStruct(s, table...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update(table ...string) *UpdateBuilder {
-	return Update(table...).SetDialect(db.Dialect).SetExecutor(db.Executor).
+	return Update(table...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
 		SetInterceptor(db.Interceptor)
 }
 
 // ExecContext executes the sql statement.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return getExecutor2(db.Executor, db.DB).ExecContext(ctx, query, args...)
+	return db.GetExecutor().ExecContext(ctx, query, args...)
 }
 
 // QueryContext executes the query sql statement.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return getExecutor2(db.Executor, db.DB).QueryContext(ctx, query, args...)
+	return db.GetExecutor().QueryContext(ctx, query, args...)
 }
 
 // QueryRowContext executes the row query sql statement.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return getExecutor2(db.Executor, db.DB).QueryRowContext(ctx, query, args...)
+	return db.GetExecutor().QueryRowContext(ctx, query, args...)
 }
