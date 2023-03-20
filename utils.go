@@ -60,10 +60,9 @@ func tagContainAttr(targ, attr string) bool {
 
 // CheckErrNoRows extracts the error sql.ErrNoRows as the bool, which returns
 //
-//   - (true, nil) if err is equal to nil
+//   - (true, nil)  if err is equal to nil
 //   - (false, nil) if err is equal to sql.ErrNoRows
 //   - (false, err) if err is equal to others
-//
 func CheckErrNoRows(err error) (exist bool, e error) {
 	switch err {
 	case nil:
@@ -109,7 +108,12 @@ func (t *Time) Scan(src interface{}) (err error) {
 	return
 }
 
-func (t Time) String() string { return t.In(Location).Format(t.layout()) }
+func (t Time) String() string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.In(Location).Format(t.layout())
+}
 
 func (t Time) layout() string {
 	if len(t.Layout) > 0 {
@@ -120,6 +124,10 @@ func (t Time) layout() string {
 
 // MarshalJSON implements the interface json.Marshaler.
 func (t Time) MarshalJSON() ([]byte, error) {
+	if t.IsZero() {
+		return nil, nil
+	}
+
 	layout := t.layout()
 	b := make([]byte, 0, len(layout)+2)
 	b = append(b, '"')
@@ -158,37 +166,36 @@ func (b *Bool) Scan(src interface{}) (err error) {
 // If the dest value is the basic builtin types as follow, it will be wrapped
 // to support the sql NULL and the converting from other types.
 //
-//   - *time.Duration:
-//       - string: time.ParseDuration(src)
-//       - []byte: time.ParseDuration(string(src))
-//       - int64: time.Duration(src) * time.Millisecond
-//   - *time.Time:
-//       - time.Time: =>src
-//       - int64: time.Unix(src, 0)
-//       - string: time.ParseInLocation(DatetimeLayout, src, Location))
-//       - []byte: time.ParseInLocation(DatetimeLayout, string(src), Location))
-//   - *bool:
-//       - cast.ToBool(src)
-//   - *string:
-//       - string: =>src
-//       - []byte: =>string(src)
-//       - bool: "true" or "false"
-//       - int64: strconv.FormatInt(src, 10)
-//       - float64: strconv.FormatFloat(src, 'f', -1, 64)
-//       - time.Time: src.In(Location).Format(DatetimeLayout)
-//   - *float32, *float64:
-//       - float64, int64: =>src
-//       - string: strconv.ParseFloat(src, 64)
-//       - []byte: strconv.ParseFloat(string(src), 64)
-//   - *int, *int8, *int16, *int32, *int64:
-//       - int64, float64: =>src
-//       - string: strconv.ParseInt(src, 10, 64)
-//       - []byte: strconv.ParseInt(string(src), 10, 64)
-//   - *uint, *uint8, *uint16, *uint32, *uint64:
-//       - int64, float64: =>src
-//       - string: strconv.ParseUint(src, 10, 64)
-//       - []byte: strconv.ParseUint(string(src), 10, 64)
-//
+//	*time.Duration:
+//	    string: time.ParseDuration(src)
+//	    []byte: time.ParseDuration(string(src))
+//	    int64: time.Duration(src) * time.Millisecond
+//	*time.Time:
+//	    time.Time: =>src
+//	    int64: time.Unix(src, 0)
+//	    string: time.ParseInLocation(DatetimeLayout, src, Location))
+//	    []byte: time.ParseInLocation(DatetimeLayout, string(src), Location))
+//	*bool:
+//	    cast.ToBool(src)
+//	*string:
+//	    string: =>src
+//	    []byte: =>string(src)
+//	    bool: "true" or "false"
+//	    int64: strconv.FormatInt(src, 10)
+//	    float64: strconv.FormatFloat(src, 'f', -1, 64)
+//	    time.Time: src.In(Location).Format(DatetimeLayout)
+//	*float32, *float64:
+//	    float64, int64: =>src
+//	    string: strconv.ParseFloat(src, 64)
+//	    []byte: strconv.ParseFloat(string(src), 64)
+//	*int, *int8, *int16, *int32, *int64:
+//	    int64, float64: =>src
+//	    string: strconv.ParseInt(src, 10, 64)
+//	    []byte: strconv.ParseInt(string(src), 10, 64)
+//	*uint, *uint8, *uint16, *uint32, *uint64:
+//	    int64, float64: =>src
+//	    string: strconv.ParseUint(src, 10, 64)
+//	    []byte: strconv.ParseUint(string(src), 10, 64)
 func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error {
 	results := make([]interface{}, len(dests))
 	for i, dest := range dests {
