@@ -99,6 +99,11 @@ func (t Time) Get() time.Time { return t.Time }
 // Set sets itself to nt.
 func (t *Time) Set(nt time.Time) { t.Time = nt }
 
+// SetFormat sets the format layout.
+func (t *Time) SetFormat(layout string) {
+	t.Layout = layout
+}
+
 // Scan implements the interface sql.Scanner.
 func (t *Time) Scan(src interface{}) (err error) {
 	_t, err := cast.ToTimeInLocation(Location, src, DatetimeLayout)
