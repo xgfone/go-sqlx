@@ -637,14 +637,24 @@ func (b *SelectBuilder) BindRowStructContext(c context.Context, dest interface{}
 
 // Row is used to wrap sql.Row.
 type Row struct {
-	Columns []string
+	Columns []string // Only used by ScanStruct
 	*sql.Row
 }
 
 // Rows is used to wrap sql.Rows.
 type Rows struct {
-	Columns []string
+	Columns []string // Only used by ScanStruct
 	*sql.Rows
+}
+
+// NewRow returns a new Row.
+func NewRow(row *sql.Row, columns ...string) Row {
+	return Row{Row: row, Columns: columns}
+}
+
+// NewRows returns a new Rows.
+func NewRows(rows *sql.Rows, columns ...string) Rows {
+	return Rows{Rows: rows, Columns: columns}
 }
 
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Row
