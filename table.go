@@ -1,4 +1,4 @@
-// Copyright 2022 xgfone
+// Copyright 2022~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,6 +33,9 @@ func (t Table) WithDB(db *DB) Table { t.DB = db; return t }
 func (t Table) NewColumn(colName string) Column {
 	return NewColumn(colName).WithTable(t.Name)
 }
+
+// SetDB reset the db.
+func (t *Table) SetDB(db *DB) { t.DB = db }
 
 // GetDB returns the set DB. Or returns DefaultDB instead if not set.
 func (t Table) GetDB() *DB {

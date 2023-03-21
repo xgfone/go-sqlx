@@ -14,9 +14,7 @@
 
 package sqlx
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func ExampleTableBuilder() {
 	table := NewTableBuilder("table").IfNotExist().

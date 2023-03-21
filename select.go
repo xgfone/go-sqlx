@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"reflect"
 	"strings"
@@ -153,6 +154,7 @@ func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
 type SelectBuilder struct {
 	ConditionSet
 
+	db        *DB
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
@@ -264,7 +266,8 @@ LOOP:
 			}
 
 			switch vf := v.Field(i); vf.Interface().(type) {
-			case time.Time, Time:
+			case time.Time:
+			case driver.Valuer:
 			default:
 				b.selectStruct(vf, ftable, formatFieldName(prefix, tname))
 				continue LOOP
@@ -445,7 +448,7 @@ func (b *SelectBuilder) Query() (Rows, error) {
 // QueryContext builds the sql and executes it.
 func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
 	query, args := b.Build()
-	return b.QueryRawContext(ctx, query, args...)
+	return b.queryContext(ctx, query, args...)
 }
 
 // QueryRow builds the sql and executes it.
@@ -456,28 +459,27 @@ func (b *SelectBuilder) QueryRow() Row {
 // QueryRowContext builds the sql and executes it.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	query, args := b.Build()
-	return b.QueryRowRawContext(ctx, query, args...)
+	return b.queryRowContext(ctx, query, args...)
 }
 
-// QueryRaw executes the raw sql with the arguments.
-func (b *SelectBuilder) QueryRaw(rawsql string, args ...interface{}) (Rows, error) {
-	return b.QueryRawContext(context.Background(), rawsql, args...)
+func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
+	rows, err := b.GetExecutor().QueryContext(ctx, rawsql, args...)
+	return Rows{b.SelectedColumns(), rows}, err
 }
 
-// QueryRawContext executes the raw sql with the arguments.
-func (b *SelectBuilder) QueryRawContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
-	rows, err := getExecutor(b.executor).QueryContext(ctx, rawsql, args...)
-	return Rows{b, rows}, err
+func (b *SelectBuilder) queryRowContext(ctx context.Context, rawsql string, args ...interface{}) Row {
+	return Row{b.SelectedColumns(), b.GetExecutor().QueryRowContext(ctx, rawsql, args...)}
 }
 
-// QueryRowRaw executes the raw sql with the arguments.
-func (b *SelectBuilder) QueryRowRaw(rawsql string, args ...interface{}) Row {
-	return b.QueryRowRawContext(context.Background(), rawsql, args...)
+// GetExecutor returns the sql executor.
+func (b *SelectBuilder) GetExecutor() Executor {
+	return getExecutor(b.db, b.executor)
 }
 
-// QueryRowRawContext executes the raw sql with the arguments.
-func (b *SelectBuilder) QueryRowRawContext(ctx context.Context, rawsql string, args ...interface{}) Row {
-	return Row{b, getExecutor(b.executor).QueryRowContext(ctx, rawsql, args...)}
+// SetDB sets the db.
+func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
+	b.db = db
+	return b
 }
 
 // SetExecutor sets the executor to exec.
@@ -519,10 +521,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString("DISTINCT ")
 	}
 
-	dialect := b.dialect
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
+	dialect := getDialect(b.db, b.dialect)
 
 	// Selected Columns
 	for i, column := range b.columns {
@@ -611,7 +610,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(b.intercept, sql, args)
+	return intercept(getInterceptor(b.db, b.intercept), sql, args)
 }
 
 // BindRow is equal to b.BindRowContext(context.Background(), dest...).
@@ -638,13 +637,13 @@ func (b *SelectBuilder) BindRowStructContext(c context.Context, dest interface{}
 
 // Row is used to wrap sql.Row.
 type Row struct {
-	SelectBuilder *SelectBuilder
+	Columns []string
 	*sql.Row
 }
 
 // Rows is used to wrap sql.Rows.
 type Rows struct {
-	SelectBuilder *SelectBuilder
+	Columns []string
 	*sql.Rows
 }
 
@@ -663,15 +662,15 @@ func (r Rows) Scan(dests ...interface{}) (err error) {
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Row) ScanStruct(s interface{}) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.SelectBuilder.SelectedColumns(), s)
+	return ScanColumnsToStruct(r.Scan, r.Columns, s)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Rows) ScanStruct(s interface{}) (err error) {
-	columns := r.SelectBuilder.SelectedColumns()
+	columns := r.Columns
 	if len(columns) == 0 {
-		if columns, err = r.Columns(); err != nil {
+		if columns, err = r.Rows.Columns(); err != nil {
 			return
 		}
 	}
@@ -696,8 +695,11 @@ func (r Rows) ScanStructWithColumns(s interface{}, columns ...string) (err error
 // If the value of the tag is "-", however, the field will be ignored.
 // If the tag contains the attribute "notpropagate", for the embeded struct,
 // do not scan the fields of the embeded struct.
-func ScanColumnsToStruct(scan func(...interface{}) error, columns []string,
-	s interface{}) (err error) {
+func ScanColumnsToStruct(scan func(...interface{}) error, columns []string, s interface{}) (err error) {
+	if len(columns) == 0 {
+		panic("sqlx.ScanColumnsToStruct: no selected columns")
+	}
+
 	fields := getFields(s)
 	vs := make([]interface{}, len(columns))
 	for i, c := range columns {
@@ -750,7 +752,8 @@ LOOP:
 			}
 
 			switch vf.Interface().(type) {
-			case time.Time, Time:
+			case time.Time:
+			case driver.Valuer:
 			default:
 				getFieldsFromStruct(formatFieldName(prefix, tname), vf, vs)
 				continue LOOP

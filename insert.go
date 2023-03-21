@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,11 +18,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"reflect"
 	"strings"
 	"time"
-
-	"github.com/xgfone/cast"
 )
 
 // Insert is short for NewInsertBuilder.
@@ -40,6 +39,7 @@ type InsertBuilder struct {
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
+	db        *DB
 
 	verb    string
 	table   string
@@ -210,7 +210,8 @@ LOOP:
 			}
 
 			switch vf.Interface().(type) {
-			case time.Time, Time:
+			case time.Time:
+			case driver.Valuer:
 			default:
 				args = b.insertStruct(formatFieldName(prefix, tname), vf, args)
 				continue LOOP
@@ -219,7 +220,7 @@ LOOP:
 
 		if !vf.IsValid() {
 			continue
-		} else if tagContainAttr(targs, "omitempty") && cast.IsZero(vf.Interface()) {
+		} else if tagContainAttr(targs, "omitempty") && isZero(vf) {
 			continue
 		} else if vf.Kind() == reflect.Ptr {
 			vf = vf.Elem()
@@ -239,7 +240,13 @@ func (b *InsertBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.executor).ExecContext(ctx, query, args...)
+	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+}
+
+// SetDB sets the db.
+func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder {
+	b.db = db
+	return b
 }
 
 // SetExecutor sets the executor to exec.
@@ -289,10 +296,7 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 		panic("InsertBuilder: no table name")
 	}
 
-	dialect := b.dialect
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
+	dialect := getDialect(b.db, b.dialect)
 
 	buf := getBuffer()
 	buf.WriteString(b.verb)
@@ -326,7 +330,7 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(b.intercept, sql, args)
+	return intercept(getInterceptor(b.db, b.intercept), sql, args)
 }
 
 func (b *InsertBuilder) addValues(dialect Dialect, buf *bytes.Buffer,

@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,14 +14,12 @@
 
 package sqlx
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func ExampleUpdateBuilder() {
 	// No Where
 	update1 := Update().Table("table").Set(Assign("c1", "v1"), Inc("c2")).
-		SetMore(Assign("c3", 123), Add("c4", 456))
+		Set(Assign("c3", 123), Add("c4", 456))
 
 	// With Where
 	update2 := Update().Table("table").Set(Assign("c1", "v1")).Set(Dec("c2")).
@@ -38,6 +36,6 @@ func ExampleUpdateBuilder() {
 	// Output:
 	// UPDATE `table` SET `c1`=?, `c2`=`c2`+1, `c3`=?, `c4`=`c4`+?
 	// [v1 123 456]
-	// UPDATE "table" SET "c2"="c2"-1 WHERE "c3"=$1
-	// [789]
+	// UPDATE "table" SET "c1"=$1, "c2"="c2"-1 WHERE "c3"=$2
+	// [v1 789]
 }

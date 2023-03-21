@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ func NewDeleteBuilder(tables ...string) *DeleteBuilder {
 type DeleteBuilder struct {
 	ConditionSet
 
+	db        *DB
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
@@ -120,7 +121,13 @@ func (b *DeleteBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.executor).ExecContext(ctx, query, args...)
+	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+}
+
+// SetDB sets the db.
+func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder {
+	b.db = db
+	return b
 }
 
 // SetExecutor sets the executor to exec.
@@ -153,10 +160,7 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 		panic("DeleteBuilder: no from table name")
 	}
 
-	dialect := b.dialect
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
+	dialect := getDialect(b.db, b.dialect)
 
 	buf := getBuffer()
 	buf.WriteString("DELETE ")
@@ -199,5 +203,5 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(b.intercept, sql, args)
+	return intercept(getInterceptor(b.db, b.intercept), sql, args)
 }

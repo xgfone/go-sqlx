@@ -1,4 +1,4 @@
-// Copyright 2020~2022 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -120,11 +120,34 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 	return xdb, nil
 }
 
-func getExecutor(executor Executor) Executor {
-	if executor == nil {
-		return DefaultDB
+func getExecutor(db *DB, executor Executor) Executor {
+	if executor != nil {
+		return executor
 	}
-	return executor
+	if db != nil {
+		return db
+	}
+	return DefaultDB
+}
+
+func getDialect(db *DB, dialect Dialect) Dialect {
+	if dialect != nil {
+		return dialect
+	}
+	if db != nil && db.Dialect != nil {
+		return db.Dialect
+	}
+	return DefaultDialect
+}
+
+func getInterceptor(db *DB, interceptor Interceptor) Interceptor {
+	if interceptor != nil {
+		return interceptor
+	}
+	if db != nil {
+		return db.Interceptor
+	}
+	return nil
 }
 
 // GetExecutor returns the executor if set. Or, return sql.DB instead.
@@ -137,50 +160,42 @@ func (db *DB) GetExecutor() Executor {
 
 // CreateTable returns a SQL table builder.
 func (db *DB) CreateTable(table string) *TableBuilder {
-	return NewTableBuilder(table).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return NewTableBuilder(table).SetDB(db)
 }
 
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete(tables ...string) *DeleteBuilder {
-	return Delete(tables...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return Delete(tables...).SetDB(db)
 }
 
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return Insert().SetDB(db)
 }
 
 // Select returns a SELECT SQL builder.
 func (db *DB) Select(column string, alias ...string) *SelectBuilder {
-	return Select(column, alias...).SetDialect(db.Dialect).
-		SetExecutor(db.GetExecutor()).SetInterceptor(db.Interceptor)
+	return Select(column, alias...).SetDB(db)
 }
 
 // Selects is equal to db.Select(columns[0]).Select(columns[1])...
 func (db *DB) Selects(columns ...string) *SelectBuilder {
-	return Selects(columns...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return Selects(columns...).SetDB(db)
 }
 
 // SelectColumns is equal to db.Select(columns[0].FullName()).Select(columns[1].FullName())...
 func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
-	return SelectColumns(columns...).SetDialect(db.Dialect).
-		SetExecutor(db.GetExecutor()).SetInterceptor(db.Interceptor)
+	return SelectColumns(columns...).SetDB(db)
 }
 
 // SelectStruct is equal to db.Select().SelectStruct(s, table...).
 func (db *DB) SelectStruct(s interface{}, table ...string) *SelectBuilder {
-	return SelectStruct(s, table...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return SelectStruct(s, table...).SetDB(db)
 }
 
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update(table ...string) *UpdateBuilder {
-	return Update(table...).SetDialect(db.Dialect).SetExecutor(db.GetExecutor()).
-		SetInterceptor(db.Interceptor)
+	return Update(table...).SetDB(db)
 }
 
 // ExecContext executes the sql statement.

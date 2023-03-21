@@ -1,4 +1,4 @@
-# SQL builder for Go `1.11+` [![Build Status](https://github.com/xgfone/sqlx/actions/workflows/go.yml/badge.svg)](https://github.com/xgfone/sqlx/actions/workflows/go.yml) [![GoDoc](https://pkg.go.dev/badge/github.com/xgfone/sqlx)](https://pkg.go.dev/github.com/xgfone/sqlx) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/sqlx/master/LICENSE)
+# SQL builder for Go `1.13+` [![Build Status](https://github.com/xgfone/sqlx/actions/workflows/go.yml/badge.svg)](https://github.com/xgfone/sqlx/actions/workflows/go.yml) [![GoDoc](https://pkg.go.dev/badge/github.com/xgfone/sqlx)](https://pkg.go.dev/github.com/xgfone/sqlx) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/sqlx/master/LICENSE)
 
 Package `sqlx` provides a set of flexible and powerful SQL builders, not ORM, which is inspired by [go-sqlbuilder](https://github.com/huandu/go-sqlbuilder). The built result can be used by [`DB.Query()`](https://pkg.go.dev/database/sql#DB.Query) and [`DB.Exec()`](https://pkg.go.dev/database/sql#DB.Exec)
 

@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ type UpdateBuilder struct {
 	SetterSet
 	ConditionSet
 
+	db        *DB
 	intercept Interceptor
 	executor  Executor
 	dialect   Dialect
@@ -102,14 +103,8 @@ func (b *UpdateBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *Upda
 	return b
 }
 
-// Set resets the SET statement to setters.
+// Set appends the SET statement to setters.
 func (b *UpdateBuilder) Set(setters ...Setter) *UpdateBuilder {
-	b.setters = setters
-	return b
-}
-
-// SetMore appends the setters to the current SET statements.
-func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 	b.setters = append(b.setters, setters...)
 	return b
 }
@@ -117,16 +112,8 @@ func (b *UpdateBuilder) SetMore(setters ...Setter) *UpdateBuilder {
 // SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
 func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	b.setters = make([]Setter, len(args))
-	for i, arg := range args {
-		b.setters[i] = Set(arg.Name, arg.Value)
-	}
-	return b
-}
-
-// SetMoreNamedArg is the same as SetMore, but uses the NamedArg as the Setter.
-func (b *UpdateBuilder) SetMoreNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	for _, arg := range args {
-		b.SetMore(Set(arg.Name, arg.Value))
+		b.Set(Set(arg.Name, arg.Value))
 	}
 	return b
 }
@@ -139,7 +126,7 @@ func (b *UpdateBuilder) WhereNamedArgs(args ...sql.NamedArg) *UpdateBuilder {
 	return b
 }
 
-// Where sets the WHERE conditions.
+// Where appends the WHERE conditions.
 func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
 	b.where = append(b.where, andConditions...)
 	return b
@@ -153,7 +140,13 @@ func (b *UpdateBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.executor).ExecContext(ctx, query, args...)
+	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+}
+
+// SetDB sets the DB to db.
+func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder {
+	b.db = db
+	return b
 }
 
 // SetExecutor sets the executor to exec.
@@ -188,10 +181,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		panic("UpdateBuilder: no set values")
 	}
 
-	dialect := b.dialect
-	if dialect == nil {
-		dialect = DefaultDialect
-	}
+	dialect := getDialect(b.db, b.dialect)
 
 	// Update Table
 	buf := getBuffer()
@@ -250,5 +240,5 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	sql = buf.String()
 	args = ab.Args()
 	putBuffer(buf)
-	return intercept(b.intercept, sql, args)
+	return intercept(getInterceptor(b.db, b.intercept), sql, args)
 }

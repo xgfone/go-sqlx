@@ -1,4 +1,4 @@
-// Copyright 2020~2022 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ import (
 	"bytes"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/xgfone/cast"
 )
 
 // BufferDefaultCap is the default capacity to be allocated for buffer from pool.
@@ -81,9 +81,17 @@ func CheckErrNoRows(err error) (exist bool, e error) {
 // TimeFormat is used to format time.Time.
 var TimeFormat = time.RFC3339Nano
 
+var (
+	_ json.Marshaler = Time{}
+	_ driver.Valuer  = Time{}
+	_ sql.Scanner    = new(Time)
+
+	emptyJSONString = []byte(`""`)
+)
+
 // Time is used to read/write the time.Time from/to DB.
 type Time struct {
-	Layout string // If empty, use TimeFormat instead
+	Layout string // If empty, use TimeFormat instead when formatting time.
 	time.Time
 }
 
@@ -93,23 +101,12 @@ func Now() Time { return Time{Time: time.Now().In(Location)} }
 // Value implements the interface driver.Valuer.
 func (t Time) Value() (driver.Value, error) { return t.Time, nil }
 
-// Get returns the inner time.Time.
-func (t Time) Get() time.Time { return t.Time }
-
-// Set sets itself to nt.
-func (t *Time) Set(nt time.Time) { t.Time = nt }
-
 // SetFormat sets the format layout.
-func (t *Time) SetFormat(layout string) {
-	t.Layout = layout
-}
+func (t *Time) SetFormat(layout string) { t.Layout = layout }
 
 // Scan implements the interface sql.Scanner.
 func (t *Time) Scan(src interface{}) (err error) {
-	_t, err := cast.ToTimeInLocation(Location, src, DatetimeLayout)
-	if err == nil {
-		t.Time = _t
-	}
+	t.Time, err = toTime(src, Location)
 	return
 }
 
@@ -117,7 +114,7 @@ func (t Time) String() string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.In(Location).Format(t.layout())
+	return t.Format(t.layout())
 }
 
 func (t Time) layout() string {
@@ -130,39 +127,14 @@ func (t Time) layout() string {
 // MarshalJSON implements the interface json.Marshaler.
 func (t Time) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
-		return nil, nil
+		return emptyJSONString, nil
 	}
 
-	layout := t.layout()
-	b := make([]byte, 0, len(layout)+2)
+	b := make([]byte, 0, 48)
 	b = append(b, '"')
-	b = t.In(Location).AppendFormat(b, layout)
+	b = t.AppendFormat(b, t.layout())
 	b = append(b, '"')
 	return b, nil
-}
-
-// Bool is used to read/write the BOOLEAN from/to DB.
-type Bool bool
-
-// Value implements the interface driver.Valuer.
-func (b Bool) Value() (driver.Value, error) { return bool(b), nil }
-
-// Bool is the alias of Get.
-func (b Bool) Bool() bool { return bool(b) }
-
-// Get returns the itself as the bool type.
-func (b Bool) Get() bool { return bool(b) }
-
-// Set sets itself to nb.
-func (b *Bool) Set(nb bool) { *b = Bool(nb) }
-
-// Scan implements the interface sql.Scanner.
-func (b *Bool) Scan(src interface{}) (err error) {
-	_b, err := cast.ToBool(src)
-	if err == nil {
-		*b = Bool(_b)
-	}
-	return
 }
 
 // ScanRow uses the function scan to scan the sql row into dests,
@@ -176,29 +148,38 @@ func (b *Bool) Scan(src interface{}) (err error) {
 //	    []byte: time.ParseDuration(string(src))
 //	    int64: time.Duration(src) * time.Millisecond
 //	*time.Time:
-//	    time.Time: =>src
+//	    time.Time: src
 //	    int64: time.Unix(src, 0)
 //	    string: time.ParseInLocation(DatetimeLayout, src, Location))
 //	    []byte: time.ParseInLocation(DatetimeLayout, string(src), Location))
 //	*bool:
-//	    cast.ToBool(src)
+//	     bool: src
+//	     int64, : src!=0
+//	     float64: src!=0
+//	     string: strconv.ParseBool(src)
+//	     []byte:
+//	         len(src)==1: src[0] != '\x00'
+//	         len(src)!=1: strconv.ParseBool(string(src))
 //	*string:
-//	    string: =>src
-//	    []byte: =>string(src)
+//	    string: src
+//	    []byte: string(src)
 //	    bool: "true" or "false"
 //	    int64: strconv.FormatInt(src, 10)
 //	    float64: strconv.FormatFloat(src, 'f', -1, 64)
 //	    time.Time: src.In(Location).Format(DatetimeLayout)
 //	*float32, *float64:
-//	    float64, int64: =>src
+//	    int64: src
+//	    float64: src
 //	    string: strconv.ParseFloat(src, 64)
 //	    []byte: strconv.ParseFloat(string(src), 64)
 //	*int, *int8, *int16, *int32, *int64:
-//	    int64, float64: =>src
+//	    int64: src
+//	    float64: src
 //	    string: strconv.ParseInt(src, 10, 64)
 //	    []byte: strconv.ParseInt(string(src), 10, 64)
 //	*uint, *uint8, *uint16, *uint32, *uint64:
-//	    int64, float64: =>src
+//	    int64: src
+//	    float64: src
 //	    string: strconv.ParseUint(src, 10, 64)
 //	    []byte: strconv.ParseUint(string(src), 10, 64)
 func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error {
@@ -245,25 +226,27 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 		}
 
 	case *time.Time:
-		switch s := src.(type) {
-		case string:
-			*v, err = cast.StringToTimeInLocation(Location, s, DatetimeLayout)
-
-		case []byte:
-			*v, err = cast.StringToTimeInLocation(Location, string(s), DatetimeLayout)
-
-		case int64:
-			*v = time.Unix(s, 0)
-
-		case time.Time:
-			*v = s
-
-		default:
-			err = fmt.Errorf("converting %T to time.Time is unsupported", src)
-		}
+		*v, err = toTime(src, Location)
 
 	case *bool:
-		*v, err = cast.ToBool(src)
+		switch s := src.(type) {
+		case int64:
+			*v = s != 0
+		case float64:
+			*v = s != 0
+		case bool:
+			*v = s
+		case []byte:
+			if len(s) == 1 {
+				*v = s[0] != '\x00'
+			} else {
+				*v, err = strconv.ParseBool(string(s))
+			}
+		case string:
+			*v, err = strconv.ParseBool(s)
+		default:
+			err = fmt.Errorf("converting %T to bool is unsupported", src)
+		}
 
 	case *int:
 		switch s := src.(type) {
@@ -568,4 +551,53 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 	}
 
 	return
+}
+
+func toTime(src interface{}, loc *time.Location) (time.Time, error) {
+	switch s := src.(type) {
+	case string:
+		return parseTimeString(s, loc)
+
+	case []byte:
+		return parseTimeBytes(s, loc)
+
+	case int64:
+		return time.Unix(s, 0).In(loc), nil
+
+	case time.Time:
+		return s.In(loc), nil
+
+	default:
+		return time.Time{}, fmt.Errorf("converting %T to time.Time is unsupported", src)
+	}
+}
+
+func parseTimeString(s string, loc *time.Location) (t time.Time, err error) {
+	if s == "" || s == "0000-00-00 00:00:00" {
+		t = t.In(loc)
+	} else {
+		t, err = time.ParseInLocation(DatetimeLayout, s, loc)
+	}
+	return
+}
+
+func parseTimeBytes(b []byte, loc *time.Location) (t time.Time, err error) {
+	if len(b) == 0 {
+		t = t.In(loc)
+	} else {
+		t, err = parseTimeString(string(b), loc)
+	}
+	return
+}
+
+func isZero(v reflect.Value) bool {
+	if v.IsZero() {
+		return true
+	}
+
+	if i, ok := v.Interface().(interface{ IsZero() bool }); ok {
+		return i.IsZero()
+	}
+
+	return false
 }
