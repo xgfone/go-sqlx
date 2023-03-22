@@ -20,6 +20,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -144,44 +145,51 @@ func (t Time) MarshalJSON() ([]byte, error) {
 // to support the sql NULL and the converting from other types.
 //
 //	*time.Duration:
-//	    string: time.ParseDuration(src)
-//	    []byte: time.ParseDuration(string(src))
-//	    int64: time.Duration(src) * time.Millisecond
+//	    string:    time.ParseDuration(src)
+//	    []byte:    time.ParseDuration(string(src))
+//	    int64:     time.Duration(src) * time.Millisecond
+//	    float64:   time.Duration(src * float64(time.Second))
 //	*time.Time:
+//	    int64:     time.Unix(src, 0).In(Location)
+//	    float64:   time.Unix(Integer, Fraction).In(Location)
+//	    string:    time.ParseInLocation(DatetimeLayout, src, Location))
+//	    []byte:    time.ParseInLocation(DatetimeLayout, string(src), Location))
 //	    time.Time: src
-//	    int64: time.Unix(src, 0)
-//	    string: time.ParseInLocation(DatetimeLayout, src, Location))
-//	    []byte: time.ParseInLocation(DatetimeLayout, string(src), Location))
 //	*bool:
-//	     bool: src
-//	     int64, : src!=0
-//	     float64: src!=0
-//	     string: strconv.ParseBool(src)
+//	     bool:     src
+//	     int64:    src!=0
+//	     float64:  src!=0
+//	     string:   strconv.ParseBool(src)
 //	     []byte:
-//	         len(src)==1: src[0] != '\x00'
-//	         len(src)!=1: strconv.ParseBool(string(src))
+//	               len(src)==1: src[0] != '\x00'
+//	               len(src)!=1: strconv.ParseBool(string(src))
 //	*string:
-//	    string: src
-//	    []byte: string(src)
-//	    bool: "true" or "false"
-//	    int64: strconv.FormatInt(src, 10)
-//	    float64: strconv.FormatFloat(src, 'f', -1, 64)
+//	    string:    src
+//	    []byte:    string(src)
+//	    bool:      "true" or "false"
+//	    int64:     strconv.FormatInt(src, 10)
+//	    float64:   strconv.FormatFloat(src, 'f', -1, 64)
 //	    time.Time: src.In(Location).Format(DatetimeLayout)
 //	*float32, *float64:
-//	    int64: src
-//	    float64: src
-//	    string: strconv.ParseFloat(src, 64)
-//	    []byte: strconv.ParseFloat(string(src), 64)
+//	    bool:      true=>1, false=>0
+//	    int64:     floatXX(src)
+//	    float64:   floatXX(src)
+//	    string:    strconv.ParseFloat(src, 64)
+//	    []byte:    strconv.ParseFloat(string(src), 64)
 //	*int, *int8, *int16, *int32, *int64:
-//	    int64: src
-//	    float64: src
-//	    string: strconv.ParseInt(src, 10, 64)
-//	    []byte: strconv.ParseInt(string(src), 10, 64)
+//		bool:      true=>1, false=>0
+//	    int64:     intXX(src)
+//	    float64:   intXX(src)
+//	    string:    strconv.ParseInt(src, 10, 64)
+//	    []byte:    strconv.ParseInt(string(src), 10, 64)
+//	    time.Time: src.Unix() only for int/int64
 //	*uint, *uint8, *uint16, *uint32, *uint64:
-//	    int64: src
-//	    float64: src
-//	    string: strconv.ParseUint(src, 10, 64)
-//	    []byte: strconv.ParseUint(string(src), 10, 64)
+//		bool:      true=>1, false=>0
+//	    int64:     uintXX(src)
+//	    float64:   uintXX(src)
+//	    string:    strconv.ParseUint(src, 10, 64)
+//	    []byte:    strconv.ParseUint(string(src), 10, 64)
+//	    time.Time: src.Unix() only for uint/uint64
 func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error {
 	results := make([]interface{}, len(dests))
 	for i, dest := range dests {
@@ -220,6 +228,9 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case int64:
 			*v = time.Duration(s) * time.Millisecond
+
+		case float64:
+			*v = time.Duration(s * float64(time.Second))
 
 		default:
 			err = fmt.Errorf("converting %T to time.Duration is unsupported", src)
@@ -268,6 +279,16 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = int(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
+		case time.Time:
+			*v = int(s.Unix())
+
 		default:
 			err = fmt.Errorf("converting %T to int is unsupported", src)
 		}
@@ -290,6 +311,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 			var i int64
 			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
 				*v = int8(i)
+			}
+
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
 			}
 
 		default:
@@ -316,6 +344,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = int16(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
 		default:
 			err = fmt.Errorf("converting %T to int16 is unsupported", src)
 		}
@@ -340,6 +375,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = int32(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
 		default:
 			err = fmt.Errorf("converting %T to int32 is unsupported", src)
 		}
@@ -357,6 +399,16 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case []byte:
 			*v, err = strconv.ParseInt(string(s), 10, 64)
+
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
+		case time.Time:
+			*v = s.Unix()
 
 		default:
 			err = fmt.Errorf("converting %T to int64 is unsupported", src)
@@ -382,6 +434,16 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = uint(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
+		case time.Time:
+			*v = uint(s.Unix())
+
 		default:
 			err = fmt.Errorf("converting %T to uint is unsupported", src)
 		}
@@ -404,6 +466,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 			var i uint64
 			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
 				*v = uint8(i)
+			}
+
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
 			}
 
 		default:
@@ -430,6 +499,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = uint16(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
 		default:
 			err = fmt.Errorf("converting %T to uint16 is unsupported", src)
 		}
@@ -454,6 +530,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = uint32(i)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
 		default:
 			err = fmt.Errorf("converting %T to uint32 is unsupported", src)
 		}
@@ -471,6 +554,16 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case []byte:
 			*v, err = strconv.ParseUint(string(s), 10, 64)
+
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
+		case time.Time:
+			*v = uint64(s.Unix())
 
 		default:
 			err = fmt.Errorf("converting %T to uint64 is unsupported", src)
@@ -496,6 +589,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 				*v = float32(f)
 			}
 
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
+
 		default:
 			err = fmt.Errorf("converting %T to float32 is unsupported", src)
 		}
@@ -513,6 +613,13 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 
 		case []byte:
 			*v, err = strconv.ParseFloat(string(s), 64)
+
+		case bool:
+			if s {
+				*v = 1
+			} else {
+				*v = 0
+			}
 
 		default:
 			err = fmt.Errorf("converting %T to float64 is unsupported", src)
@@ -563,6 +670,13 @@ func toTime(src interface{}, loc *time.Location) (time.Time, error) {
 
 	case int64:
 		return time.Unix(s, 0).In(loc), nil
+
+	case float64:
+		int, frac := math.Modf(s)
+		return time.Unix(int64(int), int64(frac*1000000000)).In(loc), nil
+
+	case nil:
+		return time.Time{}.In(loc), nil
 
 	case time.Time:
 		return s.In(loc), nil
