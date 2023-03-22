@@ -687,9 +687,10 @@ func toTime(src interface{}, loc *time.Location) (time.Time, error) {
 }
 
 func parseTimeString(s string, loc *time.Location) (t time.Time, err error) {
-	if s == "" || s == "0000-00-00 00:00:00" {
+	switch s {
+	case "", "0000-00-00 00:00:00", "0000-00-00 00:00:00.000", "0000-00-00 00:00:00.000000":
 		t = t.In(loc)
-	} else {
+	default:
 		t, err = time.ParseInLocation(DatetimeLayout, s, loc)
 	}
 	return
