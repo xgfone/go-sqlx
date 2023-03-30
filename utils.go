@@ -26,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xgfone/defaults"
 )
 
 // BufferDefaultCap is the default capacity to be allocated for buffer from pool.
@@ -79,9 +81,6 @@ func CheckErrNoRows(err error) (exist bool, e error) {
 	return
 }
 
-// TimeFormat is used to format time.Time.
-var TimeFormat = time.RFC3339Nano
-
 var (
 	_ json.Marshaler = Time{}
 	_ driver.Valuer  = Time{}
@@ -92,12 +91,12 @@ var (
 
 // Time is used to read/write the time.Time from/to DB.
 type Time struct {
-	Layout string // If empty, use TimeFormat instead when formatting time.
+	Layout string // If empty, use defaults.TimeFormat instead when formatting time.
 	time.Time
 }
 
 // Now returns the current Time.
-func Now() Time { return Time{Time: time.Now().In(Location)} }
+func Now() Time { return Time{Time: time.Now().In(defaults.TimeLocation.Get())} }
 
 // Value implements the interface driver.Valuer.
 func (t Time) Value() (driver.Value, error) { return t.Time, nil }
@@ -107,7 +106,7 @@ func (t *Time) SetFormat(layout string) { t.Layout = layout }
 
 // Scan implements the interface sql.Scanner.
 func (t *Time) Scan(src interface{}) (err error) {
-	t.Time, err = toTime(src, Location)
+	t.Time, err = toTime(src, defaults.TimeLocation.Get())
 	return
 }
 
@@ -122,7 +121,7 @@ func (t Time) layout() string {
 	if len(t.Layout) > 0 {
 		return t.Layout
 	}
-	return TimeFormat
+	return defaults.TimeFormat.Get()
 }
 
 // MarshalJSON implements the interface json.Marshaler.
@@ -237,7 +236,7 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 		}
 
 	case *time.Time:
-		*v, err = toTime(src, Location)
+		*v, err = toTime(src, defaults.TimeLocation.Get())
 
 	case *bool:
 		switch s := src.(type) {
@@ -647,7 +646,7 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 			}
 
 		case time.Time:
-			*v = s.In(Location).Format(DatetimeLayout)
+			*v = s.In(defaults.TimeLocation.Get()).Format("2006-01-02 15:04:05")
 
 		default:
 			err = fmt.Errorf("converting %T to string is unsupported", src)
@@ -691,7 +690,7 @@ func parseTimeString(s string, loc *time.Location) (t time.Time, err error) {
 	case "", "0000-00-00 00:00:00", "0000-00-00 00:00:00.000", "0000-00-00 00:00:00.000000":
 		t = t.In(loc)
 	default:
-		t, err = time.ParseInLocation(DatetimeLayout, s, loc)
+		t, err = time.ParseInLocation("2006-01-02 15:04:05", s, loc)
 	}
 	return
 }

@@ -22,13 +22,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/xgfone/defaults"
 )
-
-// DatetimeLayout is the time layout format of SQL DATETIME
-const DatetimeLayout = "2006-01-02 15:04:05"
-
-// Location is used to save the default location of time.Time.
-var Location = time.Local
 
 // DefaultDB is the default global DB.
 var DefaultDB = new(DB)
@@ -38,7 +34,7 @@ var DefaultDB = new(DB)
 // If loc is nil, use Location instead.
 func SetConnURLLocation(connURL string, loc *time.Location) string {
 	if loc == nil {
-		if loc = Location; loc == nil {
+		if loc = defaults.TimeLocation.Get(); loc == nil {
 			return connURL
 		}
 	}

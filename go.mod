@@ -1,3 +1,5 @@
 module github.com/xgfone/sqlx
 
-go 1.13
+require github.com/xgfone/defaults v0.1.0
+
+go 1.18
