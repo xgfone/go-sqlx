@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xgfone/defaults"
+	"github.com/xgfone/go-defaults"
 )
 
 // BufferDefaultCap is the default capacity to be allocated for buffer from pool.

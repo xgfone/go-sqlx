@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xgfone/defaults"
+	"github.com/xgfone/go-defaults"
 )
 
 // DefaultDB is the default global DB.
