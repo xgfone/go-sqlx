@@ -1,4 +1,4 @@
-module github.com/xgfone/sqlx
+module github.com/xgfone/go-sqlx
 
 require github.com/xgfone/go-defaults v0.2.0
 
