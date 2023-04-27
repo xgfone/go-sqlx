@@ -30,7 +30,7 @@ type Column struct {
 // ColumnsContain reports whether the columns contains the column.
 //
 // Notice: it only compares the field Name.
-func ColumnsContain(columns []Column, column Column) bool {
+func ColumnsContain[S ~[]Column](columns S, column Column) bool {
 	for i, _len := 0, len(columns); i < _len; i++ {
 		if columns[i].Name == column.Name {
 			return true

@@ -34,7 +34,7 @@ type ColumnCondition interface {
 }
 
 // ConditionsContain reports whether the conditions contains the column.
-func ConditionsContain(conditions []Condition, column Column) bool {
+func ConditionsContain[S ~[]Condition](conditions S, column Column) bool {
 	name := column.FullName()
 	for _len := len(conditions) - 1; _len >= 0; _len-- {
 		cc, ok := conditions[_len].(ColumnCondition)
