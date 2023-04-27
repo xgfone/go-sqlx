@@ -42,13 +42,6 @@ var bufpool = sync.Pool{New: func() interface{} {
 func getBuffer() *bytes.Buffer    { return bufpool.Get().(*bytes.Buffer) }
 func putBuffer(buf *bytes.Buffer) { buf.Reset(); bufpool.Put(buf) }
 
-var slicepool = sync.Pool{New: func() interface{} {
-	return make([]interface{}, 0, ArgsDefaultCap)
-}}
-
-func getSlice() []interface{}   { return slicepool.Get().([]interface{}) }
-func putSlice(ss []interface{}) { ss = ss[:0]; slicepool.Put(ss) }
-
 func tagContainAttr(targ, attr string) bool {
 	for {
 		if index := strings.IndexByte(targ, ','); index == -1 {
