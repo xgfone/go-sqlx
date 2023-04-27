@@ -17,6 +17,8 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+
+	"github.com/xgfone/go-op"
 )
 
 // Update is short for NewUpdateBuilder.
@@ -109,6 +111,13 @@ func (b *UpdateBuilder) Set(setters ...Setter) *UpdateBuilder {
 	return b
 }
 
+// SetOp is the same as Set, but uses the operation setters
+// as the setters.
+func (b *UpdateBuilder) SetOp(setters ...op.Setter) *UpdateBuilder {
+	setOpSetter(b.Set, setters)
+	return b
+}
+
 // SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
 func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	b.setters = make([]Setter, len(args))
@@ -123,6 +132,13 @@ func (b *UpdateBuilder) WhereNamedArgs(args ...sql.NamedArg) *UpdateBuilder {
 	for _, arg := range args {
 		b.Where(b.Equal(arg.Name, arg.Value))
 	}
+	return b
+}
+
+// WhereOp is the same as Where, but uses the operation condition
+// as the where condtion.
+func (b *UpdateBuilder) WhereOp(andConditions ...op.Condition) *UpdateBuilder {
+	whereOpCond(b.Where, andConditions)
 	return b
 }
 

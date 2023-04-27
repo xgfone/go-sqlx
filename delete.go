@@ -17,6 +17,8 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+
+	"github.com/xgfone/go-op"
 )
 
 // Delete is short for NewDeleteBuilder.
@@ -102,6 +104,13 @@ func (b *DeleteBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *Dele
 // Where sets the WHERE conditions.
 func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
 	b.where = append(b.where, andConditions...)
+	return b
+}
+
+// WhereOp is the same as Where, but uses the operation condition
+// as the where condtion.
+func (b *DeleteBuilder) WhereOp(andConditions ...op.Condition) *DeleteBuilder {
+	whereOpCond(b.Where, andConditions)
 	return b
 }
 

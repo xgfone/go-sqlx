@@ -17,12 +17,14 @@ package sqlx
 import (
 	"fmt"
 	"testing"
+
+	"github.com/xgfone/go-op"
 )
 
 func ExampleSelectBuilder() {
 	sel1 := Select("*").From("table").Where(Equal("id", 123))
-	sel2 := Select("*").From("table", "alias").Where(Equal("id", 123))
-	sel3 := Select("id", "c1").Select("name", "c2").From("table", "alias").Where(Equal("id", 123))
+	sel2 := Select("*").From("table", "alias").WhereOp(op.Equal("id", 123))
+	sel3 := Select("id", "c1").Select("name", "c2").From("table", "alias").WhereOp(op.Equal("id", 123))
 	sel4 := Select("A.id").Select("B.name").From("table1", "A").From("table2", "B").Where(ColumnEqual("A.id", "B.id"))
 
 	sql1, args1 := sel1.Build()

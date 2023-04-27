@@ -14,7 +14,11 @@
 
 package sqlx
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/xgfone/go-op"
+)
 
 func ExampleDeleteBuilder() {
 	// No Where
@@ -32,7 +36,8 @@ func ExampleDeleteBuilder() {
 				Like("c4", "%value%"),
 				Between("c5", 100, 200),
 			),
-		)
+		).
+		WhereOp(op.Eq("c6", 456))
 
 	sql1, args1 := delete1.Build()                      // Use the default dialect.
 	sql2, args2 := delete2.SetDialect(Postgres).Build() // Use the PostgreSQL dialect.
@@ -45,6 +50,6 @@ func ExampleDeleteBuilder() {
 	// Output:
 	// DELETE FROM `table`
 	// []
-	// DELETE FROM "table" WHERE ("c1"=$1 AND "c2" IS NOT NULL AND "c3"<$2 AND ("c4" LIKE $3 OR "c5" BETWEEN $4 AND $5))
-	// [123 123 %value% 100 200]
+	// DELETE FROM "table" WHERE ("c1"=$1 AND "c2" IS NOT NULL AND "c3"<$2 AND ("c4" LIKE $3 OR "c5" BETWEEN $4 AND $5) AND "c6"=$6)
+	// [123 123 %value% 100 200 456]
 }

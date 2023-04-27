@@ -23,6 +23,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/xgfone/go-op"
 )
 
 // Sep is the separator by the select struct.
@@ -381,6 +383,13 @@ func (b *SelectBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *Sele
 // Where sets the WHERE conditions.
 func (b *SelectBuilder) Where(andConditions ...Condition) *SelectBuilder {
 	b.wheres = append(b.wheres, andConditions...)
+	return b
+}
+
+// WhereOp is the same as Where, but uses the operation condition
+// as the where condtion.
+func (b *SelectBuilder) WhereOp(andConditions ...op.Condition) *SelectBuilder {
+	whereOpCond(b.Where, andConditions)
 	return b
 }
 

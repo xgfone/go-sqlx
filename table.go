@@ -14,6 +14,8 @@
 
 package sqlx
 
+import "github.com/xgfone/go-op"
+
 // Table represents a SQL table.
 type Table struct {
 	Name string
@@ -55,6 +57,12 @@ func (t Table) DeleteFrom(conds ...Condition) *DeleteBuilder {
 	return t.GetDB().Delete().From(t.Name).Where(conds...)
 }
 
+// DeleteFromOp is the same as DeleteFrom, but uses the operation conditions
+// as the where conditions.
+func (t Table) DeleteFromOp(conds ...op.Condition) *DeleteBuilder {
+	return t.GetDB().Delete().From(t.Name).WhereOp(conds...)
+}
+
 // InsertInto returns a INSERT INTO builder.
 func (t Table) InsertInto() *InsertBuilder {
 	return t.GetDB().Insert().Into(t.Name)
@@ -63,6 +71,12 @@ func (t Table) InsertInto() *InsertBuilder {
 // Update returns a UPDATE builder.
 func (t Table) Update(setters ...Setter) *UpdateBuilder {
 	return t.GetDB().Update(t.Name).Set(setters...)
+}
+
+// UpdateSetterOp is the same as Update, but uses the operation setters
+// as the setters.
+func (t Table) UpdateSetterOp(setters ...op.Setter) *UpdateBuilder {
+	return t.GetDB().Update(t.Name).SetOp(setters...)
 }
 
 // Select returns a SELECT FROM builder.

@@ -14,16 +14,20 @@
 
 package sqlx
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/xgfone/go-op"
+)
 
 func ExampleUpdateBuilder() {
 	// No Where
 	update1 := Update().Table("table").Set(Assign("c1", "v1"), Inc("c2")).
-		Set(Assign("c3", 123), Add("c4", 456))
+		SetOp(op.Set("c3", 123), op.Add("c4", 456))
 
 	// With Where
 	update2 := Update().Table("table").Set(Assign("c1", "v1")).Set(Dec("c2")).
-		Where(Equal("c3", 789))
+		Where(Equal("c3", 789)).WhereOp(op.Equal("c4", 900))
 
 	sql1, args1 := update1.Build()
 	sql2, args2 := update2.SetDialect(Postgres).Build()
@@ -36,6 +40,6 @@ func ExampleUpdateBuilder() {
 	// Output:
 	// UPDATE `table` SET `c1`=?, `c2`=`c2`+1, `c3`=?, `c4`=`c4`+?
 	// [v1 123 456]
-	// UPDATE "table" SET "c1"=$1, "c2"="c2"-1 WHERE "c3"=$2
-	// [v1 789]
+	// UPDATE "table" SET "c1"=$1, "c2"="c2"-1 WHERE ("c3"=$2 AND "c4"=$3)
+	// [v1 789 900]
 }
