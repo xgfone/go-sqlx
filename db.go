@@ -154,46 +154,6 @@ func (db *DB) GetExecutor() Executor {
 	return db.Executor
 }
 
-// CreateTable returns a SQL table builder.
-func (db *DB) CreateTable(table string) *TableBuilder {
-	return NewTableBuilder(table).SetDB(db)
-}
-
-// Delete returns a DELETE SQL builder.
-func (db *DB) Delete(tables ...string) *DeleteBuilder {
-	return Delete(tables...).SetDB(db)
-}
-
-// Insert returns a INSERT SQL builder.
-func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDB(db)
-}
-
-// Select returns a SELECT SQL builder.
-func (db *DB) Select(column string, alias ...string) *SelectBuilder {
-	return Select(column, alias...).SetDB(db)
-}
-
-// Selects is equal to db.Select(columns[0]).Select(columns[1])...
-func (db *DB) Selects(columns ...string) *SelectBuilder {
-	return Selects(columns...).SetDB(db)
-}
-
-// SelectColumns is equal to db.Select(columns[0].FullName()).Select(columns[1].FullName())...
-func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
-	return SelectColumns(columns...).SetDB(db)
-}
-
-// SelectStruct is equal to db.Select().SelectStruct(s, table...).
-func (db *DB) SelectStruct(s interface{}, table ...string) *SelectBuilder {
-	return SelectStruct(s, table...).SetDB(db)
-}
-
-// Update returns a UPDATE SQL builder.
-func (db *DB) Update(table ...string) *UpdateBuilder {
-	return Update(table...).SetDB(db)
-}
-
 // ExecContext executes the sql statement.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	return db.GetExecutor().ExecContext(ctx, query, args...)

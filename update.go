@@ -21,6 +21,11 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+// Update returns a UPDATE SQL builder.
+func (db *DB) Update(table ...string) *UpdateBuilder {
+	return Update(table...).SetDB(db)
+}
+
 // Update is short for NewUpdateBuilder.
 func Update(table ...string) *UpdateBuilder {
 	return NewUpdateBuilder(table...)

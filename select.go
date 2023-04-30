@@ -30,6 +30,26 @@ import (
 // Sep is the separator by the select struct.
 var Sep = "_"
 
+// Select returns a SELECT SQL builder.
+func (db *DB) Select(column string, alias ...string) *SelectBuilder {
+	return Select(column, alias...).SetDB(db)
+}
+
+// Selects is equal to db.Select(columns[0]).Select(columns[1])...
+func (db *DB) Selects(columns ...string) *SelectBuilder {
+	return Selects(columns...).SetDB(db)
+}
+
+// SelectColumns is equal to db.Select(columns[0].FullName()).Select(columns[1].FullName())...
+func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
+	return SelectColumns(columns...).SetDB(db)
+}
+
+// SelectStruct is equal to db.Select().SelectStruct(s, table...).
+func (db *DB) SelectStruct(s interface{}, table ...string) *SelectBuilder {
+	return SelectStruct(s, table...).SetDB(db)
+}
+
 // Select is short for NewSelectBuilder.
 func Select(column string, alias ...string) *SelectBuilder {
 	return NewSelectBuilder(column, alias...)

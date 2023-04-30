@@ -24,6 +24,11 @@ import (
 	"time"
 )
 
+// Insert returns a INSERT SQL builder.
+func (db *DB) Insert() *InsertBuilder {
+	return Insert().SetDB(db)
+}
+
 // Insert is short for NewInsertBuilder.
 func Insert() *InsertBuilder {
 	return NewInsertBuilder()

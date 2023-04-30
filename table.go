@@ -47,6 +47,11 @@ func (t Table) GetDB() *DB {
 	return DefaultDB
 }
 
+// CreateTable returns a SQL table builder.
+func (db *DB) CreateTable(table string) *TableBuilder {
+	return NewTableBuilder(table).SetDB(db)
+}
+
 // CreateTable returns a table builder.
 func (t Table) CreateTable() *TableBuilder {
 	return t.GetDB().CreateTable(t.Name)
