@@ -26,6 +26,29 @@ import (
 	"github.com/xgfone/go-defaults"
 )
 
+var dbs map[string]*DB
+
+// GetDB returns the registered db named name.
+// Or, return nil instead if not exist.
+func GetDB(name string) *DB { return dbs[name] }
+
+// GetDBs returns all the registered dbs.
+func GetDBs() map[string]*DB { return dbs }
+
+// RegisterDB registers the db with the name, and panics if registered.
+func RegisterDB(name string, db *DB) {
+	if name == "" {
+		panic("sqlx: the db name must not be empty")
+	}
+	if db == nil {
+		panic("sqlx: the db must not be nil")
+	}
+	if _, ok := dbs[name]; ok {
+		panic(fmt.Errorf("sqlx: DB named '%s' has been registered", name))
+	}
+	dbs[name] = db
+}
+
 // DefaultDB is the default global DB.
 var DefaultDB = new(DB)
 
