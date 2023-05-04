@@ -127,6 +127,15 @@ func getDB(db *DB) *DB {
 	return DefaultDB
 }
 
+// Set resets the current db to other.
+func (db *DB) Set(other *DB) {
+	if other == nil {
+		*db = DB{}
+	} else {
+		*db = *other
+	}
+}
+
 // GetDialect returns the dialect of the db.
 //
 // If not set, return DefaultDialect instead.
