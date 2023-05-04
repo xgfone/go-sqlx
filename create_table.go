@@ -77,12 +77,6 @@ func (b *TableBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	return getDB(b.db).ExecContext(ctx, query, args...)
 }
 
-func (b *TableBuilder) checkDB() {
-	if b.db == nodb {
-		panic(fmt.Errorf("sqlx: table '%s' has no db", b.table))
-	}
-}
-
 // SetDB sets the db.
 func (b *TableBuilder) SetDB(db *DB) *TableBuilder {
 	b.db = db
@@ -97,8 +91,6 @@ func (b *TableBuilder) String() string {
 
 // Build builds the CREATE TABLE sql statement.
 func (b *TableBuilder) Build() (sql string, args []interface{}) {
-	b.checkDB()
-
 	if b.table == "" {
 		panic("TableBuilder: no table name")
 	} else if len(b.defines) == 0 {

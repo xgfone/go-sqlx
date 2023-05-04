@@ -18,7 +18,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/url"
 	"runtime"
 	"strings"
@@ -26,58 +25,6 @@ import (
 
 	"github.com/xgfone/go-defaults"
 )
-
-var (
-	dbs       = make(map[string]*DB)
-	dbSetters = make([]dbSetter, 0)
-	nodb      = new(DB)
-)
-
-type dbSetter struct {
-	name string
-	set  func(*DB)
-}
-
-func iterDBSetters(f func(name string, set func(*DB))) {
-	for _, ds := range dbSetters {
-		f(ds.name, ds.set)
-	}
-}
-
-// MustDB returns the registered db named name, which will panic if not exist.
-func MustDB(name string) *DB {
-	if db := GetDB(name); db != nil {
-		return db
-	}
-	panic(fmt.Errorf("sqlx: no db named '%s'", name))
-}
-
-// GetDB returns the registered db named name.
-// Or, return nil instead if not exist.
-func GetDB(name string) *DB { return dbs[name] }
-
-// GetDBs returns all the registered dbs.
-func GetDBs() map[string]*DB { return dbs }
-
-// RegisterDB registers the db with the name, and panics if registered.
-func RegisterDB(name string, db *DB) {
-	if name == "" {
-		panic("sqlx: the db name must not be empty")
-	}
-	if db == nil {
-		panic("sqlx: the db must not be nil")
-	}
-	if _, ok := dbs[name]; ok {
-		panic(fmt.Errorf("sqlx: DB named '%s' has been registered", name))
-	}
-	dbs[name] = db
-	log.Printf("sqlx: register the db named '%s'", name)
-	iterDBSetters(func(_name string, set func(*DB)) {
-		if name == _name {
-			set(db)
-		}
-	})
-}
 
 // DefaultDB is the default global DB.
 var DefaultDB = new(DB)
