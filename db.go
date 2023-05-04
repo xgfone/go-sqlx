@@ -38,10 +38,6 @@ type dbSetter struct {
 	set  func(*DB)
 }
 
-func registerDBSetter(name string, set func(*DB)) {
-	dbSetters = append(dbSetters, dbSetter{name: name, set: set})
-}
-
 func iterDBSetters(f func(name string, set func(*DB))) {
 	for _, ds := range dbSetters {
 		f(ds.name, ds.set)
@@ -140,11 +136,15 @@ func ConnMaxLifetime(d time.Duration) Config {
 	return func(db *DB) { db.SetConnMaxLifetime(d) }
 }
 
+// ConnMaxIdleTime returns a Config to set the maximum idle time of the connection.
+func ConnMaxIdleTime(d time.Duration) Config {
+	return func(db *DB) { db.SetConnMaxIdleTime(d) }
+}
+
 // DB is the wrapper of the sql.DB.
 type DB struct {
 	*sql.DB
 	Dialect
-	Executor
 	Interceptor
 }
 
@@ -173,55 +173,69 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 	return xdb, nil
 }
 
-func getExecutor(db *DB, executor Executor) Executor {
-	if executor != nil {
-		return executor
-	}
+func getDB(db *DB) *DB {
 	if db != nil {
 		return db
 	}
 	return DefaultDB
 }
 
-func getDialect(db *DB, dialect Dialect) Dialect {
-	if dialect != nil {
-		return dialect
-	}
+// GetDialect returns the dialect of the db.
+//
+// If not set, return DefaultDialect instead.
+func (db *DB) GetDialect() Dialect {
 	if db != nil && db.Dialect != nil {
 		return db.Dialect
 	}
 	return DefaultDialect
 }
 
-func getInterceptor(db *DB, interceptor Interceptor) Interceptor {
-	if interceptor != nil {
-		return interceptor
+func (db *DB) Intercept(sql string, args []interface{}) (string, []interface{}, error) {
+	if db != nil && db.Interceptor != nil {
+		var err error
+		if sql, args, err = db.Interceptor.Intercept(sql, args); err != nil {
+			return "", nil, err
+		}
 	}
-	if db != nil {
-		return db.Interceptor
-	}
-	return nil
+	return sql, args, nil
 }
 
-// GetExecutor returns the executor if set. Or, return sql.DB instead.
-func (db *DB) GetExecutor() Executor {
-	if db.Executor == nil {
-		return db.DB
-	}
-	return db.Executor
+// Exec is equal to db.ExecContext(context.Background(), query, args...).
+func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (r sql.Result, err error) {
+	return db.ExecContext(context.Background(), query, args...)
+}
+
+// Query is equal to db.QueryContext(context.Background(), query, args...).
+func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
+	return db.QueryContext(context.Background(), query, args...)
+}
+
+// QueryRow is equal to db.QueryRowContext(context.Background(), query, args...)
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return db.QueryRowContext(context.Background(), query, args...)
 }
 
 // ExecContext executes the sql statement.
-func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return db.GetExecutor().ExecContext(ctx, query, args...)
+func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (r sql.Result, err error) {
+	if query, args, err = db.Intercept(query, args); err == nil {
+		r, err = db.DB.ExecContext(ctx, query, args...)
+	}
+	return
 }
 
 // QueryContext executes the query sql statement.
-func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return db.GetExecutor().QueryContext(ctx, query, args...)
+func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
+	if query, args, err = db.Intercept(query, args); err == nil {
+		rows, err = db.DB.QueryContext(ctx, query, args...)
+	}
+	return
 }
 
 // QueryRowContext executes the row query sql statement.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	return db.GetExecutor().QueryRowContext(ctx, query, args...)
+	query, args, err := db.Intercept(query, args)
+	if err != nil {
+		panic(err)
+	}
+	return db.DB.QueryRowContext(ctx, query, args...)
 }

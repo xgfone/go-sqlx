@@ -30,7 +30,7 @@ func ExampleUpdateBuilder() {
 		Where(Equal("c3", 789)).WhereOp(op.Equal("c4", 900))
 
 	sql1, args1 := update1.Build()
-	sql2, args2 := update2.SetDialect(Postgres).Build()
+	sql2, args2 := update2.SetDB(&DB{Dialect: Postgres}).Build()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)

@@ -33,21 +33,18 @@ func Delete(tables ...string) *DeleteBuilder {
 
 // NewDeleteBuilder returns a new DELETE builder.
 func NewDeleteBuilder(tables ...string) *DeleteBuilder {
-	return &DeleteBuilder{dialect: DefaultDialect, dtables: tables}
+	return &DeleteBuilder{dtables: tables}
 }
 
 // DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
 	ConditionSet
 
-	db        *DB
-	intercept Interceptor
-	executor  Executor
-	dialect   Dialect
-	dtables   []string
-	ftables   []sqlTable
-	joins     []joinTable
-	where     []Condition
+	db      *DB
+	dtables []string
+	ftables []sqlTable
+	joins   []joinTable
+	where   []Condition
 }
 
 // Table appends the table name to delete the rows from it.
@@ -135,30 +132,12 @@ func (b *DeleteBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+	return getDB(b.db).ExecContext(ctx, query, args...)
 }
 
 // SetDB sets the db.
 func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder {
 	b.db = db
-	return b
-}
-
-// SetExecutor sets the executor to exec.
-func (b *DeleteBuilder) SetExecutor(exec Executor) *DeleteBuilder {
-	b.executor = exec
-	return b
-}
-
-// SetInterceptor sets the interceptor to f.
-func (b *DeleteBuilder) SetInterceptor(f Interceptor) *DeleteBuilder {
-	b.intercept = f
-	return b
-}
-
-// SetDialect resets the dialect.
-func (b *DeleteBuilder) SetDialect(dialect Dialect) *DeleteBuilder {
-	b.dialect = dialect
 	return b
 }
 
@@ -174,7 +153,7 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 		panic("DeleteBuilder: no from table name")
 	}
 
-	dialect := getDialect(b.db, b.dialect)
+	dialect := b.db.GetDialect()
 
 	buf := getBuffer()
 	buf.WriteString("DELETE ")
@@ -217,5 +196,5 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(getInterceptor(b.db, b.intercept), sql, args)
+	return
 }

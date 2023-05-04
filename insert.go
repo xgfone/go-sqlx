@@ -25,26 +25,17 @@ import (
 )
 
 // Insert returns a INSERT SQL builder.
-func (db *DB) Insert() *InsertBuilder {
-	return Insert().SetDB(db)
-}
+func (db *DB) Insert() *InsertBuilder { return Insert().SetDB(db) }
 
 // Insert is short for NewInsertBuilder.
-func Insert() *InsertBuilder {
-	return NewInsertBuilder()
-}
+func Insert() *InsertBuilder { return NewInsertBuilder() }
 
 // NewInsertBuilder returns a new INSERT builder.
-func NewInsertBuilder() *InsertBuilder {
-	return &InsertBuilder{dialect: DefaultDialect}
-}
+func NewInsertBuilder() *InsertBuilder { return new(InsertBuilder) }
 
 // InsertBuilder is used to build the INSERT statement.
 type InsertBuilder struct {
-	intercept Interceptor
-	executor  Executor
-	dialect   Dialect
-	db        *DB
+	db *DB
 
 	verb    string
 	table   string
@@ -245,30 +236,12 @@ func (b *InsertBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+	return getDB(b.db).ExecContext(ctx, query, args...)
 }
 
 // SetDB sets the db.
 func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder {
 	b.db = db
-	return b
-}
-
-// SetExecutor sets the executor to exec.
-func (b *InsertBuilder) SetExecutor(exec Executor) *InsertBuilder {
-	b.executor = exec
-	return b
-}
-
-// SetInterceptor sets the interceptor to f.
-func (b *InsertBuilder) SetInterceptor(f Interceptor) *InsertBuilder {
-	b.intercept = f
-	return b
-}
-
-// SetDialect resets the dialect.
-func (b *InsertBuilder) SetDialect(dialect Dialect) *InsertBuilder {
-	b.dialect = dialect
 	return b
 }
 
@@ -301,7 +274,7 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 		panic("InsertBuilder: no table name")
 	}
 
-	dialect := getDialect(b.db, b.dialect)
+	dialect := b.db.GetDialect()
 
 	buf := getBuffer()
 	buf.WriteString(b.verb)
@@ -335,7 +308,7 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(getInterceptor(b.db, b.intercept), sql, args)
+	return
 }
 
 func (b *InsertBuilder) addValues(dialect Dialect, buf *bytes.Buffer,

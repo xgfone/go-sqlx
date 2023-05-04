@@ -22,7 +22,7 @@ import (
 
 // NewTableBuilder returns a new CREATE TABLE builder.
 func NewTableBuilder(table string) *TableBuilder {
-	return &TableBuilder{table: table, dialect: DefaultDialect}
+	return &TableBuilder{table: table}
 }
 
 type columnDefinition struct {
@@ -33,13 +33,10 @@ type columnDefinition struct {
 
 // TableBuilder is used to build the CREATE TABLE statement.
 type TableBuilder struct {
-	db        *DB
-	intercept Interceptor
-	executor  Executor
-	dialect   Dialect
-	defines   []columnDefinition
-	options   []string
-	table     string
+	db      *DB
+	defines []columnDefinition
+	options []string
+	table   string
 
 	temp bool
 	ifne bool
@@ -77,7 +74,7 @@ func (b *TableBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *TableBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getExecutor(b.db, b.executor).ExecContext(ctx, query, args...)
+	return getDB(b.db).ExecContext(ctx, query, args...)
 }
 
 func (b *TableBuilder) checkDB() {
@@ -86,35 +83,9 @@ func (b *TableBuilder) checkDB() {
 	}
 }
 
-// Register returns the talbe with the name to set the db
-// when registering the db.
-func (b *TableBuilder) Register(name string) *TableBuilder {
-	registerDBSetter(name, func(db *DB) { b.SetDB(db) })
-	b.db = nodb
-	return b
-}
-
 // SetDB sets the db.
 func (b *TableBuilder) SetDB(db *DB) *TableBuilder {
 	b.db = db
-	return b
-}
-
-// SetExecutor sets the executor to exec.
-func (b *TableBuilder) SetExecutor(exec Executor) *TableBuilder {
-	b.executor = exec
-	return b
-}
-
-// SetInterceptor sets the interceptor to f.
-func (b *TableBuilder) SetInterceptor(f Interceptor) *TableBuilder {
-	b.intercept = f
-	return b
-}
-
-// SetDialect resets the dialect.
-func (b *TableBuilder) SetDialect(dialect Dialect) *TableBuilder {
-	b.dialect = dialect
 	return b
 }
 
@@ -146,7 +117,7 @@ func (b *TableBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString("IF NOT EXISTS ")
 	}
 
-	dialect := getDialect(b.db, b.dialect)
+	dialect := b.db.GetDialect()
 
 	buf.WriteString(dialect.Quote(b.table))
 	buf.WriteString(" (")
@@ -179,5 +150,5 @@ func (b *TableBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(getInterceptor(b.db, b.intercept), sql, args)
+	return
 }

@@ -57,42 +57,27 @@ func Select(column string, alias ...string) *SelectBuilder {
 
 // Selects is equal to Select(columns[0]).Select(columns[1])...
 func Selects(columns ...string) *SelectBuilder {
-	s := &SelectBuilder{dialect: DefaultDialect}
+	s := new(SelectBuilder)
 	return s.Selects(columns...)
 }
 
 // SelectColumns is equal to
 // Select(columns[0].FullName()).Select(columns[1].FullName())...
 func SelectColumns(columns ...Column) *SelectBuilder {
-	s := &SelectBuilder{dialect: DefaultDialect}
+	s := new(SelectBuilder)
 	return s.SelectColumns(columns...)
 }
 
 // SelectStruct is equal to Select().SelectStruct(s, table...).
 func SelectStruct(s interface{}, table ...string) *SelectBuilder {
-	sb := &SelectBuilder{dialect: DefaultDialect}
+	sb := new(SelectBuilder)
 	return sb.SelectStruct(s, table...)
 }
 
 // NewSelectBuilder returns a new SELECT builder.
 func NewSelectBuilder(column string, alias ...string) *SelectBuilder {
-	s := &SelectBuilder{dialect: DefaultDialect}
+	s := new(SelectBuilder)
 	return s.Select(column, alias...)
-}
-
-type sqlTable struct {
-	Table string
-	Alias string
-}
-
-func appendTable(tables []sqlTable, table, alias string) []sqlTable {
-	for i, t := range tables {
-		if t.Table == table {
-			tables[i].Alias = alias
-			return tables
-		}
-	}
-	return append(tables, sqlTable{Table: table, Alias: alias})
 }
 
 func compactAlias(aliases []string) string {
@@ -176,20 +161,17 @@ func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
 type SelectBuilder struct {
 	ConditionSet
 
-	db        *DB
-	intercept Interceptor
-	executor  Executor
-	dialect   Dialect
-	distinct  bool
-	tables    []sqlTable
-	columns   []selectedColumn
-	joins     []joinTable
-	wheres    []Condition
-	groupbys  []string
-	havings   []string
-	orderbys  []orderby
-	limit     int64
-	offset    int64
+	db       *DB
+	distinct bool
+	tables   []sqlTable
+	columns  []selectedColumn
+	joins    []joinTable
+	wheres   []Condition
+	groupbys []string
+	havings  []string
+	orderbys []orderby
+	limit    int64
+	offset   int64
 }
 
 // Distinct marks SELECT as DISTINCT.
@@ -492,40 +474,17 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 }
 
 func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
-	rows, err := b.GetExecutor().QueryContext(ctx, rawsql, args...)
+	rows, err := getDB(b.db).QueryContext(ctx, rawsql, args...)
 	return Rows{b.SelectedColumns(), rows}, err
 }
 
 func (b *SelectBuilder) queryRowContext(ctx context.Context, rawsql string, args ...interface{}) Row {
-	return Row{b.SelectedColumns(), b.GetExecutor().QueryRowContext(ctx, rawsql, args...)}
-}
-
-// GetExecutor returns the sql executor.
-func (b *SelectBuilder) GetExecutor() Executor {
-	return getExecutor(b.db, b.executor)
+	return Row{b.SelectedColumns(), getDB(b.db).QueryRowContext(ctx, rawsql, args...)}
 }
 
 // SetDB sets the db.
 func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
 	b.db = db
-	return b
-}
-
-// SetExecutor sets the executor to exec.
-func (b *SelectBuilder) SetExecutor(exec Executor) *SelectBuilder {
-	b.executor = exec
-	return b
-}
-
-// SetInterceptor sets the interceptor to f.
-func (b *SelectBuilder) SetInterceptor(f Interceptor) *SelectBuilder {
-	b.intercept = f
-	return b
-}
-
-// SetDialect resets the dialect.
-func (b *SelectBuilder) SetDialect(dialect Dialect) *SelectBuilder {
-	b.dialect = dialect
 	return b
 }
 
@@ -550,7 +509,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteString("DISTINCT ")
 	}
 
-	dialect := getDialect(b.db, b.dialect)
+	dialect := b.db.GetDialect()
 
 	// Selected Columns
 	for i, column := range b.columns {
@@ -639,7 +598,7 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 
 	sql = buf.String()
 	putBuffer(buf)
-	return intercept(getInterceptor(b.db, b.intercept), sql, args)
+	return
 }
 
 // BindRow is equal to b.BindRowContext(context.Background(), dest...).

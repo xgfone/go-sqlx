@@ -16,6 +16,23 @@ package sqlx
 
 import "github.com/xgfone/go-op"
 
+type sqlTable struct {
+	Table string
+	Alias string
+}
+
+func appendTable(tables []sqlTable, table, alias string) []sqlTable {
+	for i, t := range tables {
+		if t.Table == table {
+			tables[i].Alias = alias
+			return tables
+		}
+	}
+	return append(tables, sqlTable{Table: table, Alias: alias})
+}
+
+/// ---------------------------------------------------------------------- ///
+
 // Table represents a SQL table.
 type Table struct {
 	Name string
