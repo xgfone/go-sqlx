@@ -95,9 +95,9 @@ func (t Table) Update(setters ...Setter) *UpdateBuilder {
 	return t.GetDB().Update(t.Name).Set(setters...)
 }
 
-// UpdateSetterOp is the same as Update, but uses the operation setters
+// UpdateOp is the same as Update, but uses the operation setters
 // as the setters.
-func (t Table) UpdateSetterOp(setters ...op.Setter) *UpdateBuilder {
+func (t Table) UpdateOp(setters ...op.Setter) *UpdateBuilder {
 	return t.GetDB().Update(t.Name).SetOp(setters...)
 }
 
