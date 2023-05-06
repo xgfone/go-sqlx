@@ -58,91 +58,93 @@ func init() {
 	op.RegisterConverter(ConverterType, op.CondOpGreaterEqualKey, convertCondition)
 }
 
-func convertSetter(_type, _op, key string, value interface{}) interface{} {
-	switch _op {
+func convertSetter(optype string, oper op.Oper) interface{} {
+	_op := oper.Operation()
+	switch _op.Op {
 	case op.SetOpInc:
-		return Inc(key)
+		return Inc(_op.Key)
 	case op.SetOpDec:
-		return Dec(key)
+		return Dec(_op.Key)
 	case op.SetOpAdd:
-		return Add(key, value)
+		return Add(_op.Key, _op.Val)
 	case op.SetOpSub:
-		return Sub(key, value)
+		return Sub(_op.Key, _op.Val)
 	case op.SetOpMul:
-		return Mul(key, value)
+		return Mul(_op.Key, _op.Val)
 	case op.SetOpDiv:
-		return Div(key, value)
+		return Div(_op.Key, _op.Val)
 	case op.SetOpSet:
-		return Set(key, value)
+		return Set(_op.Key, _op.Val)
 	}
-	panic(fmt.Errorf("unknown setter op '%s' for type '%s'", _op, _type))
+	panic(fmt.Errorf("unknown setter op '%s' for type '%s'", _op.Op, optype))
 }
 
-func convertCondition(_type, _op, key string, value interface{}) interface{} {
-	switch _op {
+func convertCondition(optype string, oper op.Oper) interface{} {
+	_op := oper.Operation()
+	switch _op.Op {
 	case op.CondOpEqual:
-		return Equal(key, value)
+		return Equal(_op.Key, _op.Val)
 	case op.CondOpNotEqual:
-		return NotEq(key, value)
+		return NotEq(_op.Key, _op.Val)
 
 	case op.CondOpLess:
-		return Less(key, value)
+		return Less(_op.Key, _op.Val)
 	case op.CondOpLessEqual:
-		return LessEqual(key, value)
+		return LessEqual(_op.Key, _op.Val)
 
 	case op.CondOpGreater:
-		return Greater(key, value)
+		return Greater(_op.Key, _op.Val)
 	case op.CondOpGreaterEqual:
-		return GreaterEqual(key, value)
+		return GreaterEqual(_op.Key, _op.Val)
 
 	case op.CondOpIn:
-		return In(key, value)
+		return In(_op.Key, _op.Val)
 	case op.CondOpNotIn:
-		return NotIn(key, value)
+		return NotIn(_op.Key, _op.Val)
 
 	case op.CondOpIsNull:
-		return IsNull(key)
+		return IsNull(_op.Key)
 	case op.CondOpIsNotNull:
-		return IsNotNull(key)
+		return IsNotNull(_op.Key)
 
 	case op.CondOpLike:
-		return Like(key, value.(string))
+		return Like(_op.Key, _op.Val.(string))
 	case op.CondOpNotLike:
-		return NotLike(key, value.(string))
+		return NotLike(_op.Key, _op.Val.(string))
 
 	case op.CondOpBetween:
-		vs := value.([]interface{})
-		return Between(key, vs[0], vs[1])
+		vs := _op.Val.([]interface{})
+		return Between(_op.Key, vs[0], vs[1])
 	case op.CondOpNotBetween:
-		vs := value.([]interface{})
-		return NotBetween(key, vs[0], vs[1])
+		vs := _op.Val.([]interface{})
+		return NotBetween(_op.Key, vs[0], vs[1])
 
 	case op.CondOpEqualKey:
-		return ColumnEqual(key, value.(string))
+		return ColumnEqual(_op.Key, _op.Val.(string))
 	case op.CondOpNotEqualKey:
-		return ColumnNotEqual(key, value.(string))
+		return ColumnNotEqual(_op.Key, _op.Val.(string))
 	case op.CondOpLessKey:
-		return ColumnLess(key, value.(string))
+		return ColumnLess(_op.Key, _op.Val.(string))
 	case op.CondOpLessEqualKey:
-		return ColumnLessEqual(key, value.(string))
+		return ColumnLessEqual(_op.Key, _op.Val.(string))
 	case op.CondOpGreaterKey:
-		return ColumnGreater(key, value.(string))
+		return ColumnGreater(_op.Key, _op.Val.(string))
 	case op.CondOpGreaterEqualKey:
-		return ColumnGreaterEqual(key, value.(string))
+		return ColumnGreaterEqual(_op.Key, _op.Val.(string))
 	}
 
-	panic(fmt.Errorf("unknown condtion op '%s' for type '%s'", _op, _type))
+	panic(fmt.Errorf("unknown condtion op '%s' for type '%s'", _op.Op, optype))
 }
 
 // whereOpCond is the same as Where, but uses the operation condition
 // as the where condtion.
 func whereOpCond[T any](where func(...Condition) T, conds []op.Condition) {
 	for _, cond := range conds {
-		_op, key, value := cond.Operation()
-		if converter := op.GetConverter(ConverterType, _op); converter == nil {
+		_op := cond.Operation()
+		if converter := op.GetConverter(ConverterType, _op.Op); converter == nil {
 			panic(fmt.Errorf("%s: not found the condtion converter by op '%s'", ConverterType, _op))
 		} else {
-			where(converter(ConverterType, _op, key, value).(Condition))
+			where(converter(ConverterType, _op).(Condition))
 		}
 	}
 }
@@ -151,11 +153,11 @@ func whereOpCond[T any](where func(...Condition) T, conds []op.Condition) {
 // as the where condtion.
 func setOpSetter[T any](set func(...Setter) T, setters []op.Setter) {
 	for _, setter := range setters {
-		_op, key, value := setter.Operation()
-		if converter := op.GetConverter(ConverterType, _op); converter == nil {
+		_op := setter.Operation()
+		if converter := op.GetConverter(ConverterType, _op.Op); converter == nil {
 			panic(fmt.Errorf("%s: not found the setter converter by op '%s'", ConverterType, _op))
 		} else {
-			set(converter(ConverterType, _op, key, value).(Setter))
+			set(converter(ConverterType, _op).(Setter))
 		}
 	}
 }
