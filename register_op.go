@@ -138,7 +138,7 @@ func convertCondition(_type, _op, key string, value interface{}) interface{} {
 // as the where condtion.
 func whereOpCond[T any](where func(...Condition) T, conds []op.Condition) {
 	for _, cond := range conds {
-		_op, key, value := cond.Condition()
+		_op, key, value := cond.Operation()
 		if converter := op.GetConverter(ConverterType, _op); converter == nil {
 			panic(fmt.Errorf("%s: not found the condtion converter by op '%s'", ConverterType, _op))
 		} else {
@@ -151,7 +151,7 @@ func whereOpCond[T any](where func(...Condition) T, conds []op.Condition) {
 // as the where condtion.
 func setOpSetter[T any](set func(...Setter) T, setters []op.Setter) {
 	for _, setter := range setters {
-		_op, key, value := setter.Setter()
+		_op, key, value := setter.Operation()
 		if converter := op.GetConverter(ConverterType, _op); converter == nil {
 			panic(fmt.Errorf("%s: not found the setter converter by op '%s'", ConverterType, _op))
 		} else {
