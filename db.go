@@ -157,17 +157,17 @@ func (db *DB) Intercept(sql string, args []interface{}) (string, []interface{}, 
 }
 
 // Exec is equal to db.ExecContext(context.Background(), query, args...).
-func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (r sql.Result, err error) {
+func (db *DB) Exec(query string, args ...interface{}) (r sql.Result, err error) {
 	return db.ExecContext(context.Background(), query, args...)
 }
 
 // Query is equal to db.QueryContext(context.Background(), query, args...).
-func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
+func (db *DB) Query(query string, args ...interface{}) (rows *sql.Rows, err error) {
 	return db.QueryContext(context.Background(), query, args...)
 }
 
 // QueryRow is equal to db.QueryRowContext(context.Background(), query, args...)
-func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
 	return db.QueryRowContext(context.Background(), query, args...)
 }
 
