@@ -27,7 +27,7 @@ var ConverterType = "sqlx"
 
 func init() {
 	// Register the setter converters.
-	op.RegisterConverter(ConverterType, op.SetOpAdd, convertSetter)
+	op.RegisterConverter(ConverterType, op.SetOpInc, convertSetter)
 	op.RegisterConverter(ConverterType, op.SetOpDec, convertSetter)
 	op.RegisterConverter(ConverterType, op.SetOpAdd, convertSetter)
 	op.RegisterConverter(ConverterType, op.SetOpSub, convertSetter)
