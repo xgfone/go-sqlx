@@ -16,7 +16,9 @@ package sqlx
 
 import (
 	"context"
+	"database/sql"
 	"reflect"
+	"time"
 )
 
 // BindRows is equal to b.BindRowsContext(context.Background(), slice).
@@ -38,6 +40,8 @@ func (b *SelectBuilder) BindRowsContext(ctx context.Context, slice interface{}) 
 	return rows.ScanSlice(slice)
 }
 
+var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
+
 // ScanSlice is used to scan the row set into the slice.
 func (r Rows) ScanSlice(slice interface{}) (err error) {
 	oldvf := reflect.ValueOf(slice)
@@ -53,7 +57,11 @@ func (r Rows) ScanSlice(slice interface{}) (err error) {
 	scan := r.scansingle
 	et := vf.Type().Elem()
 	if et.Kind() == reflect.Struct {
-		scan = r.ScanStruct
+		e := reflect.New(et)
+		_, ok := e.Interface().(*time.Time)
+		if !ok && !e.Type().Implements(scannerType) {
+			scan = r.ScanStruct
+		}
 	}
 
 	for r.Next() {
