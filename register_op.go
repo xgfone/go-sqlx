@@ -98,9 +98,9 @@ func convertCondition(optype string, oper op.Oper) interface{} {
 		return GreaterEqual(_op.Key, _op.Val)
 
 	case op.CondOpIn:
-		return In(_op.Key, _op.Val)
+		return In(_op.Key, _op.Val.([]interface{})...)
 	case op.CondOpNotIn:
-		return NotIn(_op.Key, _op.Val)
+		return NotIn(_op.Key, _op.Val.([]interface{})...)
 
 	case op.CondOpIsNull:
 		return IsNull(_op.Key)
