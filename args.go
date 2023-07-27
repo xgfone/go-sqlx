@@ -16,8 +16,8 @@ package sqlx
 
 import "database/sql"
 
-// ArgsDefaultCap is the default capacity to be allocated for ArgsBuilder.
-var ArgsDefaultCap = 4
+// DefaultArgsCap is the default capacity to be allocated for ArgsBuilder.
+var DefaultArgsCap = 4
 
 // ArgsBuilder is used to build the arguments.
 type ArgsBuilder struct {
@@ -28,7 +28,7 @@ type ArgsBuilder struct {
 
 // NewArgsBuilder returns a new ArgsBuilder.
 func NewArgsBuilder(dialect Dialect) *ArgsBuilder {
-	return &ArgsBuilder{Dialect: dialect, args: make([]interface{}, 0, ArgsDefaultCap)}
+	return &ArgsBuilder{Dialect: dialect, args: make([]interface{}, 0, DefaultArgsCap)}
 }
 
 // Add appends the argument and returns the its placeholder.

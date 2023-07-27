@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,6 +21,24 @@ import (
 	"time"
 )
 
+var DefaultSliceCap = 8
+
+// Query builds the sql and executes it.
+func (b *SelectBuilder) Query() (Rows, error) {
+	return b.QueryContext(context.Background())
+}
+
+// QueryContext builds the sql and executes it.
+func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
+	query, args := b.Build()
+	return b.queryContext(ctx, query, args...)
+}
+
+func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
+	rows, err := getDB(b.db).QueryContext(ctx, rawsql, args...)
+	return Rows{b.SelectedColumns(), rows}, err
+}
+
 // BindRows is equal to b.BindRowsContext(context.Background(), slice).
 func (b *SelectBuilder) BindRows(slice interface{}) error {
 	return b.BindRowsContext(context.Background(), slice)
@@ -40,6 +58,41 @@ func (b *SelectBuilder) BindRowsContext(ctx context.Context, slice interface{}) 
 	return rows.ScanSlice(slice)
 }
 
+// Rows is used to wrap sql.Rows.
+type Rows struct {
+	Columns []string // Only used by ScanStruct
+	*sql.Rows
+}
+
+// NewRows returns a new Rows.
+func NewRows(rows *sql.Rows, columns ...string) Rows {
+	return Rows{Rows: rows, Columns: columns}
+}
+
+// Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
+// and supports that the sql value is NULL.
+func (r Rows) Scan(dests ...interface{}) (err error) {
+	return ScanRow(r.Rows.Scan, dests...)
+}
+
+// ScanStruct is the same as Scan, but the columns are scanned into the struct
+// s, which uses ScanColumnsToStruct.
+func (r Rows) ScanStruct(s interface{}) (err error) {
+	columns := r.Columns
+	if len(columns) == 0 {
+		if columns, err = r.Rows.Columns(); err != nil {
+			return
+		}
+	}
+	return ScanColumnsToStruct(r.Scan, columns, s)
+}
+
+// ScanStructWithColumns is the same as Scan, but the columns are scanned
+// into the struct s by using ScanColumnsToStruct.
+func (r Rows) ScanStructWithColumns(s interface{}, columns ...string) (err error) {
+	return ScanColumnsToStruct(r.Scan, columns, s)
+}
+
 var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
 
 // ScanSlice is used to scan the row set into the slice.
@@ -54,8 +107,13 @@ func (r Rows) ScanSlice(slice interface{}) (err error) {
 		panic("Rows.ScanSlice: the value must be a pointer to a slice")
 	}
 
+	vt := vf.Type()
+	et := vt.Elem()
+	if vf.Cap() == 0 {
+		vf.Set(reflect.MakeSlice(vt, 0, DefaultSliceCap))
+	}
+
 	scan := r.scansingle
-	et := vf.Type().Elem()
 	if et.Kind() == reflect.Struct {
 		e := reflect.New(et)
 		_, ok := e.Interface().(*time.Time)

@@ -20,17 +20,25 @@ import (
 	"github.com/xgfone/go-op"
 )
 
-func ExampleUpdateBuilder() {
+func ExampleDeleteBuilder() {
 	// No Where
-	update1 := Update().Table("table").Set(Assign("c1", "v1"), Inc("c2")).
-		SetOp(op.Set("c3", 123), op.Add("c4", 456))
+	delete1 := Delete().From("table")
 
 	// With Where
-	update2 := Update().Table("table").Set(Assign("c1", "v1")).Set(Dec("c2")).
-		Where(Equal("c3", 789)).WhereOp(op.Equal("c4", 900))
+	delete2 := Delete().From("table").
+		Where(
+			op.Greater("c1", 123),
+			op.IsNotNull("c2"),
+		).
+		Where(
+			op.Or(
+				op.Less("c3", 456),
+				op.In("c4", "a", "b"),
+			),
+		)
 
-	sql1, args1 := update1.Build()
-	sql2, args2 := update2.SetDB(&DB{Dialect: Postgres}).Build()
+	sql1, args1 := delete1.Build() // Use the default dialect.
+	sql2, args2 := delete2.Build() // Use the PostgreSQL dialect.
 
 	fmt.Println(sql1)
 	fmt.Println(args1)
@@ -38,8 +46,8 @@ func ExampleUpdateBuilder() {
 	fmt.Println(args2)
 
 	// Output:
-	// UPDATE `table` SET `c1`=?, `c2`=`c2`+1, `c3`=?, `c4`=`c4`+?
-	// [v1 123 456]
-	// UPDATE "table" SET "c1"=$1, "c2"="c2"-1 WHERE ("c3"=$2 AND "c4"=$3)
-	// [v1 789 900]
+	// DELETE FROM `table`
+	// []
+	// DELETE FROM `table` WHERE (`c1`>? AND `c2` IS NOT NULL AND (`c3`<? OR `c4` IN (?, ?)))
+	// [123 456 a b]
 }

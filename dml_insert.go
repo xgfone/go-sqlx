@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/xgfone/go-op"
 )
 
 // Insert returns a INSERT SQL builder.
@@ -72,73 +74,69 @@ func (b *InsertBuilder) Columns(columns ...string) *InsertBuilder {
 	return b
 }
 
-// Values appends the inserting values.
+// Values appends the inserted values.
 func (b *InsertBuilder) Values(values ...interface{}) *InsertBuilder {
-	if len(b.values) > 0 {
-		if len(b.values[0]) != len(values) {
-			panic("InsertBuilder: the numbers of the values for INSERT are not consistent")
-		}
+	if _len := len(b.columns); _len > 0 && _len != len(values) {
+		panic("InsertBuilder: the number of the values is not equal to that of columns")
 	}
+
 	b.values = append(b.values, values)
 	return b
 }
 
-// ColumnValues is the same as Values. But it will set it if the columns
-// are not set. Or it will check whether the columns are consistent.
-func (b *InsertBuilder) ColumnValues(columns ...Column) *InsertBuilder {
-	_len := len(b.columns)
-	if _len == 0 {
-		_len = len(columns)
+// Ops is the same as Values. But it will set it if the columns are not set.
+func (b *InsertBuilder) Ops(ops ...op.Op) *InsertBuilder {
+	if len(ops) == 0 {
+		return b
+	}
+
+	var values []interface{}
+	if _len := len(b.columns); _len == 0 {
+		_len = len(ops)
 		b.columns = make([]string, _len)
-		for i := 0; i < _len; i++ {
-			b.columns[i] = columns[i].FullName()
+		values = make([]interface{}, _len)
+		for i, op := range ops {
+			b.columns[i] = getOpKey(op)
+			values[i] = op.Val
 		}
-	} else if _len != len(columns) {
-		panic("InsertBuilder: the numbers of the values for INSERT are not consistent")
-	} else {
-		for i := 0; i < _len; i++ {
-			if b.columns[i] != columns[i].FullName() {
-				panic("InsertBuilder: inconsistent columns")
-			}
+	} else if _len == len(ops) {
+		values = make([]interface{}, _len)
+		for i, op := range ops {
+			values[i] = op.Val
 		}
-	}
-
-	values := make([]interface{}, _len)
-	for i := 0; i < _len; i++ {
-		values[i] = columns[i].Value
-	}
-
-	if b.values == nil {
-		b.values = [][]interface{}{values}
 	} else {
-		b.values = append(b.values, values)
+		panic("InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
+	b.values = append(b.values, values)
 	return b
 }
 
-// NamedValues is the same as Values. But it will set it if the columns
-// are not set.
-//
-// DEPRECATED!!!
-func (b *InsertBuilder) NamedValues(values ...sql.NamedArg) *InsertBuilder {
-	_len := len(values)
-	if len(b.values) > 0 {
-		if len(b.values[0]) != _len {
-			panic("InsertBuilder: the numbers of the values for INSERT are not consistent")
-		}
+// NamedValues is the same as Values. But it will set it if the columns are not set.
+func (b *InsertBuilder) NamedValues(nvs ...sql.NamedArg) *InsertBuilder {
+	if len(nvs) == 0 {
+		return b
 	}
 
-	cs := make([]string, _len)
-	vs := make([]interface{}, _len)
-	for i, v := range values {
-		cs[i] = v.Name
-		vs[i] = v.Value
+	var values []interface{}
+	if _len := len(b.columns); _len == 0 {
+		_len = len(nvs)
+		b.columns = make([]string, _len)
+		values = make([]interface{}, _len)
+		for i, nv := range nvs {
+			b.columns[i] = nv.Name
+			values[i] = nv.Value
+		}
+	} else if _len == len(nvs) {
+		values = make([]interface{}, _len)
+		for i, nv := range nvs {
+			values[i] = nv.Value
+		}
+	} else {
+		panic("InsertBuilder: the number of the values is not equal to that of columns")
 	}
-	if len(b.columns) == 0 {
-		b.columns = cs
-	}
-	b.values = append(b.values, vs)
+
+	b.values = append(b.values, values)
 	return b
 }
 
@@ -267,7 +265,7 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 	} else if valnum == 0 {
 		valnum = colnum
 	} else if colnum != valnum {
-		panic("InsertBuilder: len(columns) != len(values)")
+		panic("InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
 	if b.table == "" {

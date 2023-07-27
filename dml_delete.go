@@ -38,13 +38,11 @@ func NewDeleteBuilder(tables ...string) *DeleteBuilder {
 
 // DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
-	ConditionSet
-
 	db      *DB
 	dtables []string
 	ftables []sqlTable
-	joins   []joinTable
-	where   []Condition
+	jtables []joinTable
+	wheres  []op.Condition
 }
 
 // Table appends the table name to delete the rows from it.
@@ -60,10 +58,17 @@ func (b *DeleteBuilder) Table(table string) *DeleteBuilder {
 	return b
 }
 
-// From sets the table name from where to be deleted.
+// From is equal to b.FromAlias(table, "").
 func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
+	return b.FromAlias(table, "")
+}
+
+// From appends the "FROM table AS alias" statement.
+//
+// If alias is empty, use "FROM table" instead.
+func (b *DeleteBuilder) FromAlias(table string, alias string) *DeleteBuilder {
 	if table != "" {
-		b.ftables = appendTable(b.ftables, table, compactAlias(alias))
+		b.ftables = appendTable(b.ftables, table, alias)
 	}
 	return b
 }
@@ -99,28 +104,33 @@ func (b *DeleteBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *Delet
 }
 
 func (b *DeleteBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *DeleteBuilder {
-	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
-	return b
-}
+	if b.jtables == nil {
+		b.jtables = make([]joinTable, 0, 2)
+	}
 
-// Where sets the WHERE conditions.
-func (b *DeleteBuilder) Where(andConditions ...Condition) *DeleteBuilder {
-	b.where = append(b.where, andConditions...)
-	return b
-}
-
-// WhereOp is the same as Where, but uses the operation condition
-// as the where condtion.
-func (b *DeleteBuilder) WhereOp(andConditions ...op.Condition) *DeleteBuilder {
-	whereOpCond(b.Where, andConditions)
+	b.jtables = append(b.jtables, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
 	return b
 }
 
 // WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *DeleteBuilder) WhereNamedArgs(args ...sql.NamedArg) *DeleteBuilder {
-	for _, arg := range args {
-		b.Where(b.Equal(arg.Name, arg.Value))
+func (b *DeleteBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *DeleteBuilder {
+	if b.wheres == nil {
+		b.wheres = make([]op.Condition, 0, len(andArgs))
 	}
+
+	for _, arg := range andArgs {
+		b.Where(op.Equal(arg.Name, arg.Value))
+	}
+	return b
+}
+
+// Where sets the "WHERE" conditions.
+func (b *DeleteBuilder) Where(andConditions ...op.Condition) *DeleteBuilder {
+	if b.wheres == nil {
+		b.wheres = make([]op.Condition, 0, len(andConditions))
+	}
+
+	b.wheres = append(b.wheres, andConditions...)
 	return b
 }
 
@@ -150,7 +160,7 @@ func (b *DeleteBuilder) String() string {
 // Build builds the DELETE FROM TABLE sql statement.
 func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 	if len(b.ftables) == 0 {
-		panic("DeleteBuilder: no from table name")
+		panic("DeleteBuilder: no FROM table name")
 	}
 
 	dialect := b.db.GetDialect()
@@ -177,20 +187,23 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	// Join
-	for _, join := range b.joins {
+	for _, join := range b.jtables {
 		join.Build(buf, dialect)
 	}
 
 	// Where
-	if _len := len(b.where); _len > 0 {
-		expr := b.where[0]
-		if _len > 1 {
-			expr = And(b.where...)
-		}
-
+	switch _len := len(b.wheres); _len {
+	case 0:
+	case 1:
 		ab := NewArgsBuilder(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(expr.BuildCondition(ab))
+		buf.WriteString(BuildOper(ab, b.wheres[0]))
+		args = ab.Args()
+
+	default:
+		ab := NewArgsBuilder(dialect)
+		buf.WriteString(" WHERE ")
+		buf.WriteString(BuildOper(ab, op.And(b.wheres...)))
 		args = ab.Args()
 	}
 

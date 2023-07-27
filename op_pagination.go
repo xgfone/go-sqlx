@@ -1,4 +1,4 @@
-// Copyright 2022~2023 xgfone
+// Copyright 2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +14,15 @@
 
 package sqlx
 
-// DateTimeZero is the ZERO of the sql datetime.
-const DateTimeZero = "0000-00-00 00:00:00"
+import "github.com/xgfone/go-op"
 
-// Base is the common columns of the sql table.
-type Base struct {
-	ID        int  `sql:"id,omitempty" json:"Id,omitempty"`
-	CreatedAt Time `sql:"created_at,omitempty"`
-	DeletedAt Time `sql:"deleted_at,omitempty" json:"-"`
-	UpdatedAt Time `sql:"updated_at,omitempty"`
+func init() {
+	RegisterOpBuilder(op.CondOpIsNull, newPageSize())
+}
+
+func newPageSize() OpBuilder {
+	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+		ps := _op.Val.(op.PageSize)
+		return ab.Dialect.LimitOffset(ps.Size, (ps.Page-1)*ps.Size)
+	})
 }

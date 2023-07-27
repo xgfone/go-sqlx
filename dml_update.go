@@ -40,34 +40,45 @@ func NewUpdateBuilder(table ...string) *UpdateBuilder {
 			tables[i] = sqlTable{Table: table[i]}
 		}
 	}
-	return &UpdateBuilder{tables: tables}
+	return &UpdateBuilder{utables: tables}
 }
 
 // UpdateBuilder is used to build the UPDATE statement.
 type UpdateBuilder struct {
-	SetterSet
-	ConditionSet
-
 	db      *DB
+	utables []sqlTable
 	ftables []sqlTable
-	tables  []sqlTable
-	joins   []joinTable
-	where   []Condition
-	setters []Setter
+	jtables []joinTable
+	setters []op.Updater
+	wheres  []op.Condition
 }
 
-// Table appends the table name.
-func (b *UpdateBuilder) Table(table string, alias ...string) *UpdateBuilder {
+// Table is equal to b.TableAlias(table, "")
+func (b *UpdateBuilder) Table(table string) *UpdateBuilder {
+	return b.TableAlias(table, "")
+}
+
+// Table appends the "UPDATE table AS alias" statement.
+//
+// If alias is empty, use "UPDATE table" instead.
+func (b *UpdateBuilder) TableAlias(table string, alias string) *UpdateBuilder {
 	if table != "" {
-		b.tables = appendTable(b.tables, table, compactAlias(alias))
+		b.utables = appendTable(b.utables, table, alias)
 	}
 	return b
 }
 
-// From appends the from table name.
+// From is equal to b.FromAlias(table, "").
 func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
+	return b.FromAlias(table, "")
+}
+
+// From appends the "FROM table AS alias" statement.
+//
+// If alias is empty, use "FROM table" instead.
+func (b *UpdateBuilder) FromAlias(table string, alias string) *UpdateBuilder {
 	if table != "" {
-		b.ftables = appendTable(b.ftables, table, compactAlias(alias))
+		b.ftables = appendTable(b.ftables, table, alias)
 	}
 	return b
 }
@@ -103,50 +114,54 @@ func (b *UpdateBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *Updat
 }
 
 func (b *UpdateBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *UpdateBuilder {
-	b.joins = append(b.joins, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
+	if b.jtables == nil {
+		b.jtables = make([]joinTable, 0, 2)
+	}
+
+	b.jtables = append(b.jtables, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
 	return b
 }
 
-// Set appends the SET statement to setters.
-func (b *UpdateBuilder) Set(setters ...Setter) *UpdateBuilder {
-	b.setters = append(b.setters, setters...)
-	return b
-}
-
-// SetOp is the same as Set, but uses the operation setters
-// as the setters.
-func (b *UpdateBuilder) SetOp(setters ...op.Setter) *UpdateBuilder {
-	setOpSetter(b.Set, setters)
+// Set appends the "SET" statement to setters.
+func (b *UpdateBuilder) Set(updaters ...op.Updater) *UpdateBuilder {
+	if b.setters == nil {
+		b.setters = make([]op.Updater, 0, len(updaters))
+	}
+	b.setters = append(b.setters, updaters...)
 	return b
 }
 
 // SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
 func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
-	b.setters = make([]Setter, len(args))
+	if b.setters == nil {
+		b.setters = make([]op.Updater, 0, len(args))
+	}
+
 	for _, arg := range args {
-		b.Set(Set(arg.Name, arg.Value))
+		b.Set(op.New(op.UpdateOpSet, arg.Name, arg.Value).Updater())
 	}
 	return b
 }
 
-// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *UpdateBuilder) WhereNamedArgs(args ...sql.NamedArg) *UpdateBuilder {
-	for _, arg := range args {
-		b.Where(b.Equal(arg.Name, arg.Value))
+// WhereNamedArgs is the same as Where, but uses the NamedArg as the EQUAL condition.
+func (b *UpdateBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *UpdateBuilder {
+	if b.wheres == nil {
+		b.wheres = make([]op.Condition, 0, len(andArgs))
+	}
+
+	for _, arg := range andArgs {
+		b.Where(op.Equal(arg.Name, arg.Value))
 	}
 	return b
 }
 
-// WhereOp is the same as Where, but uses the operation condition
-// as the where condtion.
-func (b *UpdateBuilder) WhereOp(andConditions ...op.Condition) *UpdateBuilder {
-	whereOpCond(b.Where, andConditions)
-	return b
-}
+// Where appends the "WHERE" conditions.
+func (b *UpdateBuilder) Where(andConditions ...op.Condition) *UpdateBuilder {
+	if b.wheres == nil {
+		b.wheres = make([]op.Condition, 0, len(andConditions))
+	}
 
-// Where appends the WHERE conditions.
-func (b *UpdateBuilder) Where(andConditions ...Condition) *UpdateBuilder {
-	b.where = append(b.where, andConditions...)
+	b.wheres = append(b.wheres, andConditions...)
 	return b
 }
 
@@ -173,12 +188,12 @@ func (b *UpdateBuilder) String() string {
 	return sql
 }
 
-// Build builds the UPDATE sql statement.
+// Build builds the "UPDATE" sql statement.
 func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
-	if len(b.tables) == 0 {
+	if len(b.utables) == 0 {
 		panic("UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
-		panic("UpdateBuilder: no set values")
+		panic("UpdateBuilder: no SET values")
 	}
 
 	dialect := b.db.GetDialect()
@@ -186,7 +201,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	// Update Table
 	buf := getBuffer()
 	buf.WriteString("UPDATE ")
-	for i, t := range b.tables {
+	for i, t := range b.utables {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
@@ -198,7 +213,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	// Join
-	for _, join := range b.joins {
+	for _, join := range b.jtables {
 		join.Build(buf, dialect)
 	}
 
@@ -209,7 +224,7 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(setter.BuildSetter(ab))
+		buf.WriteString(BuildOper(ab, setter))
 	}
 
 	// From
@@ -227,14 +242,15 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	// Where
-	if _len := len(b.where); _len > 0 {
-		expr := b.where[0]
-		if _len > 1 {
-			expr = And(b.where...)
-		}
-
+	switch _len := len(b.wheres); _len {
+	case 0:
+	case 1:
 		buf.WriteString(" WHERE ")
-		buf.WriteString(expr.BuildCondition(ab))
+		buf.WriteString(BuildOper(ab, b.wheres[0]))
+
+	default:
+		buf.WriteString(" WHERE ")
+		buf.WriteString(BuildOper(ab, op.And(b.wheres...)))
 	}
 
 	sql = buf.String()

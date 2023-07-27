@@ -16,21 +16,6 @@ package sqlx
 
 import "github.com/xgfone/go-op"
 
-type sqlTable struct {
-	Table string
-	Alias string
-}
-
-func appendTable(tables []sqlTable, table, alias string) []sqlTable {
-	for i, t := range tables {
-		if t.Table == table {
-			tables[i].Alias = alias
-			return tables
-		}
-	}
-	return append(tables, sqlTable{Table: table, Alias: alias})
-}
-
 /// ---------------------------------------------------------------------- ///
 
 // Table represents a SQL table.
@@ -45,13 +30,11 @@ func NewTable(name string) Table { return Table{Name: name} }
 // NewTable returns a new Table with the db.
 func (db *DB) NewTable(name string) Table { return NewTable(name).WithDB(db) }
 
+// String returns the table name.
+func (t Table) String() string { return t.Name }
+
 // WithDB returns a new Table with the given db.
 func (t Table) WithDB(db *DB) Table { t.DB = db; return t }
-
-// NewColumn returns a new Column with the table name and the column name.
-func (t Table) NewColumn(colName string) Column {
-	return NewColumn(colName).WithTable(t.Name)
-}
 
 // SetDB reset the db.
 func (t *Table) SetDB(db *DB) { t.DB = db }
@@ -64,25 +47,9 @@ func (t Table) GetDB() *DB {
 	return DefaultDB
 }
 
-// CreateTable returns a SQL table builder.
-func (db *DB) CreateTable(table string) *TableBuilder {
-	return NewTableBuilder(table).SetDB(db)
-}
-
-// CreateTable returns a table builder.
-func (t Table) CreateTable() *TableBuilder {
-	return t.GetDB().CreateTable(t.Name)
-}
-
 // DeleteFrom returns a DELETE FROM builder.
-func (t Table) DeleteFrom(conds ...Condition) *DeleteBuilder {
+func (t Table) DeleteFrom(conds ...op.Condition) *DeleteBuilder {
 	return t.GetDB().Delete().From(t.Name).Where(conds...)
-}
-
-// DeleteFromOp is the same as DeleteFrom, but uses the operation conditions
-// as the where conditions.
-func (t Table) DeleteFromOp(conds ...op.Condition) *DeleteBuilder {
-	return t.GetDB().Delete().From(t.Name).WhereOp(conds...)
 }
 
 // InsertInto returns a INSERT INTO builder.
@@ -91,32 +58,31 @@ func (t Table) InsertInto() *InsertBuilder {
 }
 
 // Update returns a UPDATE builder.
-func (t Table) Update(setters ...Setter) *UpdateBuilder {
-	return t.GetDB().Update(t.Name).Set(setters...)
+func (t Table) Update(updaters ...op.Updater) *UpdateBuilder {
+	return t.GetDB().Update(t.Name).Set(updaters...)
 }
 
-// UpdateOp is the same as Update, but uses the operation setters
-// as the setters.
-func (t Table) UpdateOp(setters ...op.Setter) *UpdateBuilder {
-	return t.GetDB().Update(t.Name).SetOp(setters...)
+// SelectAlias is equal to t.GetDB().SelectAlias(column, alias).
+func (t Table) SelectAlias(column, alias string) *SelectBuilder {
+	return t.GetDB().SelectAlias(column, alias).From(t.Name)
 }
 
-// Select returns a SELECT FROM builder.
-func (t Table) Select(column string, alias ...string) *SelectBuilder {
-	return t.GetDB().Select(column, alias...).From(t.Name)
+// Select is equal to t.GetDB().Select(column).
+func (t Table) Select(column string) *SelectBuilder {
+	return t.GetDB().Select(column).From(t.Name)
 }
 
-// SelectColumns returns a SELECT FROM builder.
-func (t Table) SelectColumns(columns ...Column) *SelectBuilder {
-	return t.GetDB().SelectColumns(columns...).From(t.Name)
-}
-
-// SelectStruct returns a SELECT FROM builder.
-func (t Table) SelectStruct(s interface{}, table ...string) *SelectBuilder {
-	return t.GetDB().SelectStruct(s, table...).From(t.Name)
-}
-
-// Selects returns a SELECT FROM builder.
+// Selects is equal to t.GetDB().Selects(columns...).
 func (t Table) Selects(columns ...string) *SelectBuilder {
 	return t.GetDB().Selects(columns...).From(t.Name)
+}
+
+// SelectStruct is equal to t.GetDB().SelectStructWithTable(s, "").
+func (t Table) SelectStruct(s interface{}) *SelectBuilder {
+	return t.GetDB().SelectStructWithTable(s, "").From(t.Name)
+}
+
+// SelectStructWithTable is equal to t.GetDB().SelectStructWithTable(s, table).
+func (t Table) SelectStructWithTable(s interface{}, table string) *SelectBuilder {
+	return t.GetDB().SelectStructWithTable(s, table).From(t.Name)
 }

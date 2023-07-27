@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2023 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@ import (
 )
 
 func ExampleSelectBuilder() {
-	sel1 := Select("*").From("table").Where(Equal("id", 123))
-	sel2 := Select("*").From("table", "alias").WhereOp(op.Equal("id", 123))
-	sel3 := Select("id", "c1").Select("name", "c2").From("table", "alias").WhereOp(op.Equal("id", 123))
-	sel4 := Select("A.id").Select("B.name").From("table1", "A").From("table2", "B").Where(ColumnEqual("A.id", "B.id"))
+	sel1 := Select("*").From("table").Where(op.Equal("id", 123))
+	sel2 := Select("*").FromAlias("table", "alias").Where(op.Equal("id", 123))
+	sel3 := SelectAlias("id", "c1").SelectAlias("name", "c2").FromAlias("table", "alias").Where(op.Equal("id", 123))
+	sel4 := Select("A.id").Select("B.name").FromAlias("table1", "A").FromAlias("table2", "B").Where(op.EqualKey("A.id", "B.id"))
 
 	sql1, args1 := sel1.Build()
 	sql2, args2 := sel2.Build()
@@ -56,7 +56,7 @@ func ExampleSelectBuilder() {
 }
 
 func ExampleSelectBuilder_GroupBy() {
-	s := Select("*").From("table").Where(Equal("id", 123)).GroupBy("area")
+	s := Select("*").From("table").Where(op.Equal("id", 123)).GroupBy("area")
 	sql, args := s.Build()
 
 	fmt.Println(sql)
@@ -68,8 +68,8 @@ func ExampleSelectBuilder_GroupBy() {
 }
 
 func ExampleSelectBuilder_OrderBy() {
-	s1 := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time", Asc)
-	s2 := Select("*").From("table").Where(Equal("id", 123)).OrderBy("time", Desc)
+	s1 := Select("*").From("table").Where(op.Equal("id", 123)).OrderBy("time", Asc)
+	s2 := Select("*").From("table").Where(op.Equal("id", 123)).OrderBy("time", Desc)
 
 	sql1, args1 := s1.Build()
 	sql2, args2 := s2.Build()
@@ -88,7 +88,7 @@ func ExampleSelectBuilder_OrderBy() {
 }
 
 func ExampleSelectBuilder_Limit() {
-	s := Select("*").From("table").Where(Equal("id", 123)).
+	s := Select("*").From("table").Where(op.Equal("id", 123)).
 		OrderByAsc("time").Limit(10).Offset(100)
 	sql, args := s.Build()
 
@@ -102,7 +102,7 @@ func ExampleSelectBuilder_Limit() {
 
 func ExampleSelectBuilder_Join() {
 	s := Select("*").From("table1").Join("table2", "", On("table1.id", "table2.id")).
-		Where(Equal("table1.id", 123)).OrderByAsc("table1.time").Limit(10).Offset(100)
+		Where(op.Equal("table1.id", 123)).OrderByAsc("table1.time").Limit(10).Offset(100)
 	sql, args := s.Build()
 
 	fmt.Println(sql)
@@ -121,7 +121,7 @@ func ExampleSelectBuilder_SelectStruct() {
 	}
 
 	s := S{}
-	sb := SelectStruct(s, "A")
+	sb := SelectStructWithTable(s, "A")
 	columns := sb.SelectedColumns()
 	fmt.Println(columns)
 

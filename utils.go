@@ -30,12 +30,12 @@ import (
 	"github.com/xgfone/go-defaults"
 )
 
-// BufferDefaultCap is the default capacity to be allocated for buffer from pool.
-var BufferDefaultCap = 128
+// DefaultBufferCap is the default capacity to be allocated for buffer from pool.
+var DefaultBufferCap = 128
 
 var bufpool = sync.Pool{New: func() interface{} {
 	b := new(bytes.Buffer)
-	b.Grow(BufferDefaultCap)
+	b.Grow(DefaultBufferCap)
 	return b
 }}
 
@@ -707,4 +707,12 @@ func isZero(v reflect.Value) bool {
 	}
 
 	return false
+}
+
+func toslice[S1 ~[]E1, E1, E2 any](srcs S1, to func(E1) E2) (dsts []E2) {
+	dsts = make([]E2, len(srcs))
+	for i, src := range srcs {
+		dsts[i] = to(src)
+	}
+	return
 }
