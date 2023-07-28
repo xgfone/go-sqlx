@@ -29,6 +29,8 @@ func (f InterceptorFunc) Intercept(sql string, args []interface{}) (string, []in
 }
 
 // LogInterceptor returns a interceptor to log the sql and args.
+//
+// DEPRECATED!!!
 func LogInterceptor(logf func(string, ...interface{}), logArgs bool) Interceptor {
 	var log func(string, []interface{})
 	if logArgs {
