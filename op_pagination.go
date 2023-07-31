@@ -17,7 +17,7 @@ package sqlx
 import "github.com/xgfone/go-op"
 
 func init() {
-	RegisterOpBuilder(op.CondOpIsNull, newPageSize())
+	RegisterOpBuilder(op.PaginationOpPage, newPageSize())
 }
 
 func newPageSize() OpBuilder {
