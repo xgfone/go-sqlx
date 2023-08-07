@@ -21,6 +21,29 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
+	if wheres == nil {
+		wheres = make([]op.Condition, 0, len(conds)+2)
+	}
+
+	for _, cond := range conds {
+		if _op := cond.Op(); _op.Op == op.CondOpAnd {
+			switch _conds := _op.Val.(type) {
+			case []op.Condition:
+				wheres = appendWheres(wheres, _conds...)
+			case interface{ Conditions() []op.Condition }:
+				wheres = appendWheres(wheres, _conds.Conditions()...)
+			default:
+				wheres = append(wheres, cond)
+			}
+		} else {
+			wheres = append(wheres, cond)
+		}
+	}
+
+	return wheres
+}
+
 func init() {
 	RegisterOpBuilder(op.CondOpIsNull, newCondOne("%s IS NULL"))
 	RegisterOpBuilder(op.CondOpIsNotNull, newCondOne("%s IS NOT NULL"))

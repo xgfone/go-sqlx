@@ -126,11 +126,7 @@ func (b *DeleteBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *DeleteBuilder {
 
 // Where sets the "WHERE" conditions.
 func (b *DeleteBuilder) Where(andConditions ...op.Condition) *DeleteBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andConditions))
-	}
-
-	b.wheres = append(b.wheres, andConditions...)
+	b.wheres = appendWheres(b.wheres, andConditions...)
 	return b
 }
 

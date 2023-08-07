@@ -157,11 +157,7 @@ func (b *UpdateBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *UpdateBuilder {
 
 // Where appends the "WHERE" conditions.
 func (b *UpdateBuilder) Where(andConditions ...op.Condition) *UpdateBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andConditions))
-	}
-
-	b.wheres = append(b.wheres, andConditions...)
+	b.wheres = appendWheres(b.wheres, andConditions...)
 	return b
 }
 

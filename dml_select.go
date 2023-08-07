@@ -338,11 +338,7 @@ func (b *SelectBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *Sele
 
 // Where sets the WHERE conditions.
 func (b *SelectBuilder) Where(andConditions ...op.Condition) *SelectBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andConditions))
-	}
-
-	b.wheres = append(b.wheres, andConditions...)
+	b.wheres = appendWheres(b.wheres, andConditions...)
 	return b
 }
 
