@@ -14,8 +14,16 @@
 
 package sqlx
 
-// DateTimeZero is the ZERO of the sql datetime.
-const DateTimeZero = "0000-00-00 00:00:00"
+const (
+	// DateZero is the ZERO of the sql date.
+	DateZero = "0000-00-00"
+
+	// TimeZero is the ZERO of the sql time.
+	TimeZero = "00:00:00"
+
+	// DateTimeZero is the ZERO of the sql datetime.
+	DateTimeZero = "0000-00-00 00:00:00"
+)
 
 // Base is the common columns of the sql table.
 type Base struct {
