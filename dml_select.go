@@ -127,11 +127,6 @@ type SelectBuilder struct {
 	page     op.Paginator
 }
 
-func (b *SelectBuilder) makeWhere(cap int) *SelectBuilder {
-	b.wheres = make([]op.Condition, 0, cap)
-	return b
-}
-
 // Distinct marks SELECT as DISTINCT.
 func (b *SelectBuilder) Distinct() *SelectBuilder {
 	b.distinct = true

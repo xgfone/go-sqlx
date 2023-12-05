@@ -76,7 +76,3 @@ func getOpKey(op op.Op) string {
 	}
 	return name
 }
-
-func getOpAlias(op op.Op) string {
-	return op.Tags["alias"]
-}
