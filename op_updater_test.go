@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/xgfone/go-op"
@@ -44,5 +45,26 @@ func TestBatch(t *testing.T) {
 				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
 			}
 		}
+	}
+}
+
+func TestAdd(t *testing.T) {
+	add := op.Key("column1")
+	testsqlargs(t, add.Add(123), "`column1`=`column1`+?", 123)
+	testsqlargs(t, add.Add("column2"), "`column1`=`column1`+`column2`")
+	testsqlargs(t, add.AddKey("column2", 123), "`column1`=`column2`+?", 123)
+	testsqlargs(t, add.AddKey("column2", "column3"), "`column1`=`column2`+`column3`")
+}
+
+func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...interface{}) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op)
+	args := ab.Args()
+
+	if sql != expectsql {
+		t.Errorf(`expect sql "%s", but got "%s"`, expectsql, sql)
+	}
+	if (len(args) > 0 || len(expectargs) > 0) && !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
 	}
 }

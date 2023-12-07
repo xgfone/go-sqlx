@@ -66,8 +66,27 @@ func newUpdaterTwo(format string) OpBuilder {
 }
 
 func newUpdaterThree(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
-		column := ab.Quote(getOpKey(op))
-		return fmt.Sprintf(format, column, column, ab.Add(op.Val))
+	return OpBuilderFunc(func(ab *ArgsBuilder, o op.Op) string {
+		left := ab.Quote(getOpKey(o))
+		right := left
+
+		var value string
+		switch v := o.Val.(type) {
+		case op.KeyValue:
+			right = ab.Quote(v.Key)
+			if s, ok := v.Val.(string); ok {
+				value = ab.Quote(s)
+			} else {
+				value = ab.Add(v.Val)
+			}
+
+		case string:
+			value = ab.Quote(v)
+
+		default:
+			value = ab.Add(v)
+		}
+
+		return fmt.Sprintf(format, left, right, value)
 	})
 }
