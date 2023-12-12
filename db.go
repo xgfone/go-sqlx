@@ -58,7 +58,7 @@ type Config func(*DB)
 type Opener func(driverName, dataSourceName string) (*sql.DB, error)
 
 // DefaultConfigs is the default configs.
-var DefaultConfigs = []Config{MaxOpenConns(0)}
+var DefaultConfigs = []Config{MaxOpenConns(0), ConnMaxIdleTime(time.Minute * 3)}
 
 // DefaultOpener is used to open a *sql.DB.
 var DefaultOpener Opener = sql.Open
