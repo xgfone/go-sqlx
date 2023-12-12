@@ -65,9 +65,9 @@ var DefaultOpener Opener = sql.Open
 
 // MaxOpenConns returns a Config to set the maximum number of the open connection.
 //
-// If maxnum is equal to or less than 0, it is runtime.NumCPU()*2 by default.
+// If maxnum is equal to 0, it is runtime.NumCPU()*2 by default.
 func MaxOpenConns(maxnum int) Config {
-	if maxnum <= 0 {
+	if maxnum == 0 {
 		maxnum = runtime.NumCPU() * 2
 	}
 	return func(db *DB) { db.SetMaxOpenConns(maxnum) }
