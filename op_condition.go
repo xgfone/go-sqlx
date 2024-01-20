@@ -133,6 +133,9 @@ func newCondGroup(sep string) OpBuilder {
 			panic(fmt.Errorf("sqlx: unsupported value type %T for op '%s:%v'", _op.Val, _op.Kind, _op.Op))
 		}
 
+		if len(ss) == 0 {
+			return ""
+		}
 		return fmt.Sprintf("(%s)", strings.Join(ss, sep))
 	})
 }

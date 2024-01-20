@@ -46,4 +46,25 @@ func TestAnd(t *testing.T) {
 			}
 		}
 	}
+
+	if sql := BuildOper(NewArgsBuilder(MySQL), op.And()); sql != "" {
+		t.Errorf("expect an empty sql, but got: %s", sql)
+	}
+
+	expectsql = "SELECT `c1`, `c2` FROM `table` WHERE `id`=?"
+	expectargs = []interface{}{1}
+	sql, args = Selects("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).Build()
+	if expectsql != sql {
+		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
+	}
+
+	if len(args) != len(expectargs) {
+		t.Errorf("expect %d args, but got %d", len(expectargs), len(args))
+	} else {
+		for i, arg := range args {
+			if expect := expectargs[i]; expect != arg {
+				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
+			}
+		}
+	}
 }

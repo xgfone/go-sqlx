@@ -710,6 +710,10 @@ func isZero(v reflect.Value) bool {
 }
 
 func toslice[S1 ~[]E1, E1, E2 any](srcs S1, to func(E1) E2) (dsts []E2) {
+	if len(srcs) == 0 {
+		return
+	}
+
 	dsts = make([]E2, len(srcs))
 	for i, src := range srcs {
 		dsts[i] = to(src)
