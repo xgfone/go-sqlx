@@ -27,24 +27,3 @@ type InterceptorFunc func(sql string, args []interface{}) (string, []interface{}
 func (f InterceptorFunc) Intercept(sql string, args []interface{}) (string, []interface{}, error) {
 	return f(sql, args)
 }
-
-// LogInterceptor returns a interceptor to log the sql and args.
-//
-// DEPRECATED!!!
-func LogInterceptor(logf func(string, ...interface{}), logArgs bool) Interceptor {
-	var log func(string, []interface{})
-	if logArgs {
-		log = func(sql string, args []interface{}) {
-			logf(`sql={{ %s }}, args={{ %v }}`, sql, args)
-		}
-	} else {
-		log = func(sql string, args []interface{}) {
-			logf(`sql={{ %s }}`, sql)
-		}
-	}
-
-	return InterceptorFunc(func(sql string, args []interface{}) (string, []interface{}, error) {
-		log(sql, args)
-		return sql, args, nil
-	})
-}
