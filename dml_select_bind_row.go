@@ -104,7 +104,11 @@ func ScanColumnsToStruct(scan func(...interface{}) error, columns []string, s in
 	fields := getFields(s)
 	vs := make([]interface{}, len(columns))
 	for i, c := range columns {
-		vs[i] = fields[c].Addr().Interface()
+		if _, ok := fields[c]; ok {
+			vs[i] = fields[c].Addr().Interface()
+		} else {
+			vs[i] = new(interface{})
+		}
 	}
 	return scan(vs...)
 }
