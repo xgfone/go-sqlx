@@ -127,6 +127,26 @@ type SelectBuilder struct {
 	page     op.Paginator
 }
 
+// Count returns a COUNT(field).
+func Count(field string) string {
+	return strings.Join([]string{"COUNT(", ")"}, field)
+}
+
+// CountDistinct returns a COUNT(DISTINCT field).
+func CountDistinct(field string) string {
+	return strings.Join([]string{"COUNT(DISTINCT ", ")"}, field)
+}
+
+// Count appends the selected COUNT(field) column in SELECT.
+func (b *SelectBuilder) Count(field string) *SelectBuilder {
+	return b.Select(Count(field))
+}
+
+// CountDistinct appends the selected COUNT(DISTINCT field) column in SELECT.
+func (b *SelectBuilder) CountDistinct(field string) *SelectBuilder {
+	return b.Select(CountDistinct(field))
+}
+
 // Distinct marks SELECT as DISTINCT.
 func (b *SelectBuilder) Distinct() *SelectBuilder {
 	b.distinct = true
