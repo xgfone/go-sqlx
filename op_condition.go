@@ -100,6 +100,10 @@ func newCondLike(format string) OpBuilder {
 func newCondIn(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
 		vs := op.Val.([]interface{})
+		if len(vs) == 0 {
+			return ""
+		}
+
 		ss := make([]string, 0, len(vs))
 		for _, v := range vs {
 			ss = append(ss, ab.Add(v))
