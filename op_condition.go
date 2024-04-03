@@ -104,6 +104,12 @@ func newCondIn(format string) OpBuilder {
 			return ""
 		}
 
+		if len(vs) == 1 {
+			if _vs, ok := vs[0].([]interface{}); ok {
+				vs = _vs
+			}
+		}
+
 		ss := make([]string, 0, len(vs))
 		for _, v := range vs {
 			ss = append(ss, ab.Add(v))
