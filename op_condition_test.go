@@ -75,7 +75,7 @@ func TestCondInForNil(t *testing.T) {
 	sql := BuildOper(ab, op.In("field"))
 	args := ab.Args()
 
-	expectsql := ""
+	expectsql := "1=0"
 	expectargs := []any{}
 
 	if sql != expectsql {
