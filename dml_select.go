@@ -129,12 +129,15 @@ type SelectBuilder struct {
 
 // Count returns a COUNT(field).
 func Count(field string) string {
-	return strings.Join([]string{"COUNT(", ")"}, field)
+	if strings.ContainsAny(field, " `") {
+		return strings.Join([]string{"COUNT(", ")"}, field)
+	}
+	return strings.Join([]string{"COUNT(`", "`)"}, field)
 }
 
 // CountDistinct returns a COUNT(DISTINCT field).
 func CountDistinct(field string) string {
-	return strings.Join([]string{"COUNT(DISTINCT ", ")"}, field)
+	return strings.Join([]string{"COUNT(DISTINCT `", "`)"}, field)
 }
 
 // SelectCount appends the selected COUNT(field) column in SELECT.
