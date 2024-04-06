@@ -14,6 +14,8 @@
 
 package sqlx
 
+import "time"
+
 const (
 	// DateZero is the ZERO of the sql date.
 	DateZero = "0000-00-00"
@@ -27,8 +29,9 @@ const (
 
 // Base is the common columns of the sql table.
 type Base struct {
-	ID        int  `sql:"id,omitempty" json:"Id,omitempty"`
-	CreatedAt Time `sql:"created_at,omitempty"`
-	DeletedAt Time `sql:"deleted_at,omitempty" json:"-"`
-	UpdatedAt Time `sql:"updated_at,omitempty"`
+	Id int64 `sql:"id,omitempty" json:",omitempty"`
+
+	CreatedAt time.Time `sql:"created_at,omitempty"`
+	UpdatedAt time.Time `sql:"updated_at,omitempty"`
+	DeletedAt time.Time `sql:"deleted_at,omitempty" json:"-"`
 }
