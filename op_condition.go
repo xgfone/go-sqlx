@@ -100,13 +100,22 @@ func newCondLike(format string) OpBuilder {
 func newCondIn(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
 		vs := op.Val.([]interface{})
-		if len(vs) == 0 {
-			return ""
-		}
 
-		if len(vs) == 1 {
+		switch len(vs) {
+		case 0:
+			return "1=0"
+
+		case 1:
 			if _vs, ok := vs[0].([]interface{}); ok {
 				vs = _vs
+			}
+
+			switch len(vs) {
+			case 0:
+				return "1=0"
+
+			case 1:
+				return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(vs[0]))
 			}
 		}
 

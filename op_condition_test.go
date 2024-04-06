@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/xgfone/go-op"
@@ -66,5 +67,69 @@ func TestAnd(t *testing.T) {
 				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
 			}
 		}
+	}
+}
+
+func TestCondInForNil(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.In("field"))
+	args := ab.Args()
+
+	expectsql := ""
+	expectargs := []any{}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
+
+func TestCondInForOne(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.In("field", "value"))
+	args := ab.Args()
+
+	expectsql := "`field` IN (?)"
+	expectargs := []any{"value"}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
+
+func TestCondInForOneSliceOne(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.In("field", []any{"value"}))
+	args := ab.Args()
+
+	expectsql := "`field` IN (?)"
+	expectargs := []any{"value"}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
+
+func TestCondInForOneSliceTwo(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.In("field", []any{"value1", "value2"}))
+	args := ab.Args()
+
+	expectsql := "`field` IN (?, ?)"
+	expectargs := []any{"value1", "value2"}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
 	}
 }
