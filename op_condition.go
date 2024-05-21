@@ -163,10 +163,9 @@ func fmtcondin[T any](format string, ab *ArgsBuilder, op op.Op, vs []T) string {
 }
 
 func newCondBetween(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
-		vs := op.Val.([]interface{})
-		lower, upper := vs[0], vs[1]
-		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(lower), ab.Add(upper))
+	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+		v := _op.Val.(op.Boundary)
+		return fmt.Sprintf(format, ab.Quote(getOpKey(_op)), ab.Add(v.Lower), ab.Add(v.Upper))
 	})
 }
 

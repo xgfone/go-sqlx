@@ -24,7 +24,7 @@ import (
 func TestAnd(t *testing.T) {
 	cond1 := op.Eq("k1", "v1")
 	cond2 := op.And(cond1, op.Gt("k2", 111), op.Le("k3", 222))
-	cond3 := op.Or(op.In("k4", "v41", "v42"), op.Between("k5", 333, 444))
+	cond3 := op.Or(op.In("k4", []string{"v41", "v42"}), op.Between("k5", 333, 444))
 	cond4 := op.And(cond2, cond3, op.And(op.And()))
 
 	ab := NewArgsBuilder(MySQL)
@@ -72,7 +72,7 @@ func TestAnd(t *testing.T) {
 
 func TestCondInForNil(t *testing.T) {
 	ab := NewArgsBuilder(MySQL)
-	sql := BuildOper(ab, op.In("field"))
+	sql := BuildOper(ab, op.In("field", []any(nil)))
 	args := ab.Args()
 
 	expectsql := "1=0"
@@ -88,7 +88,7 @@ func TestCondInForNil(t *testing.T) {
 
 func TestCondInForOne(t *testing.T) {
 	ab := NewArgsBuilder(MySQL)
-	sql := BuildOper(ab, op.In("field", "value"))
+	sql := BuildOper(ab, op.In("field", []string{"value"}))
 	args := ab.Args()
 
 	expectsql := "`field` IN (?)"

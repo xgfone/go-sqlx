@@ -33,7 +33,7 @@ func ExampleDeleteBuilder() {
 		Where(
 			op.Or(
 				op.Less("c3", 456),
-				op.In("c4", "a", "b"),
+				op.In("c4", []string{"a", "b"}),
 			),
 		)
 

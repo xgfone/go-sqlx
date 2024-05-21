@@ -398,7 +398,7 @@ func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder {
 }
 
 // Sort appends the sorts.
-func (b *SelectBuilder) Sort(sorts ...op.Sort) *SelectBuilder {
+func (b *SelectBuilder) Sort(sorts ...op.Sorter) *SelectBuilder {
 	if b.orderbys == nil {
 		b.orderbys = make([]orderby, 0, len(sorts))
 	}
@@ -416,7 +416,7 @@ func (b *SelectBuilder) Sort(sorts ...op.Sort) *SelectBuilder {
 			}
 
 		case op.SortOpOrders:
-			b.Sort(_op.Val.([]op.Sort)...)
+			b.Sort(_op.Val.([]op.Sorter)...)
 
 		default:
 			panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
