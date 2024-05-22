@@ -137,6 +137,16 @@ func CountDistinct(field string) string {
 	return strings.Join([]string{"COUNT(DISTINCT ", ")"}, field)
 }
 
+// Sum returns a SUM(field).
+func Sum(field string) string {
+	return strings.Join([]string{"SUM(", ")"}, field)
+}
+
+// SelectSum appends the selected SUM(field) column in SELECT.
+func (b *SelectBuilder) Sum(field string) *SelectBuilder {
+	return b.Select(Sum(b.db.GetDialect().Quote(field)))
+}
+
 // SelectCount appends the selected COUNT(field) column in SELECT.
 func (b *SelectBuilder) SelectCount(field string) *SelectBuilder {
 	return b.Select(Count(b.db.GetDialect().Quote(field)))
