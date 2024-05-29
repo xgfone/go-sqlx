@@ -24,6 +24,20 @@ import (
 	"time"
 )
 
+// QueryRowx executes the row query sql statement and returns Row instead of *sql.Row.
+func (db *DB) QueryRowx(query string, args ...interface{}) Row {
+	return db.QueryRowxContext(context.Background(), query, args...)
+}
+
+// QueryRowxContext executes the row query sql statement and returns Row instead of *sql.Row.
+func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...interface{}) Row {
+	query, args, err := db.Intercept(query, args)
+	if err != nil {
+		panic(err)
+	}
+	return Row{Row: getDB(db).QueryRowContext(ctx, query, args...)}
+}
+
 // BindRow is equal to b.BindRowContext(context.Background(), dest...).
 func (b *SelectBuilder) BindRow(dest ...interface{}) error {
 	return b.BindRowContext(context.Background(), dest...)

@@ -23,6 +23,21 @@ import (
 
 var DefaultSliceCap = 8
 
+// QueryRows executes the query sql statement and returns Rows instead of *sql.Rows.
+func (db *DB) QueryRows(query string, args ...interface{}) (Rows, error) {
+	return db.QueryRowsContext(context.Background(), query, args...)
+}
+
+// QueryRowsContext executes the query sql statement and returns Rows instead of *sql.Rows.
+func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...interface{}) (rows Rows, err error) {
+	if query, args, err = db.Intercept(query, args); err == nil {
+		var _rows *sql.Rows
+		_rows, err = getDB(db).QueryContext(ctx, query, args...)
+		rows.Rows = _rows
+	}
+	return
+}
+
 // Query builds the sql and executes it.
 func (b *SelectBuilder) Query() (Rows, error) {
 	return b.QueryContext(context.Background())
