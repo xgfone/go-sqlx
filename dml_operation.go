@@ -66,6 +66,11 @@ func (o Operation[T]) Add(obj T) (err error) {
 	return o.AddContext(context.Background(), obj)
 }
 
+// AddWithId is equal to o.AddContextWithId(context.Background(), obj).
+func (o Operation[T]) AddWithId(obj T) (id int64, err error) {
+	return o.AddContextWithId(context.Background(), obj)
+}
+
 // AddContext inserts the struct as the record into the sql table.
 func (o Operation[T]) AddContext(ctx context.Context, obj T) (err error) {
 	_, err = o.InsertInto().Struct(obj).ExecContext(ctx)
