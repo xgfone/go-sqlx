@@ -168,7 +168,7 @@ func (o Operation[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
 
 // GetContext just queries a result.
 func (o Operation[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	err = o.SelectStruct(obj).Where(conds...).BindRowStructContext(ctx, &obj)
+	err = o.SelectStruct(obj).Where(conds...).Limit(1).BindRowStructContext(ctx, &obj)
 	ok, err = CheckErrNoRows(err)
 	return
 }
