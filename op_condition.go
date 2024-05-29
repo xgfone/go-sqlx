@@ -105,39 +105,98 @@ func newCondIn(format string) OpBuilder {
 			return "1=0"
 
 		case []interface{}:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
 
 		case []int:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
 
 		case []uint:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
+
+		case []int32:
+			return fmtcondin_slice(format, ab, op, vs)
+
+		case []uint32:
+			return fmtcondin_slice(format, ab, op, vs)
 
 		case []int64:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
 
 		case []uint64:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
 
 		case []string:
-			return fmtcondin(format, ab, op, vs)
+			return fmtcondin_slice(format, ab, op, vs)
+
+		case map[string]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[string]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int32]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int32]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint32]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint32]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int64]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[int64]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint64]bool:
+			return fmtcondin_map(format, ab, op, vs)
+
+		case map[uint64]struct{}:
+			return fmtcondin_map(format, ab, op, vs)
 
 		default:
-			vf := reflect.ValueOf(op.Val)
-			switch vf.Kind() {
+			var ss []string
+			switch vf := reflect.ValueOf(op.Val); vf.Kind() {
 			case reflect.Array, reflect.Slice:
+				_len := vf.Len()
+				if _len == 0 {
+					return "1=0"
+				}
+
+				ss = make([]string, _len)
+				for i := 0; i < _len; i++ {
+					ss[i] = ab.Add(vf.Index(i).Interface())
+				}
+
+			case reflect.Map:
+				_len := vf.Len()
+				if _len == 0 {
+					return "1=0"
+				}
+
+				ss = make([]string, 0, _len)
+				for _, key := range vf.MapKeys() {
+					ss = append(ss, ab.Add(vf.MapIndex(key).Interface()))
+				}
+
 			default:
 				panic(fmt.Errorf("sqlx: condition IN not support type %T", op.Val))
-			}
-
-			_len := vf.Len()
-			if _len == 0 {
-				return "1=0"
-			}
-
-			ss := make([]string, _len)
-			for i := 0; i < _len; i++ {
-				ss[i] = ab.Add(vf.Index(i).Interface())
 			}
 
 			return fmt.Sprintf(format, ab.Quote(getOpKey(op)), strings.Join(ss, ", "))
@@ -145,7 +204,21 @@ func newCondIn(format string) OpBuilder {
 	})
 }
 
-func fmtcondin[T any](format string, ab *ArgsBuilder, op op.Op, vs []T) string {
+func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, ab *ArgsBuilder, op op.Op, vs M) string {
+	switch _len := len(vs); _len {
+	case 0:
+		return "1=0"
+
+	default:
+		ss := make([]string, 0, _len)
+		for k := range vs {
+			ss = append(ss, ab.Add(k))
+		}
+		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), strings.Join(ss, ", "))
+	}
+}
+
+func fmtcondin_slice[T any](format string, ab *ArgsBuilder, op op.Op, vs []T) string {
 	switch _len := len(vs); _len {
 	case 0:
 		return "1=0"

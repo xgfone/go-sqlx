@@ -101,3 +101,35 @@ func TestCondInForOne(t *testing.T) {
 		t.Errorf("expect args %v, but got %v", expectargs, args)
 	}
 }
+
+func TestCondInForMapNil(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.Key("field").In(map[string]struct{}(nil)))
+	args := ab.Args()
+
+	expectsql := "1=0"
+	expectargs := []any{}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
+
+func TestCondInForMap(t *testing.T) {
+	ab := NewArgsBuilder(MySQL)
+	sql := BuildOper(ab, op.Key("field").In(map[string]bool{"value": false}))
+	args := ab.Args()
+
+	expectsql := "`field` IN (?)"
+	expectargs := []any{"value"}
+
+	if sql != expectsql {
+		t.Errorf("expect sql '%s', but got '%s'", expectsql, sql)
+	}
+	if !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
