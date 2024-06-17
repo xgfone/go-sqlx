@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/xgfone/go-op"
@@ -26,6 +27,16 @@ var DefaultDeletedAt = op.Key("deleted_at")
 // Operation is used to manage a set of operations.
 type Operation[T any] struct {
 	Table
+
+	// EnableUpdater is used by Enable to enable the table records.
+	//
+	// Default: op.KeyIsDisabled.Set(0)
+	EnableUpdater op.Updater
+
+	// DisableUpdater is used by Disable to disable the table records.
+	//
+	// Default: op.KeyIsDisabled.Set(1)
+	DisableUpdater op.Updater
 
 	// SoftDeleteUpdater is used by DeleteUpdateContext to delete the records.
 	//
@@ -40,7 +51,12 @@ func NewOperation[T any](table string) Operation[T] {
 
 // NewOperationWithTable returns a new operation with the table.
 func NewOperationWithTable[T any](table Table) Operation[T] {
-	return Operation[T]{Table: table}
+	return Operation[T]{
+		Table: table,
+
+		EnableUpdater:  op.KeyIsDisabled.Set(0),
+		DisableUpdater: op.KeyIsDisabled.Set(1),
+	}
 }
 
 // WithDB returns a new operation with the new db.
@@ -181,4 +197,80 @@ func (o Operation[T]) MakeSlice(cap int64) []T {
 		return make([]T, 0, cap)
 	}
 	return make([]T, 0, DefaultSliceCap)
+}
+
+/// ----------------------------------------------------------------------- ///
+
+// EnableById is a simple convenient function to enable a table record
+// by the primary key id, which is equal to
+//
+//	o.Update(o.EnableUpdater, op.KeyId.Eq(id), op.IsNotDeletedCond)
+func (o Operation[T]) EnableById(id int64) (err error) {
+	if o.EnableUpdater == nil {
+		panic(fmt.Errorf("sqlx.Operation.EnableById: not set EnableUpdater"))
+	}
+	return o.UpdateById(id, o.EnableUpdater)
+}
+
+// DisableById is a simple convenient function to disable a table record
+// by the primary key id, which is equal to
+//
+//	o.Update(o.DisableUpdater, op.KeyId.Eq(id), op.IsNotDeletedCond)
+func (o Operation[T]) DisableById(id int64) (err error) {
+	if o.DisableUpdater == nil {
+		panic(fmt.Errorf("sqlx.Operation.DisableById: not set DisableUpdater"))
+	}
+	return o.UpdateById(id, o.DisableUpdater)
+}
+
+// UpdateById is a simple convenient function to update the table records
+// by the primary key id, which is equal to
+//
+//	o.Update(op.Batch(updaters...), op.KeyId.Eq(id), op.IsNotDeletedCond)
+func (o Operation[T]) UpdateById(id int64, updaters ...op.Updater) error {
+	return o.Update(op.Batch(updaters...), op.KeyId.Eq(id), op.IsNotDeletedCond)
+}
+
+// DeleteById is a simple convenient function to delete the table records
+// by the primary key id, which is equal to
+//
+//	o.UpdateRemove(op.KeyId.Eq(id), op.IsNotDeletedCond)
+func (o Operation[T]) DeleteById(id int64) error {
+	return o.UpdateRemove(op.KeyId.Eq(id), op.IsNotDeletedCond)
+}
+
+// GetById is a simple convenient function to query a table record
+// by the primary key id, which is equal to
+//
+//	o.Get(op.KeyId.Eq(id), op.IsNotDeletedCond)
+func (o Operation[T]) GetById(id int64) (v T, ok bool, err error) {
+	return o.Get(op.KeyId.Eq(id), op.IsNotDeletedCond)
+}
+
+// Query is a simple convenient function to query the table records
+// with the pagination, which is equal to
+//
+//	o.Gets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
+//
+// page starts with 1.
+func (o Operation[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error) {
+	return o.Gets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
+}
+
+// Count is a simple convenient function to count the number of table records,
+// which is equal to
+//
+//	o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+func (o Operation[T]) Count(conds ...op.Condition) (total int, err error) {
+	err = o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	return
+}
+
+// CountDistinct is a simple convenient function to count the number of table records
+// with the distinct field, which is equal to
+//
+//	o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+func (o Operation[T]) CountDistinct(field string, conds ...op.Condition) (total int, err error) {
+	err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	return
 }
