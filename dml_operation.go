@@ -274,3 +274,10 @@ func (o Operation[T]) CountDistinct(field string, conds ...op.Condition) (total 
 	err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 	return
 }
+
+func (o Operation[T]) Exist(conds ...op.Condition) (exist bool, err error) {
+	var id int
+	err = o.Select(op.KeyId.Key).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&id)
+	exist, err = CheckErrNoRows(err)
+	return
+}
