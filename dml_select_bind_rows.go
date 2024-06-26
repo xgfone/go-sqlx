@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var DefaultSliceCap = 8
+var DefaultSliceCap = 16
 
 // QueryRows executes the query sql statement and returns Rows instead of *sql.Rows.
 func (db *DB) QueryRows(query string, args ...interface{}) (Rows, error) {

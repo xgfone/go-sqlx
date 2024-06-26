@@ -17,7 +17,7 @@ package sqlx
 import "database/sql"
 
 // DefaultArgsCap is the default capacity to be allocated for ArgsBuilder.
-var DefaultArgsCap = 4
+var DefaultArgsCap = 32
 
 // ArgsBuilder is used to build the arguments.
 type ArgsBuilder struct {
