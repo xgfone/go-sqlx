@@ -25,6 +25,8 @@ import (
 var DefaultDeletedAt = op.Key("deleted_at")
 
 // Operation is used to manage a set of operations.
+//
+// DEPRECATED!!! Please use Oper instead.
 type Operation[T any] struct {
 	Table
 
