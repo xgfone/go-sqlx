@@ -28,6 +28,10 @@ func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
 	}
 
 	for _, cond := range conds {
+		if cond == nil {
+			continue
+		}
+
 		if _op := cond.Op(); _op.Op == op.CondOpAnd {
 			switch _conds := _op.Val.(type) {
 			case []op.Condition:
