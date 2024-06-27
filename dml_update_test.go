@@ -37,9 +37,9 @@ func ExampleUpdateBuilder() {
 	sql2, args2 := update2.SetDB(&DB{Dialect: Postgres}).Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1)
+	fmt.Println(args1.Args())
 	fmt.Println(sql2)
-	fmt.Println(args2)
+	fmt.Println(args2.Args())
 
 	// Output:
 	// UPDATE `table` SET `c1`=`c1`+?, `c2`=`c2`-?, `c3`=`c3`*?, `c4`=`c4`/?

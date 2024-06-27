@@ -138,7 +138,8 @@ func (b *DeleteBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getDB(b.db).ExecContext(ctx, query, args...)
+	defer args.Release()
+	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
 }
 
 // SetDB sets the db.
@@ -154,7 +155,7 @@ func (b *DeleteBuilder) String() string {
 }
 
 // Build builds the DELETE FROM TABLE sql statement.
-func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
+func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.ftables) == 0 {
 		panic("DeleteBuilder: no FROM table name")
 	}
@@ -191,16 +192,14 @@ func (b *DeleteBuilder) Build() (sql string, args []interface{}) {
 	switch _len := len(b.wheres); _len {
 	case 0:
 	case 1:
-		ab := NewArgsBuilder(dialect)
+		args = GetArgsBuilderFromPool(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, b.wheres[0]))
-		args = ab.Args()
+		buf.WriteString(BuildOper(args, b.wheres[0]))
 
 	default:
-		ab := NewArgsBuilder(dialect)
+		args = GetArgsBuilderFromPool(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, op.And(b.wheres...)))
-		args = ab.Args()
+		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
 	}
 
 	sql = buf.String()

@@ -169,7 +169,8 @@ func (b *UpdateBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getDB(b.db).ExecContext(ctx, query, args...)
+	defer args.Release()
+	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
 }
 
 // SetDB sets the DB to db.
@@ -185,7 +186,7 @@ func (b *UpdateBuilder) String() string {
 }
 
 // Build builds the "UPDATE" sql statement.
-func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
+func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.utables) == 0 {
 		panic("UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
@@ -215,12 +216,12 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 
 	// Set
 	buf.WriteString(" SET ")
-	ab := NewArgsBuilder(dialect)
+	args = GetArgsBuilderFromPool(dialect)
 	for i, setter := range b.setters {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(BuildOper(ab, setter))
+		buf.WriteString(BuildOper(args, setter))
 	}
 
 	// From
@@ -242,15 +243,14 @@ func (b *UpdateBuilder) Build() (sql string, args []interface{}) {
 	case 0:
 	case 1:
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, b.wheres[0]))
+		buf.WriteString(BuildOper(args, b.wheres[0]))
 
 	default:
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, op.And(b.wheres...)))
+		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
 	}
 
 	sql = buf.String()
-	args = ab.Args()
 	putBuffer(buf)
 	return
 }

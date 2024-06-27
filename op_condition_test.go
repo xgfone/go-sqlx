@@ -27,9 +27,8 @@ func TestAnd(t *testing.T) {
 	cond3 := op.Or(op.In("k4", []string{"v41", "v42"}), op.Between("k5", 333, 444))
 	cond4 := op.And(cond2, cond3, op.And(op.And()))
 
-	ab := NewArgsBuilder(MySQL)
-	sql := BuildOper(ab, op.And(appendWheres(nil, cond4)...))
-	args := ab.Args()
+	args := GetArgsBuilderFromPool(MySQL)
+	sql := BuildOper(args, op.And(appendWheres(nil, cond4)...))
 
 	expectsql := "(`k1`=? AND `k2`>? AND `k3`<? AND (`k4` IN (?, ?) OR `k5` BETWEEN ? AND ?))"
 	expectargs := []interface{}{"v1", 111, 222, "v41", "v42", 333, 444}
@@ -38,17 +37,17 @@ func TestAnd(t *testing.T) {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
 	}
 
-	if len(args) != len(expectargs) {
-		t.Errorf("expect %d args, but got %d", len(expectargs), len(args))
+	if len(args.Args()) != len(expectargs) {
+		t.Errorf("expect %d args, but got %d", len(expectargs), len(args.Args()))
 	} else {
-		for i, arg := range args {
+		for i, arg := range args.Args() {
 			if expect := expectargs[i]; expect != arg {
 				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
 			}
 		}
 	}
 
-	if sql := BuildOper(NewArgsBuilder(MySQL), op.And()); sql != "" {
+	if sql := BuildOper(GetArgsBuilderFromPool(MySQL), op.And()); sql != "" {
 		t.Errorf("expect an empty sql, but got: %s", sql)
 	}
 
@@ -59,10 +58,10 @@ func TestAnd(t *testing.T) {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
 	}
 
-	if len(args) != len(expectargs) {
-		t.Errorf("expect %d args, but got %d", len(expectargs), len(args))
+	if len(args.Args()) != len(expectargs) {
+		t.Errorf("expect %d args, but got %d", len(expectargs), len(args.Args()))
 	} else {
-		for i, arg := range args {
+		for i, arg := range args.Args() {
 			if expect := expectargs[i]; expect != arg {
 				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
 			}
@@ -71,7 +70,7 @@ func TestAnd(t *testing.T) {
 }
 
 func TestCondInForNil(t *testing.T) {
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op.In("field", []any(nil)))
 	args := ab.Args()
 
@@ -87,7 +86,7 @@ func TestCondInForNil(t *testing.T) {
 }
 
 func TestCondInForOne(t *testing.T) {
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op.In("field", []string{"value"}))
 	args := ab.Args()
 
@@ -103,7 +102,7 @@ func TestCondInForOne(t *testing.T) {
 }
 
 func TestCondInForMapNil(t *testing.T) {
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op.Key("field").In(map[string]struct{}(nil)))
 	args := ab.Args()
 
@@ -119,7 +118,7 @@ func TestCondInForMapNil(t *testing.T) {
 }
 
 func TestCondInForMap(t *testing.T) {
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op.Key("field").In(map[string]bool{"value": false}))
 	args := ab.Args()
 

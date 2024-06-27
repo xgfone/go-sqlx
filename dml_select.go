@@ -471,12 +471,13 @@ func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
 
 // String is the same as b.Build(), except args.
 func (b *SelectBuilder) String() string {
-	sql, _ := b.Build()
+	sql, args := b.Build()
+	args.Release()
 	return sql
 }
 
 // Build builds the SELECT sql statement.
-func (b *SelectBuilder) Build() (sql string, args []interface{}) {
+func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.ftables) == 0 {
 		panic("SelectBuilder: no from table names")
 	} else if len(b.columns) == 0 {
@@ -523,18 +524,17 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 	}
 
 	// Where
-	var ab *ArgsBuilder
 	switch _len := len(b.wheres); _len {
 	case 0:
 	case 1:
-		ab = NewArgsBuilder(dialect)
+		args = GetArgsBuilderFromPool(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, b.wheres[0]))
+		buf.WriteString(BuildOper(args, b.wheres[0]))
 
 	default:
-		ab = NewArgsBuilder(dialect)
+		args = GetArgsBuilderFromPool(dialect)
 		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(ab, op.And(b.wheres...)))
+		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
 	}
 
 	// Group By & Having By
@@ -578,15 +578,11 @@ func (b *SelectBuilder) Build() (sql string, args []interface{}) {
 		buf.WriteByte(' ')
 		buf.WriteString(dialect.LimitOffset(b.limit, b.offset))
 	} else if b.page != nil {
-		if ab == nil {
-			ab = NewArgsBuilder(dialect)
+		if args == nil {
+			args = GetArgsBuilderFromPool(dialect)
 		}
 		buf.WriteByte(' ')
-		buf.WriteString(BuildOper(ab, b.page))
-	}
-
-	if ab != nil {
-		args = ab.Args()
+		buf.WriteString(BuildOper(args, b.page))
 	}
 
 	sql = buf.String()

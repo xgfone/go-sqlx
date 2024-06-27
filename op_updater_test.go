@@ -26,7 +26,7 @@ func TestBatch(t *testing.T) {
 	updater2 := op.Batch(op.Inc("k2"), op.Dec("k3"))
 	updater3 := op.Batch(updater1, updater2, op.Add("k4", 123), op.Sub("k5", 456))
 
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, updater3)
 	args := ab.Args()
 
@@ -57,7 +57,7 @@ func TestAdd(t *testing.T) {
 }
 
 func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...interface{}) {
-	ab := NewArgsBuilder(MySQL)
+	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op)
 	args := ab.Args()
 

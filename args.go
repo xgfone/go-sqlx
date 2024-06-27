@@ -14,7 +14,20 @@
 
 package sqlx
 
-import "database/sql"
+import (
+	"database/sql"
+	"sync"
+)
+
+var argspool = sync.Pool{
+	New: func() any {
+		args := make([]any, 0, DefaultArgsCap)
+		return &ArgsBuilder{pool: true, args: args}
+	},
+}
+
+func getargs() *ArgsBuilder  { return argspool.Get().(*ArgsBuilder) }
+func putargs(a *ArgsBuilder) { a.Reset(); argspool.Put(a) }
 
 // DefaultArgsCap is the default capacity to be allocated for ArgsBuilder.
 var DefaultArgsCap = 32
@@ -23,19 +36,41 @@ var DefaultArgsCap = 32
 type ArgsBuilder struct {
 	Dialect
 
-	args []interface{}
+	args []any
+	pool bool
 }
 
-// NewArgsBuilder returns a new ArgsBuilder.
-func NewArgsBuilder(dialect Dialect) *ArgsBuilder {
-	return &ArgsBuilder{Dialect: dialect, args: make([]interface{}, 0, DefaultArgsCap)}
+// GetArgsBuilderFromPool acquires an ArgsBuilder with the dialect from pool.
+func GetArgsBuilderFromPool(dialect Dialect) *ArgsBuilder {
+	a := getargs()
+	a.Dialect = dialect
+	return a
+}
+
+// WithDialect sets the dialect and returns itself.
+func (a *ArgsBuilder) WithDialect(dialect Dialect) *ArgsBuilder {
+	a.Dialect = dialect
+	return a
+}
+
+// Release puts itself into the pool if it is acquired from the pool.
+func (a *ArgsBuilder) Release() {
+	if a != nil && a.pool {
+		putargs(a)
+	}
+}
+
+// Reset resets the args to empty.
+func (a *ArgsBuilder) Reset() {
+	clear(a.args)
+	a.args = a.args[:0]
 }
 
 // Add appends the argument and returns the its placeholder.
 //
 // If arg is the type of sql.NamedArg, it will use @arg.Name as the placeholder
 // and arg.Value as the value.
-func (a *ArgsBuilder) Add(arg interface{}) (placeholder string) {
+func (a *ArgsBuilder) Add(arg any) (placeholder string) {
 	if na, ok := arg.(sql.NamedArg); ok {
 		a.args = append(a.args, na.Value)
 		return "@" + na.Name
@@ -46,6 +81,9 @@ func (a *ArgsBuilder) Add(arg interface{}) (placeholder string) {
 }
 
 // Args returns the added arguments.
-func (a *ArgsBuilder) Args() []interface{} {
-	return a.args
+func (a *ArgsBuilder) Args() (args []any) {
+	if a != nil {
+		args = a.args
+	}
+	return
 }

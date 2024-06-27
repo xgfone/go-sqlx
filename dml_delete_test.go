@@ -41,9 +41,9 @@ func ExampleDeleteBuilder() {
 	sql2, args2 := delete2.Build() // Use the PostgreSQL dialect.
 
 	fmt.Println(sql1)
-	fmt.Println(args1)
+	fmt.Println(args1.Args())
 	fmt.Println(sql2)
-	fmt.Println(args2)
+	fmt.Println(args2.Args())
 
 	// Output:
 	// DELETE FROM `table`

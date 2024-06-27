@@ -234,7 +234,8 @@ func (b *InsertBuilder) Exec() (sql.Result, error) {
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	query, args := b.Build()
-	return getDB(b.db).ExecContext(ctx, query, args...)
+	defer args.Release()
+	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
 }
 
 // SetDB sets the db.
@@ -250,7 +251,7 @@ func (b *InsertBuilder) String() string {
 }
 
 // Build builds the INSERT INTO TABLE sql statement.
-func (b *InsertBuilder) Build() (sql string, args []interface{}) {
+func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 	var valnum int
 	vallen := len(b.values)
 	if vallen > 0 {
@@ -294,14 +295,13 @@ func (b *InsertBuilder) Build() (sql string, args []interface{}) {
 	if vallen == 0 {
 		b.addValues(dialect, buf, nil, valnum, nil)
 	} else {
-		ab := NewArgsBuilder(dialect)
+		args = GetArgsBuilderFromPool(dialect)
 		for i, vs := range b.values {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			b.addValues(dialect, buf, ab, valnum, vs)
+			b.addValues(dialect, buf, args, valnum, vs)
 		}
-		args = ab.Args()
 	}
 
 	sql = buf.String()

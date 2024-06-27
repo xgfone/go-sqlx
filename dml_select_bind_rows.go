@@ -46,7 +46,8 @@ func (b *SelectBuilder) Query() (Rows, error) {
 // QueryContext builds the sql and executes it.
 func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
 	query, args := b.Build()
-	return b.queryContext(ctx, query, args...)
+	defer args.Release()
+	return b.queryContext(ctx, query, args.Args()...)
 }
 
 func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
