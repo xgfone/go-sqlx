@@ -125,7 +125,7 @@ func ExampleSelectBuilder_SelectStruct() {
 	columns := sb.SelectedColumns()
 	fmt.Println(columns)
 
-	err := ScanColumnsToStruct(func(values ...interface{}) error {
+	err := ScanColumnsToStruct(func(values ...any) error {
 		for i, v := range values {
 			vp := v.(*string)
 			switch i {
@@ -175,7 +175,7 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 	}
 
 	expectv := S{S1: "a", S2: S2{"b"}, S3: "c"}
-	err := ScanColumnsToStruct(func(vs ...interface{}) error {
+	err := ScanColumnsToStruct(func(vs ...any) error {
 		if len(vs) != 3 {
 			return fmt.Errorf("the number of the values are not equal to 3")
 		}

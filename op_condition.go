@@ -108,7 +108,7 @@ func newCondIn(format string) OpBuilder {
 		case nil:
 			return "1=0"
 
-		case []interface{}:
+		case []any:
 			return fmtcondin_slice(format, ab, op, vs)
 
 		case []int:

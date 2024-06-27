@@ -44,12 +44,12 @@ func (db *DB) Selects(columns ...string) *SelectBuilder {
 }
 
 // SelectStruct is equal to db.SelectStructWithTable(s, "").
-func (db *DB) SelectStruct(s interface{}) *SelectBuilder {
+func (db *DB) SelectStruct(s any) *SelectBuilder {
 	return db.SelectStructWithTable(s, "")
 }
 
 // SelectStructWithTable is equal to SelectStructWithTable(s, table...).
-func (db *DB) SelectStructWithTable(s interface{}, table string) *SelectBuilder {
+func (db *DB) SelectStructWithTable(s any, table string) *SelectBuilder {
 	return SelectStructWithTable(s, table).SetDB(db)
 }
 
@@ -69,12 +69,12 @@ func Selects(columns ...string) *SelectBuilder {
 }
 
 // SelectStruct is equal to SelectStructWithTable(s, "").
-func SelectStruct(s interface{}) *SelectBuilder {
+func SelectStruct(s any) *SelectBuilder {
 	return SelectStructWithTable(s, "")
 }
 
 // SelectStruct is equal to NewSelectBuilder().SelectStructWithTable(s, table).
-func SelectStructWithTable(s interface{}, table string) *SelectBuilder {
+func SelectStructWithTable(s any, table string) *SelectBuilder {
 	return new(SelectBuilder).SelectStructWithTable(s, table)
 }
 
@@ -193,7 +193,7 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 // If the value of the tag is "-", however, the field will be ignored.
 // If the tag contains the attribute "notpropagate", for the embeded struct,
 // do not scan the fields of the embeded struct.
-func (b *SelectBuilder) SelectStructWithTable(s interface{}, table string) *SelectBuilder {
+func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
 	if s == nil {
 		return b
 	}
@@ -219,7 +219,7 @@ func (b *SelectBuilder) SelectStructWithTable(s interface{}, table string) *Sele
 }
 
 // SelectStruct is equal to b.SelectStructWithTable(s, "").
-func (b *SelectBuilder) SelectStruct(s interface{}) *SelectBuilder {
+func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
 	return b.SelectStructWithTable(s, "")
 }
 

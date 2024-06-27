@@ -74,7 +74,7 @@ func main() {
 	defer db.Close()
 
 	// Set the interceptor to print the sql statement.
-	db.Interceptor = sqlx.InterceptorFunc(func(sql string, args []interface{}) (string, []interface{}, error) {
+	db.Interceptor = sqlx.InterceptorFunc(func(sql string, args []any) (string, []any, error) {
 		fmt.Println(sql)
 		return sql, args, nil
 	})

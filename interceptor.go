@@ -17,13 +17,13 @@ package sqlx
 // Interceptor is used to intercept the executed sql statement and arguments
 // and return a new one.
 type Interceptor interface {
-	Intercept(sql string, args []interface{}) (string, []interface{}, error)
+	Intercept(sql string, args []any) (string, []any, error)
 }
 
 // InterceptorFunc is an interceptor function.
-type InterceptorFunc func(sql string, args []interface{}) (string, []interface{}, error)
+type InterceptorFunc func(sql string, args []any) (string, []any, error)
 
 // Intercept implements the interface Interceptor.
-func (f InterceptorFunc) Intercept(sql string, args []interface{}) (string, []interface{}, error) {
+func (f InterceptorFunc) Intercept(sql string, args []any) (string, []any, error) {
 	return f(sql, args)
 }

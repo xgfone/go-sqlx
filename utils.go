@@ -33,7 +33,7 @@ import (
 // DefaultBufferCap is the default capacity to be allocated for buffer from pool.
 var DefaultBufferCap = 256
 
-var bufpool = sync.Pool{New: func() interface{} {
+var bufpool = sync.Pool{New: func() any {
 	b := new(bytes.Buffer)
 	b.Grow(DefaultBufferCap)
 	return b
@@ -98,7 +98,7 @@ func (t Time) Value() (driver.Value, error) { return t.Time, nil }
 func (t *Time) SetFormat(layout string) { t.Layout = layout }
 
 // Scan implements the interface sql.Scanner.
-func (t *Time) Scan(src interface{}) (err error) {
+func (t *Time) Scan(src any) (err error) {
 	t.Time, err = toTime(src, defaults.TimeLocation.Get())
 	return
 }
@@ -182,8 +182,8 @@ func (t Time) MarshalJSON() ([]byte, error) {
 //	    string:    strconv.ParseUint(src, 10, 64)
 //	    []byte:    strconv.ParseUint(string(src), 10, 64)
 //	    time.Time: src.Unix() only for uint/uint64
-func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error {
-	results := make([]interface{}, len(dests))
+func ScanRow(scan func(dests ...any) error, dests ...any) error {
+	results := make([]any, len(dests))
 	for i, dest := range dests {
 		switch dest.(type) {
 		case *time.Duration, *time.Time,
@@ -202,9 +202,9 @@ func ScanRow(scan func(dests ...interface{}) error, dests ...interface{}) error 
 	return scan(results...)
 }
 
-type nullScanner struct{ Value interface{} }
+type nullScanner struct{ Value any }
 
-func (s nullScanner) Scan(src interface{}) (err error) {
+func (s nullScanner) Scan(src any) (err error) {
 	if src == nil {
 		return
 	}
@@ -652,7 +652,7 @@ func (s nullScanner) Scan(src interface{}) (err error) {
 	return
 }
 
-func toTime(src interface{}, loc *time.Location) (time.Time, error) {
+func toTime(src any, loc *time.Location) (time.Time, error) {
 	switch s := src.(type) {
 	case string:
 		return parseTimeString(s, loc)

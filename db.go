@@ -146,7 +146,7 @@ func (db *DB) GetDialect() Dialect {
 	return DefaultDialect
 }
 
-func (db *DB) Intercept(sql string, args []interface{}) (string, []interface{}, error) {
+func (db *DB) Intercept(sql string, args []any) (string, []any, error) {
 	if db != nil && db.Interceptor != nil {
 		var err error
 		if sql, args, err = db.Interceptor.Intercept(sql, args); err != nil {
@@ -157,22 +157,22 @@ func (db *DB) Intercept(sql string, args []interface{}) (string, []interface{}, 
 }
 
 // Exec is equal to db.ExecContext(context.Background(), query, args...).
-func (db *DB) Exec(query string, args ...interface{}) (r sql.Result, err error) {
+func (db *DB) Exec(query string, args ...any) (r sql.Result, err error) {
 	return db.ExecContext(context.Background(), query, args...)
 }
 
 // Query is equal to db.QueryContext(context.Background(), query, args...).
-func (db *DB) Query(query string, args ...interface{}) (rows *sql.Rows, err error) {
+func (db *DB) Query(query string, args ...any) (rows *sql.Rows, err error) {
 	return db.QueryContext(context.Background(), query, args...)
 }
 
 // QueryRow is equal to db.QueryRowContext(context.Background(), query, args...)
-func (db *DB) QueryRow(query string, args ...interface{}) *sql.Row {
+func (db *DB) QueryRow(query string, args ...any) *sql.Row {
 	return db.QueryRowContext(context.Background(), query, args...)
 }
 
 // ExecContext executes the sql statement.
-func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}) (r sql.Result, err error) {
+func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (r sql.Result, err error) {
 	if query, args, err = db.Intercept(query, args); err == nil {
 		r, err = db.DB.ExecContext(ctx, query, args...)
 	}
@@ -180,7 +180,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...interface{}
 }
 
 // QueryContext executes the query sql statement.
-func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{}) (rows *sql.Rows, err error) {
+func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (rows *sql.Rows, err error) {
 	if query, args, err = db.Intercept(query, args); err == nil {
 		rows, err = db.DB.QueryContext(ctx, query, args...)
 	}
@@ -188,7 +188,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...interface{
 }
 
 // QueryRowContext executes the row query sql statement.
-func (db *DB) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	query, args, err := db.Intercept(query, args)
 	if err != nil {
 		panic(err)

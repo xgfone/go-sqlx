@@ -24,12 +24,12 @@ import (
 var DefaultSliceCap = 16
 
 // QueryRows executes the query sql statement and returns Rows instead of *sql.Rows.
-func (db *DB) QueryRows(query string, args ...interface{}) (Rows, error) {
+func (db *DB) QueryRows(query string, args ...any) (Rows, error) {
 	return db.QueryRowsContext(context.Background(), query, args...)
 }
 
 // QueryRowsContext executes the query sql statement and returns Rows instead of *sql.Rows.
-func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...interface{}) (rows Rows, err error) {
+func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) (rows Rows, err error) {
 	if query, args, err = db.Intercept(query, args); err == nil {
 		var _rows *sql.Rows
 		_rows, err = getDB(db).QueryContext(ctx, query, args...)
@@ -50,13 +50,13 @@ func (b *SelectBuilder) QueryContext(ctx context.Context) (Rows, error) {
 	return b.queryContext(ctx, query, args.Args()...)
 }
 
-func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...interface{}) (Rows, error) {
+func (b *SelectBuilder) queryContext(ctx context.Context, rawsql string, args ...any) (Rows, error) {
 	rows, err := getDB(b.db).QueryContext(ctx, rawsql, args...)
 	return Rows{b.SelectedColumns(), rows}, err
 }
 
 // BindRows is equal to b.BindRowsContext(context.Background(), slice).
-func (b *SelectBuilder) BindRows(slice interface{}) error {
+func (b *SelectBuilder) BindRows(slice any) error {
 	return b.BindRowsContext(context.Background(), slice)
 }
 
@@ -65,7 +65,7 @@ func (b *SelectBuilder) BindRows(slice interface{}) error {
 //
 // Notice: slice must be a pointer to a slice. And the element of the slice
 // may be a struct or type implemented the interface sql.Scanner.
-func (b *SelectBuilder) BindRowsContext(ctx context.Context, slice interface{}) error {
+func (b *SelectBuilder) BindRowsContext(ctx context.Context, slice any) error {
 	rows, err := b.QueryContext(ctx)
 	if err != nil {
 		return err
@@ -87,13 +87,13 @@ func NewRows(rows *sql.Rows, columns ...string) Rows {
 
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
 // and supports that the sql value is NULL.
-func (r Rows) Scan(dests ...interface{}) (err error) {
+func (r Rows) Scan(dests ...any) (err error) {
 	return ScanRow(r.Rows.Scan, dests...)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
-func (r Rows) ScanStruct(s interface{}) (err error) {
+func (r Rows) ScanStruct(s any) (err error) {
 	columns := r.Columns
 	if len(columns) == 0 {
 		if columns, err = r.Rows.Columns(); err != nil {
@@ -105,14 +105,14 @@ func (r Rows) ScanStruct(s interface{}) (err error) {
 
 // ScanStructWithColumns is the same as Scan, but the columns are scanned
 // into the struct s by using ScanColumnsToStruct.
-func (r Rows) ScanStructWithColumns(s interface{}, columns ...string) (err error) {
+func (r Rows) ScanStructWithColumns(s any, columns ...string) (err error) {
 	return ScanColumnsToStruct(r.Scan, columns, s)
 }
 
 var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
 
 // ScanSlice is used to scan the row set into the slice.
-func (r Rows) ScanSlice(slice interface{}) (err error) {
+func (r Rows) ScanSlice(slice any) (err error) {
 	oldvf := reflect.ValueOf(slice)
 	if oldvf.Kind() != reflect.Ptr {
 		panic("Rows.ScanSlice: the value must be a pointer to a slice")
@@ -150,4 +150,4 @@ func (r Rows) ScanSlice(slice interface{}) (err error) {
 	return nil
 }
 
-func (r Rows) scansingle(v interface{}) error { return r.Scan(v) }
+func (r Rows) scansingle(v any) error { return r.Scan(v) }

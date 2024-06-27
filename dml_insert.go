@@ -42,7 +42,7 @@ type InsertBuilder struct {
 	verb    string
 	table   string
 	columns []string
-	values  [][]interface{}
+	values  [][]any
 }
 
 // Into sets the table name with "INSERT INTO".
@@ -75,7 +75,7 @@ func (b *InsertBuilder) Columns(columns ...string) *InsertBuilder {
 }
 
 // Values appends the inserted values.
-func (b *InsertBuilder) Values(values ...interface{}) *InsertBuilder {
+func (b *InsertBuilder) Values(values ...any) *InsertBuilder {
 	if _len := len(b.columns); _len > 0 && _len != len(values) {
 		panic("InsertBuilder: the number of the values is not equal to that of columns")
 	}
@@ -90,17 +90,17 @@ func (b *InsertBuilder) Ops(ops ...op.Op) *InsertBuilder {
 		return b
 	}
 
-	var values []interface{}
+	var values []any
 	if _len := len(b.columns); _len == 0 {
 		_len = len(ops)
 		b.columns = make([]string, _len)
-		values = make([]interface{}, _len)
+		values = make([]any, _len)
 		for i, op := range ops {
 			b.columns[i] = getOpKey(op)
 			values[i] = op.Val
 		}
 	} else if _len == len(ops) {
-		values = make([]interface{}, _len)
+		values = make([]any, _len)
 		for i, op := range ops {
 			values[i] = op.Val
 		}
@@ -118,17 +118,17 @@ func (b *InsertBuilder) NamedValues(nvs ...sql.NamedArg) *InsertBuilder {
 		return b
 	}
 
-	var values []interface{}
+	var values []any
 	if _len := len(b.columns); _len == 0 {
 		_len = len(nvs)
 		b.columns = make([]string, _len)
-		values = make([]interface{}, _len)
+		values = make([]any, _len)
 		for i, nv := range nvs {
 			b.columns[i] = nv.Name
 			values[i] = nv.Value
 		}
 	} else if _len == len(nvs) {
-		values = make([]interface{}, _len)
+		values = make([]any, _len)
 		for i, nv := range nvs {
 			values[i] = nv.Value
 		}
@@ -148,7 +148,7 @@ func (b *InsertBuilder) NamedValues(nvs ...sql.NamedArg) *InsertBuilder {
 //  2. If the tag value contains "omitempty", the ZERO field will be ignored.
 //  3. If the tag contains the attribute "notpropagate", for the embeded struct,
 //     do not scan the fields of the embeded struct.
-func (b *InsertBuilder) Struct(s interface{}) *InsertBuilder {
+func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	if s == nil {
 		return b
 	}
@@ -310,7 +310,7 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 }
 
 func (b *InsertBuilder) addValues(dialect Dialect, buf *bytes.Buffer,
-	ab *ArgsBuilder, valnum int, values []interface{}) {
+	ab *ArgsBuilder, valnum int, values []any) {
 	if ab == nil {
 		buf.WriteByte('(')
 		for i := 1; i <= valnum; i++ {

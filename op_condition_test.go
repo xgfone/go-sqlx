@@ -31,7 +31,7 @@ func TestAnd(t *testing.T) {
 	sql := BuildOper(args, op.And(appendWheres(nil, cond4)...))
 
 	expectsql := "(`k1`=? AND `k2`>? AND `k3`<? AND (`k4` IN (?, ?) OR `k5` BETWEEN ? AND ?))"
-	expectargs := []interface{}{"v1", 111, 222, "v41", "v42", 333, 444}
+	expectargs := []any{"v1", 111, 222, "v41", "v42", 333, 444}
 
 	if expectsql != sql {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
@@ -52,7 +52,7 @@ func TestAnd(t *testing.T) {
 	}
 
 	expectsql = "SELECT `c1`, `c2` FROM `table` WHERE `id`=?"
-	expectargs = []interface{}{1}
+	expectargs = []any{1}
 	sql, args = Selects("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).Build()
 	if expectsql != sql {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)

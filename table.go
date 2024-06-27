@@ -78,11 +78,11 @@ func (t Table) Selects(columns ...string) *SelectBuilder {
 }
 
 // SelectStruct is equal to t.GetDB().SelectStructWithTable(s, "").
-func (t Table) SelectStruct(s interface{}) *SelectBuilder {
+func (t Table) SelectStruct(s any) *SelectBuilder {
 	return t.GetDB().SelectStructWithTable(s, "").From(t.Name)
 }
 
 // SelectStructWithTable is equal to t.GetDB().SelectStructWithTable(s, table).
-func (t Table) SelectStructWithTable(s interface{}, table string) *SelectBuilder {
+func (t Table) SelectStructWithTable(s any, table string) *SelectBuilder {
 	return t.GetDB().SelectStructWithTable(s, table).From(t.Name)
 }

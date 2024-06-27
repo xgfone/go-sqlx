@@ -31,7 +31,7 @@ func TestBatch(t *testing.T) {
 	args := ab.Args()
 
 	expectsql := "`k1`=?, `k2`=`k2`+1, `k3`=`k3`-1, `k4`=`k4`+?, `k5`=`k5`-?"
-	expectargs := []interface{}{"v1", 123, 456}
+	expectargs := []any{"v1", 123, 456}
 
 	if expectsql != sql {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
@@ -56,7 +56,7 @@ func TestAdd(t *testing.T) {
 	testsqlargs(t, add.AddKey("column2", "column3"), "`column1`=`column2`+`column3`")
 }
 
-func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...interface{}) {
+func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...any) {
 	ab := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(ab, op)
 	args := ab.Args()
