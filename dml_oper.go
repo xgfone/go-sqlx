@@ -227,6 +227,7 @@ func (o Oper[T]) MakeSlice(cap int64) []T {
 // Sum is used to sum the field values of the records by the condition.
 func (o Oper[T]) Sum(field string, conds ...op.Condition) (total int, err error) {
 	err = o.Table.Select(Sum(field)).Where(conds...).BindRow(&total)
+	_, err = CheckErrNoRows(err)
 	return
 }
 
