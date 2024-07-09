@@ -195,6 +195,25 @@ func (o Oper[T]) GetColumnValuesContext(ctx context.Context, column string, cond
 	return
 }
 
+// GetRows is equal to o.GetRowsContext(context.Background(), columns, conds...).
+func (o Oper[T]) GetRows(columns any, conds ...op.Condition) (Rows, error) {
+	return o.GetRowsContext(context.Background(), columns, conds...)
+}
+
+// GetRowsContext builds a SELECT statement and returns a Rows.
+func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, conds ...op.Condition) (rows Rows, err error) {
+	var q *SelectBuilder
+	switch c := columns.(type) {
+	case string:
+		q = o.Table.Select(c)
+	case []string:
+		q = o.Table.Selects(c...)
+	default:
+		q = o.Table.SelectStruct(columns)
+	}
+	return q.Where(conds...).QueryContext(ctx)
+}
+
 // MakeSlice makes a slice with the cap.
 //
 // If cap is equal to 0, use DefaultSliceCap instead.
@@ -312,6 +331,24 @@ func (o Oper[T]) SoftGetColumnValuesContext(ctx context.Context, column string, 
 		return o.GetColumnValuesContext(ctx, column, conds[0], o.SoftCondition)
 	default:
 		return o.GetColumnValuesContext(ctx, column, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, conds...).
+func (o Oper[T]) SoftGetRows(columns any, conds ...op.Condition) (Rows, error) {
+	return o.SoftGetRowsContext(context.Background(), columns, conds...)
+}
+
+// SoftGetRowsContext is the same as GetRowsContext,
+// but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, conds ...op.Condition) (Rows, error) {
+	switch len(conds) {
+	case 0:
+		return o.GetRowsContext(ctx, columns, o.SoftCondition)
+	case 1:
+		return o.GetRowsContext(ctx, columns, conds[0], o.SoftCondition)
+	default:
+		return o.GetRowsContext(ctx, columns, op.And(conds...), o.SoftCondition)
 	}
 }
 
