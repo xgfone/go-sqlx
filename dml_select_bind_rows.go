@@ -85,6 +85,16 @@ func NewRows(rows *sql.Rows, columns ...string) Rows {
 	return Rows{Rows: rows, Columns: columns}
 }
 
+// BindSlice is the same as ScanSlice, but closes sql.Rows.
+func (r Rows) BindSlice(slice any) (err error) {
+	if r.Rows == nil {
+		return
+	}
+
+	defer r.Rows.Close()
+	return r.ScanSlice(slice)
+}
+
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
 // and supports that the sql value is NULL.
 func (r Rows) Scan(dests ...any) (err error) {
