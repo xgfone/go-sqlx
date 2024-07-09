@@ -194,6 +194,12 @@ func (o Oper[T]) MakeSlice(cap int64) []T {
 	return make([]T, 0, DefaultSliceCap)
 }
 
+// Sum is used to sum the field values of the records by the condition.
+func (o Oper[T]) Sum(field string, conds ...op.Condition) (total int, err error) {
+	err = o.Table.Select(Sum(field)).Where(conds...).BindRow(&total)
+	return
+}
+
 // Count is used to count the number of records by the condition.
 func (o Oper[T]) Count(conds ...op.Condition) (total int, err error) {
 	err = o.Table.Select(Count("*")).Where(conds...).BindRow(&total)
@@ -287,6 +293,11 @@ func (o Oper[T]) SoftGetsContext(ctx context.Context, sort op.Sorter, page op.Pa
 // page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
 func (o Oper[T]) SoftQuery(page, pageSize int64, conds ...op.Condition) ([]T, error) {
 	return o.SoftGets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+}
+
+// SoftSum is the same as Sum, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSum(field string, conds ...op.Condition) (total int, err error) {
+	return o.Sum(field, op.And(conds...), o.SoftCondition)
 }
 
 // SoftCount is the same as Count, but appending SoftCondition
