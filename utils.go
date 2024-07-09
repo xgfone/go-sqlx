@@ -89,7 +89,7 @@ type Time struct {
 }
 
 // Now returns the current Time.
-func Now() Time { return Time{Time: time.Now().In(defaults.TimeLocation.Get())} }
+func Now() Time { return Time{Time: defaults.Now()} }
 
 // Value implements the interface driver.Valuer.
 func (t Time) Value() (driver.Value, error) { return t.Time, nil }
