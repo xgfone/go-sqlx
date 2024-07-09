@@ -191,7 +191,6 @@ func (o Oper[T]) GetColumnValues(column string, conds ...op.Condition) (values [
 
 // GetColumnValuesContext queries a set of the values of the column from table.
 func (o Oper[T]) GetColumnValuesContext(ctx context.Context, column string, conds ...op.Condition) (values []string, err error) {
-	values = make([]string, 0, DefaultSliceCap)
 	err = o.Table.Select(column).Where(conds...).BindRowsContext(ctx, &values)
 	return
 }
