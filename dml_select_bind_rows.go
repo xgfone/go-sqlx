@@ -88,12 +88,20 @@ func NewRows(rows *sql.Rows, columns ...string) Rows {
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
 // and supports that the sql value is NULL.
 func (r Rows) Scan(dests ...any) (err error) {
+	if r.Rows == nil {
+		return
+	}
+
 	return ScanRow(r.Rows.Scan, dests...)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Rows) ScanStruct(s any) (err error) {
+	if r.Rows == nil {
+		return
+	}
+
 	columns := r.Columns
 	if len(columns) == 0 {
 		if columns, err = r.Rows.Columns(); err != nil {
@@ -106,6 +114,10 @@ func (r Rows) ScanStruct(s any) (err error) {
 // ScanStructWithColumns is the same as Scan, but the columns are scanned
 // into the struct s by using ScanColumnsToStruct.
 func (r Rows) ScanStructWithColumns(s any, columns ...string) (err error) {
+	if r.Rows == nil {
+		return
+	}
+
 	return ScanColumnsToStruct(r.Scan, columns, s)
 }
 
@@ -113,6 +125,10 @@ var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
 
 // ScanSlice is used to scan the row set into the slice.
 func (r Rows) ScanSlice(slice any) (err error) {
+	if r.Rows == nil {
+		return
+	}
+
 	oldvf := reflect.ValueOf(slice)
 	if oldvf.Kind() != reflect.Ptr {
 		panic("Rows.ScanSlice: the value must be a pointer to a slice")
