@@ -224,28 +224,48 @@ func (o Oper[T]) MakeSlice(cap int64) []T {
 	return make([]T, 0, DefaultSliceCap)
 }
 
-// Sum is used to sum the field values of the records by the condition.
-func (o Oper[T]) Sum(field string, conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(Sum(field)).Where(conds...).BindRow(&total)
+// Sum is equal to o.SumContext(context.Background(), field, conds...).
+func (o Oper[T]) Sum(field string, conds ...op.Condition) (int, error) {
+	return o.SumContext(context.Background(), field, conds...)
+}
+
+// SumContext is used to sum the field values of the records by the condition.
+func (o Oper[T]) SumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	err = o.Table.Select(Sum(field)).Where(conds...).BindRowContext(ctx, &total)
 	_, err = CheckErrNoRows(err)
 	return
 }
 
-// Count is used to count the number of records by the condition.
+// Count is equal to o.CountContext(context.Background(), conds...).
 func (o Oper[T]) Count(conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(Count("*")).Where(conds...).BindRow(&total)
+	return o.CountContext(context.Background(), conds...)
+}
+
+// CountContext is used to count the number of records by the condition.
+func (o Oper[T]) CountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
+	err = o.Table.Select(Count("*")).Where(conds...).BindRowContext(ctx, &total)
 	return
 }
 
-// CountDistinct is the same as Count, but excluding the same field records.
+// CountDistinct is equal to o.CountDistinctContext(context.Background(), field, conds...).
 func (o Oper[T]) CountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(CountDistinct(field)).Where(conds...).BindRow(&total)
+	return o.CountDistinctContext(context.Background(), field, conds...)
+}
+
+// CountDistinctContext is the same as Count, but excluding the same field records.
+func (o Oper[T]) CountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	err = o.Table.Select(CountDistinct(field)).Where(conds...).BindRowContext(ctx, &total)
 	return
 }
 
-// Exist is used to check whether the records qualified by the conditions exist.
+// Exist is equal to o.ExistContext(context.Background(), conds...).
 func (o Oper[T]) Exist(conds ...op.Condition) (exist bool, err error) {
-	total, err := o.Count(conds...)
+	return o.ExistContext(context.Background(), conds...)
+}
+
+// ExistContext is used to check whether the records qualified by the conditions exist.
+func (o Oper[T]) ExistContext(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
+	total, err := o.CountContext(ctx, conds...)
 	exist = err == nil && total > 0
 	return
 }
