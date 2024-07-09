@@ -184,13 +184,13 @@ func (o Oper[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Pagina
 	return
 }
 
-// GetRows is equal to o.GetRowsContext(context.Background(), columns, conds...).
-func (o Oper[T]) GetRows(columns any, conds ...op.Condition) (Rows, error) {
-	return o.GetRowsContext(context.Background(), columns, conds...)
+// GetRows is equal to o.GetRowsContext(context.Background(), order, columns, conds...).
+func (o Oper[T]) GetRows(order op.Sorter, columns any, conds ...op.Condition) (Rows, error) {
+	return o.GetRowsContext(context.Background(), order, columns, conds...)
 }
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
-func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, conds ...op.Condition) (rows Rows, err error) {
+func (o Oper[T]) GetRowsContext(ctx context.Context, order op.Sorter, columns any, conds ...op.Condition) (rows Rows, err error) {
 	var q *SelectBuilder
 	switch c := columns.(type) {
 	case string:
@@ -200,7 +200,7 @@ func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, conds ...op.Co
 	default:
 		q = o.Table.SelectStruct(columns)
 	}
-	return q.Where(conds...).QueryContext(ctx)
+	return q.Sort(order).Where(conds...).QueryContext(ctx)
 }
 
 // BindColumn is equal to o.BindColumnContext(context.Background(), order, column, value, conds...)
@@ -343,21 +343,21 @@ func (o Oper[T]) SoftGetsContext(ctx context.Context, sort op.Sorter, page op.Pa
 	}
 }
 
-// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, conds...).
-func (o Oper[T]) SoftGetRows(columns any, conds ...op.Condition) (Rows, error) {
-	return o.SoftGetRowsContext(context.Background(), columns, conds...)
+// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), order, columns, conds...).
+func (o Oper[T]) SoftGetRows(order op.Sorter, columns any, conds ...op.Condition) (Rows, error) {
+	return o.SoftGetRowsContext(context.Background(), order, columns, conds...)
 }
 
 // SoftGetRowsContext is the same as GetRowsContext,
 // but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, conds ...op.Condition) (Rows, error) {
+func (o Oper[T]) SoftGetRowsContext(ctx context.Context, order op.Sorter, columns any, conds ...op.Condition) (Rows, error) {
 	switch len(conds) {
 	case 0:
-		return o.GetRowsContext(ctx, columns, o.SoftCondition)
+		return o.GetRowsContext(ctx, order, columns, o.SoftCondition)
 	case 1:
-		return o.GetRowsContext(ctx, columns, conds[0], o.SoftCondition)
+		return o.GetRowsContext(ctx, order, columns, conds[0], o.SoftCondition)
 	default:
-		return o.GetRowsContext(ctx, columns, op.And(conds...), o.SoftCondition)
+		return o.GetRowsContext(ctx, order, columns, op.And(conds...), o.SoftCondition)
 	}
 }
 
