@@ -67,11 +67,7 @@ func (b *SelectBuilder) BindRows(slice any) error {
 // may be a struct or type implemented the interface sql.Scanner.
 func (b *SelectBuilder) BindRowsContext(ctx context.Context, slice any) error {
 	rows, err := b.QueryContext(ctx)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	return rows.ScanSlice(slice)
+	return rows.TryBindSlice(slice, err)
 }
 
 // Rows is used to wrap sql.Rows.
@@ -83,6 +79,15 @@ type Rows struct {
 // NewRows returns a new Rows.
 func NewRows(rows *sql.Rows, columns ...string) Rows {
 	return Rows{Rows: rows, Columns: columns}
+}
+
+// TryBindSlice is the same as BindSlice, which binds rows to slice
+// only if err is equal to nil.
+func (r Rows) TryBindSlice(slice any, err error) error {
+	if err == nil {
+		err = r.BindSlice(slice)
+	}
+	return err
 }
 
 // BindSlice is the same as ScanSlice, but closes sql.Rows.
