@@ -184,17 +184,6 @@ func (o Oper[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Pagina
 	return
 }
 
-// GetColumnValues is equal to o.GetColumnValuesContext(context.Background(), column, conds...).
-func (o Oper[T]) GetColumnValues(column string, conds ...op.Condition) (values []string, err error) {
-	return o.GetColumnValuesContext(context.Background(), column, conds...)
-}
-
-// GetColumnValuesContext queries a set of the values of the column from table.
-func (o Oper[T]) GetColumnValuesContext(ctx context.Context, column string, conds ...op.Condition) (values []string, err error) {
-	err = o.Table.Select(column).Where(conds...).BindRowsContext(ctx, &values)
-	return
-}
-
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, conds...).
 func (o Oper[T]) GetRows(columns any, conds ...op.Condition) (Rows, error) {
 	return o.GetRowsContext(context.Background(), columns, conds...)
@@ -351,24 +340,6 @@ func (o Oper[T]) SoftGetsContext(ctx context.Context, sort op.Sorter, page op.Pa
 		return o.GetsContext(ctx, sort, page, conds[0], o.SoftCondition)
 	default:
 		return o.GetsContext(ctx, sort, page, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftGetColumnValues is equal to o.SoftGetColumnValuesContext(context.Background(), column, conds...).
-func (o Oper[T]) SoftGetColumnValues(column string, conds ...op.Condition) (values []string, err error) {
-	return o.SoftGetColumnValuesContext(context.Background(), column, conds...)
-}
-
-// SoftGetColumnValuesContext is the same as GetColumnValuesContext,
-// but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetColumnValuesContext(ctx context.Context, column string, conds ...op.Condition) (values []string, err error) {
-	switch len(conds) {
-	case 0:
-		return o.GetColumnValuesContext(ctx, column, o.SoftCondition)
-	case 1:
-		return o.GetColumnValuesContext(ctx, column, conds[0], o.SoftCondition)
-	default:
-		return o.GetColumnValuesContext(ctx, column, op.And(conds...), o.SoftCondition)
 	}
 }
 
