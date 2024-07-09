@@ -414,6 +414,10 @@ func (b *SelectBuilder) Sort(sorts ...op.Sorter) *SelectBuilder {
 	}
 
 	for _, sort := range sorts {
+		if sort == nil {
+			continue
+		}
+
 		switch _op := sort.Op(); _op.Op {
 		case op.SortOpOrder:
 			switch v := _op.Val.(string); v {
