@@ -409,6 +409,11 @@ func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder {
 
 // Sort appends the sorts.
 func (b *SelectBuilder) Sort(sorts ...op.Sorter) *SelectBuilder {
+	switch _len := len(sorts); {
+	case _len == 0, _len == 1 && sorts[0] == nil:
+		return b
+	}
+
 	if b.orderbys == nil {
 		b.orderbys = make([]orderby, 0, len(sorts))
 	}

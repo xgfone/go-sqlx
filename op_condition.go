@@ -23,6 +23,11 @@ import (
 )
 
 func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
+	switch _len := len(conds); {
+	case _len == 0, _len == 1 && conds[0] == nil:
+		return wheres
+	}
+
 	if wheres == nil {
 		wheres = make([]op.Condition, 0, len(conds)+2)
 	}
