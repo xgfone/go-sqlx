@@ -74,6 +74,12 @@ func CheckErrNoRows(err error) (exist bool, e error) {
 	return
 }
 
+// Today returns the today time, that's, 00:00:00 of the current day.
+func Today() time.Time {
+	now := defaults.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
 var (
 	_ json.Marshaler = Time{}
 	_ driver.Valuer  = Time{}
