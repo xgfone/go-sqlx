@@ -100,6 +100,20 @@ func (r Rows) BindSlice(slice any) (err error) {
 	return r.ScanSlice(slice)
 }
 
+func (r Rows) scan(dests ...any) error {
+	return ScanRow(r.Rows.Scan, dests...)
+}
+
+func (r Rows) scanStruct(s any) (err error) {
+	columns := r.Columns
+	if len(columns) == 0 {
+		if columns, err = r.Rows.Columns(); err != nil {
+			return
+		}
+	}
+	return ScanColumnsToStruct(r.scan, columns, s)
+}
+
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Rows
 // and supports that the sql value is NULL.
 func (r Rows) Scan(dests ...any) (err error) {
@@ -107,7 +121,7 @@ func (r Rows) Scan(dests ...any) (err error) {
 		return
 	}
 
-	return ScanRow(r.Rows.Scan, dests...)
+	return r.scan(dests...)
 }
 
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
@@ -116,14 +130,7 @@ func (r Rows) ScanStruct(s any) (err error) {
 	if r.Rows == nil {
 		return
 	}
-
-	columns := r.Columns
-	if len(columns) == 0 {
-		if columns, err = r.Rows.Columns(); err != nil {
-			return
-		}
-	}
-	return ScanColumnsToStruct(r.Scan, columns, s)
+	return r.scanStruct(s)
 }
 
 // ScanStructWithColumns is the same as Scan, but the columns are scanned
@@ -132,8 +139,7 @@ func (r Rows) ScanStructWithColumns(s any, columns ...string) (err error) {
 	if r.Rows == nil {
 		return
 	}
-
-	return ScanColumnsToStruct(r.Scan, columns, s)
+	return ScanColumnsToStruct(r.scan, columns, s)
 }
 
 var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()
@@ -181,4 +187,4 @@ func (r Rows) ScanSlice(slice any) (err error) {
 	return nil
 }
 
-func (r Rows) scansingle(v any) error { return r.Scan(v) }
+func (r Rows) scansingle(v any) error { return r.scan(v) }
