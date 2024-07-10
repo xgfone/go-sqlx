@@ -87,6 +87,20 @@ func NewRow(row *sql.Row, columns ...string) Row {
 	return Row{Row: row, Columns: columns}
 }
 
+// Bind is the same as Scan, but returns (false, nil) if Scan returns sql.ErrNoRows.
+func (r Row) Bind(dests ...any) (ok bool, err error) {
+	err = r.Scan(dests...)
+	ok, err = CheckErrNoRows(err)
+	return
+}
+
+// Bind is the same as BindStruct, but returns (false, nil) if Scan returns sql.ErrNoRows.
+func (r Row) BindStruct(s any) (ok bool, err error) {
+	err = r.ScanStruct(s)
+	ok, err = CheckErrNoRows(err)
+	return
+}
+
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Row
 // and supports that the sql value is NULL.
 func (r Row) Scan(dests ...any) (err error) {
