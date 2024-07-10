@@ -203,23 +203,6 @@ func (o Oper[T]) GetRowsContext(ctx context.Context, order op.Sorter, columns an
 	return q.Sort(order).Where(conds...).QueryContext(ctx)
 }
 
-// BindColumn is equal to o.BindColumnContext(context.Background(), order, column, value, conds...)
-func (o Oper[T]) BindColumn(order op.Sorter, column string, value any, conds ...op.Condition) (err error) {
-	return o.BindColumnContext(context.Background(), order, column, value, conds...)
-}
-
-// BindColumnContext queries a column row and binds the result to value.
-func (o Oper[T]) BindColumnContext(ctx context.Context, order op.Sorter, column string, value any, conds ...op.Condition) (err error) {
-	q := o.Table.Select(column).Where(conds...).Limit(1)
-	if order != nil {
-		q.Sort(order)
-	}
-
-	err = q.BindRowContext(ctx, value)
-	_, err = CheckErrNoRows(err)
-	return
-}
-
 // MakeSlice makes a slice with the cap.
 //
 // If cap is equal to 0, use DefaultSliceCap instead.
@@ -274,6 +257,18 @@ func (o Oper[T]) ExistContext(ctx context.Context, conds ...op.Condition) (exist
 	total, err := o.CountContext(ctx, conds...)
 	exist = err == nil && total > 0
 	return
+}
+
+// SelectsRow returns a SELECT builder, which appends the given columns
+// and limits the number of the returned rows to 1.
+func (o Oper[T]) SelectsRow(columns ...string) *SelectBuilder {
+	return o.Table.Selects(columns...).Limit(1)
+}
+
+// SelectStructRow returns a SELECT builder, which appends the given columns
+// extracted from the struct and limits the number of the returned rows to 1.
+func (o Oper[T]) SelectStructRow(structvalue any) *SelectBuilder {
+	return o.Table.SelectStruct(structvalue).Limit(1)
 }
 
 /// ----------------------------------------------------------------------- ///
@@ -361,24 +356,6 @@ func (o Oper[T]) SoftGetRowsContext(ctx context.Context, order op.Sorter, column
 	}
 }
 
-// SoftBindColumn is equal to o.SoftBindColumnContext(context.Background(), order, column, value, conds...)
-func (o Oper[T]) SoftBindColumn(order op.Sorter, column string, value any, conds ...op.Condition) error {
-	return o.SoftBindColumnContext(context.Background(), order, column, value, conds...)
-}
-
-// SoftBindColumnContext is the same as BindColumnContext,
-// but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftBindColumnContext(ctx context.Context, order op.Sorter, column string, value any, conds ...op.Condition) error {
-	switch len(conds) {
-	case 0:
-		return o.BindColumnContext(ctx, order, column, value, o.SoftCondition)
-	case 1:
-		return o.BindColumnContext(ctx, order, column, value, conds[0], o.SoftCondition)
-	default:
-		return o.BindColumnContext(ctx, order, column, value, op.And(conds...), o.SoftCondition)
-	}
-}
-
 // Query is a simplified SoftGets, which is equal to
 //
 //	o.SoftGets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
@@ -408,6 +385,16 @@ func (o Oper[T]) SoftCountDistinct(field string, conds ...op.Condition) (total i
 // SoftExist is the same as Exist, but appending SoftCondition into the conditions.
 func (o Oper[T]) SoftExist(conds ...op.Condition) (exist bool, err error) {
 	return o.Exist(op.And(conds...), o.SoftCondition)
+}
+
+// SoftSelectsRow is the same as SelectsRow, but appends SoftCondition into the conditions.
+func (o Oper[T]) SoftSelectsRow(columns ...string) *SelectBuilder {
+	return o.SelectsRow(columns...).Where(o.SoftCondition)
+}
+
+// SoftSelectStructRow is the same as SelectStructRow, but appends SoftCondition into the conditions.
+func (o Oper[T]) SoftSelectStructRow(structvalue any) *SelectBuilder {
+	return o.SelectStructRow(structvalue).Where(o.SoftCondition)
 }
 
 /// ----------------------------------------------------------------------- ///
