@@ -39,25 +39,25 @@ func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...any) R
 }
 
 // BindRow is equal to b.BindRowContext(context.Background(), dest...).
-func (b *SelectBuilder) BindRow(dest ...any) error {
+func (b *SelectBuilder) BindRow(dest ...any) (bool, error) {
 	return b.BindRowContext(context.Background(), dest...)
 }
 
 // BindRowStruct is equal to b.BindRowStructContext(context.Background(), dest).
-func (b *SelectBuilder) BindRowStruct(dest any) error {
+func (b *SelectBuilder) BindRowStruct(dest any) (bool, error) {
 	return b.BindRowStructContext(context.Background(), dest)
 }
 
 // BindRowContext is convenient function, which is equal to
-// b.QueryRowContext(c).Scan(dest...).
-func (b *SelectBuilder) BindRowContext(c context.Context, dest ...any) error {
-	return b.QueryRowContext(c).Scan(dest...)
+// b.QueryRowContext(c).Bind(dest...).
+func (b *SelectBuilder) BindRowContext(c context.Context, dest ...any) (bool, error) {
+	return b.QueryRowContext(c).Bind(dest...)
 }
 
 // BindRowStructContext is convenient function, which is equal to
-// b.QueryRowContext(c).ScanStruct(dest).
-func (b *SelectBuilder) BindRowStructContext(c context.Context, dest any) error {
-	return b.QueryRowContext(c).ScanStruct(dest)
+// b.QueryRowContext(c).BindStruct(dest).
+func (b *SelectBuilder) BindRowStructContext(c context.Context, dest any) (bool, error) {
+	return b.QueryRowContext(c).BindStruct(dest)
 }
 
 // QueryRow builds the sql and executes it.

@@ -186,8 +186,7 @@ func (o Operation[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
 
 // GetContext just queries a result.
 func (o Operation[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	err = o.SelectStruct(obj).Where(conds...).Limit(1).BindRowStructContext(ctx, &obj)
-	ok, err = CheckErrNoRows(err)
+	ok, err = o.SelectStruct(obj).Where(conds...).Limit(1).BindRowStructContext(ctx, &obj)
 	return
 }
 
@@ -264,7 +263,7 @@ func (o Operation[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, e
 //
 //	o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 func (o Operation[T]) Count(conds ...op.Condition) (total int, err error) {
-	err = o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	_, err = o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 	return
 }
 
@@ -273,13 +272,13 @@ func (o Operation[T]) Count(conds ...op.Condition) (total int, err error) {
 //
 //	o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 func (o Operation[T]) CountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	_, err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 	return
 }
 
 func (o Operation[T]) Exist(conds ...op.Condition) (exist bool, err error) {
 	var id int
-	err = o.Select(op.KeyId.Key).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&id)
+	_, err = o.Select(op.KeyId.Key).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&id)
 	exist, err = CheckErrNoRows(err)
 	return
 }

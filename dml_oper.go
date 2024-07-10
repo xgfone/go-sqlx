@@ -146,8 +146,7 @@ func (o Oper[T]) GetContext(ctx context.Context, sort op.Sorter, conds ...op.Con
 		b.Sort(sort)
 	}
 
-	err = b.Limit(1).BindRowStructContext(ctx, &obj)
-	ok, err = CheckErrNoRows(err)
+	ok, err = b.Limit(1).BindRowStructContext(ctx, &obj)
 	return
 }
 
@@ -220,8 +219,7 @@ func (o Oper[T]) Sum(field string, conds ...op.Condition) (int, error) {
 
 // SumContext is used to sum the field values of the records by the condition.
 func (o Oper[T]) SumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(Sum(field)).Where(conds...).BindRowContext(ctx, &total)
-	_, err = CheckErrNoRows(err)
+	_, err = o.Table.Select(Sum(field)).Where(conds...).BindRowContext(ctx, &total)
 	return
 }
 
@@ -232,7 +230,7 @@ func (o Oper[T]) Count(conds ...op.Condition) (total int, err error) {
 
 // CountContext is used to count the number of records by the condition.
 func (o Oper[T]) CountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(Count("*")).Where(conds...).BindRowContext(ctx, &total)
+	_, err = o.Table.Select(Count("*")).Where(conds...).BindRowContext(ctx, &total)
 	return
 }
 
@@ -243,7 +241,7 @@ func (o Oper[T]) CountDistinct(field string, conds ...op.Condition) (total int, 
 
 // CountDistinctContext is the same as Count, but excluding the same field records.
 func (o Oper[T]) CountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	err = o.Table.Select(CountDistinct(field)).Where(conds...).BindRowContext(ctx, &total)
+	_, err = o.Table.Select(CountDistinct(field)).Where(conds...).BindRowContext(ctx, &total)
 	return
 }
 
