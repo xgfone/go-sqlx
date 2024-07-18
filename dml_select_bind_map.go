@@ -14,6 +14,36 @@
 
 package sqlx
 
+// TryBindToMapKV is the same as BindToMapKV, but calls it only if err==nil.
+func TryBindToMapKV[M ~map[K]V, K comparable, V any](rows Rows, err error, initcap int) (m M, e error) {
+	if err == nil {
+		m, err = BindToMapKV[M](rows, initcap)
+	}
+
+	e = err
+	return
+}
+
+// TryBindToMapBool is the same as BindToMapBool, but calls it only if err==nil.
+func TryBindToMapBool[M ~map[K]bool, K comparable](rows Rows, err error, initcap int) (m M, e error) {
+	if err == nil {
+		m, err = BindToMapBool[M](rows, initcap)
+	}
+
+	e = err
+	return
+}
+
+// TryBindToMapEmptyStruct is the same as BindToMapEmptyStruct, but calls it only if err==nil.
+func TryBindToMapEmptyStruct[M ~map[K]struct{}, K comparable](rows Rows, err error, initcap int) (m M, e error) {
+	if err == nil {
+		m, err = BindToMapEmptyStruct[M](rows, initcap)
+	}
+
+	e = err
+	return
+}
+
 // BindToMapKV scans two columns as key and value, and inserts them into m.
 //
 // NOTICE: If rows.Rows is nil, do nothing. Or, it will close the rows.
