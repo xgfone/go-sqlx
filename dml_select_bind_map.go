@@ -16,41 +16,35 @@ package sqlx
 
 // TryBindToMapKV is the same as BindToMapKV, but calls it only if err==nil.
 func TryBindToMapKV[M ~map[K]V, K comparable, V any](rows Rows, err error, initcap int) (m M, e error) {
-	if err == nil {
-		m, err = BindToMapKV[M](rows, initcap)
+	if err != nil {
+		e = err
+		return
 	}
-
-	e = err
-	return
+	return BindToMapKV[M](rows, initcap)
 }
 
 // TryBindToMapBool is the same as BindToMapBool, but calls it only if err==nil.
 func TryBindToMapBool[M ~map[K]bool, K comparable](rows Rows, err error, initcap int) (m M, e error) {
-	if err == nil {
-		m, err = BindToMapBool[M](rows, initcap)
+	if err != nil {
+		e = err
+		return
 	}
-
-	e = err
-	return
+	return BindToMapBool[M](rows, initcap)
 }
 
 // TryBindToMapEmptyStruct is the same as BindToMapEmptyStruct, but calls it only if err==nil.
 func TryBindToMapEmptyStruct[M ~map[K]struct{}, K comparable](rows Rows, err error, initcap int) (m M, e error) {
-	if err == nil {
-		m, err = BindToMapEmptyStruct[M](rows, initcap)
+	if err != nil {
+		e = err
+		return
 	}
-
-	e = err
-	return
+	return BindToMapEmptyStruct[M](rows, initcap)
 }
 
 // BindToMapKV scans two columns as key and value, and inserts them into m.
 //
-// NOTICE: If rows.Rows is nil, do nothing. Or, it will close the rows.
+// NOTICE: It will close the rows.
 func BindToMapKV[M ~map[K]V, K comparable, V any](rows Rows, initcap int) (m M, err error) {
-	if rows.Rows == nil {
-		return
-	}
 	defer rows.Close()
 
 	if initcap == 0 {
@@ -74,22 +68,19 @@ func BindToMapKV[M ~map[K]V, K comparable, V any](rows Rows, initcap int) (m M, 
 
 // BindToMapBool scans one column as key, and insert it with the value true into m.
 //
-// NOTICE: if rows.Rows is nil, do nothing. Or, it will close the rows.
+// NOTICE: It will close the rows.
 func BindToMapBool[M ~map[K]bool, K comparable](rows Rows, initcap int) (M, error) {
 	return bindtomapkey[M](rows, initcap, true)
 }
 
 // BindToMapEmptyStruct scans one column as key, and insert it with the value struct{}{} into m.
 //
-// NOTICE: if rows.Rows is nil, do nothing. Or, it will close the rows.
+// NOTICE: It will close the rows.
 func BindToMapEmptyStruct[M ~map[K]struct{}, K comparable](rows Rows, initcap int) (M, error) {
 	return bindtomapkey[M](rows, initcap, struct{}{})
 }
 
 func bindtomapkey[M ~map[K]V, K comparable, V any](rows Rows, initcap int, v V) (m M, err error) {
-	if rows.Rows == nil {
-		return
-	}
 	defer rows.Close()
 
 	if initcap == 0 {

@@ -84,18 +84,14 @@ func NewRows(rows *sql.Rows, columns ...string) Rows {
 // TryBindSlice is the same as BindSlice, which binds rows to slice
 // only if err is equal to nil.
 func (r Rows) TryBindSlice(slice any, err error) error {
-	if err == nil {
-		err = r.BindSlice(slice)
+	if err != nil {
+		return err
 	}
-	return err
+	return r.BindSlice(slice)
 }
 
 // BindSlice is the same as ScanSlice, but closes sql.Rows.
 func (r Rows) BindSlice(slice any) (err error) {
-	if r.Rows == nil {
-		return
-	}
-
 	defer r.Rows.Close()
 	return r.ScanSlice(slice)
 }
