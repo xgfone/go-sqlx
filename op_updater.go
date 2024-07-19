@@ -72,7 +72,7 @@ func newUpdaterThree(format string) OpBuilder {
 
 		var value string
 		switch v := o.Val.(type) {
-		case op.KeyValue:
+		case op.KV:
 			right = ab.Quote(v.Key)
 			if s, ok := v.Val.(string); ok {
 				value = ab.Quote(s)
