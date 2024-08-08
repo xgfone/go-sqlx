@@ -1,4 +1,4 @@
-// Copyright 2020~2023 xgfone
+// Copyright 2020~2024 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,4 +26,19 @@ type InterceptorFunc func(sql string, args []any) (string, []any, error)
 // Intercept implements the interface Interceptor.
 func (f InterceptorFunc) Intercept(sql string, args []any) (string, []any, error) {
 	return f(sql, args)
+}
+
+// Interceptors is a set of Interceptors.
+type Interceptors []Interceptor
+
+// Intercept implements the interface Interceptor.
+func (is Interceptors) Intercept(sql string, args []any) (string, []any, error) {
+	var err error
+	for _, i := range is {
+		sql, args, err = i.Intercept(sql, args)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	return sql, args, nil
 }
