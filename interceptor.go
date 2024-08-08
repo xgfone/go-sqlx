@@ -14,6 +14,11 @@
 
 package sqlx
 
+import (
+	"sync"
+	"sync/atomic"
+)
+
 // Interceptor is used to intercept the executed sql statement and arguments
 // and return a new one.
 type Interceptor interface {
@@ -41,4 +46,59 @@ func (is Interceptors) Intercept(sql string, args []any) (string, []any, error) 
 		}
 	}
 	return sql, args, nil
+}
+
+// SqlCollector is used to collect the executed sqls.
+type SqlCollector struct {
+	enabled atomic.Bool
+	enablef func() bool
+
+	lock sync.RWMutex
+	sqls map[string]struct{}
+}
+
+// Sqls returns the executed sqls.
+func (c *SqlCollector) Sqls() []string {
+	c.lock.RLock()
+	sqls := make([]string, 0, len(c.sqls))
+	for sql := range c.sqls {
+		sqls = append(sqls, sql)
+	}
+	c.lock.RUnlock()
+	return sqls
+}
+
+// SetEnableFunc sets whether to collect the executed sql.
+//
+// It's not thread-safe and should be called after using.
+func (c *SqlCollector) SetEnableFunc(enablef func() bool) *SqlCollector {
+	c.enablef = enablef
+	return c
+}
+
+// SetEnabled sets whether to collect the executed sql.
+//
+// It's thread-safe. But It will have no effect if enablef is set.
+func (c *SqlCollector) SetEnabled(enabled bool) *SqlCollector {
+	c.enabled.Store(enabled)
+	return c
+}
+
+// Intercept implements the interface Interceptor.
+func (c *SqlCollector) Intercept(sql string, args []any) (string, []any, error) {
+	if c.isenabled() {
+		c.lock.Lock()
+		if _, ok := c.sqls[sql]; !ok {
+			c.sqls[sql] = struct{}{}
+		}
+		c.lock.Unlock()
+	}
+	return sql, args, nil
+}
+
+func (c *SqlCollector) isenabled() bool {
+	if c.enablef != nil {
+		return c.enablef()
+	}
+	return c.enabled.Load()
 }
