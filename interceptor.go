@@ -57,6 +57,11 @@ type SqlCollector struct {
 	sqls map[string]struct{}
 }
 
+// NewSqlCollector returns a new SqlCollector.
+func NewSqlCollector() *SqlCollector {
+	return &SqlCollector{sqls: make(map[string]struct{}, 128)}
+}
+
 // Sqls returns the executed sqls.
 func (c *SqlCollector) Sqls() []string {
 	c.lock.RLock()
