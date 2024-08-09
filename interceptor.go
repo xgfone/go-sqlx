@@ -52,6 +52,7 @@ func (is Interceptors) Intercept(sql string, args []any) (string, []any, error) 
 type SqlCollector struct {
 	enabled atomic.Bool
 	enablef func() bool
+	filterf func(string) bool
 
 	lock sync.RWMutex
 	sqls map[string]struct{}
@@ -73,6 +74,15 @@ func (c *SqlCollector) Sqls() []string {
 	return sqls
 }
 
+// SetFilterFunc sets a filter function to decide to collect the sql
+// only if filter returns true.
+//
+// It's not thread-safe and should be called after using.
+func (c *SqlCollector) SetFilterFunc(filterf func(sql string) bool) *SqlCollector {
+	c.filterf = filterf
+	return c
+}
+
 // SetEnableFunc sets whether to collect the executed sql.
 //
 // It's not thread-safe and should be called after using.
@@ -91,7 +101,7 @@ func (c *SqlCollector) SetEnabled(enabled bool) *SqlCollector {
 
 // Intercept implements the interface Interceptor.
 func (c *SqlCollector) Intercept(sql string, args []any) (string, []any, error) {
-	if c.isenabled() {
+	if c.isenabled() && (c.filterf == nil || c.filterf(sql)) {
 		c.lock.Lock()
 		if _, ok := c.sqls[sql]; !ok {
 			c.sqls[sql] = struct{}{}

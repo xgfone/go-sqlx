@@ -17,6 +17,7 @@ package sqlx
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,14 @@ func TestSqlCollector(t *testing.T) {
 	interceptors := Interceptors{collector}
 	_, _, _ = interceptors.Intercept("sql3", nil)
 
-	excepts := []string{"sql1", "sql3"}
+	collector.SetFilterFunc(func(sql string) bool {
+		return strings.HasPrefix(sql, "sql4")
+	})
+
+	_, _, _ = interceptors.Intercept("sql4", nil)
+	_, _, _ = interceptors.Intercept("sql5", nil)
+
+	excepts := []string{"sql1", "sql3", "sql4"}
 	sqls := collector.Sqls()
 	slices.Sort(sqls)
 	if !reflect.DeepEqual(excepts, sqls) {
