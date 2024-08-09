@@ -48,6 +48,9 @@ func (is Interceptors) Intercept(sql string, args []any) (string, []any, error) 
 	return sql, args, nil
 }
 
+// DefaultSqlCollector is the default sql collector.
+var DefaultSqlCollector = NewSqlCollector()
+
 // SqlCollector is used to collect the executed sqls.
 type SqlCollector struct {
 	enabled atomic.Bool
