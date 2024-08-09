@@ -58,9 +58,9 @@ type SqlCollector struct {
 	sqls map[string]struct{}
 }
 
-// NewSqlCollector returns a new SqlCollector.
+// NewSqlCollector returns a new SqlCollector with enabled==true.
 func NewSqlCollector() *SqlCollector {
-	return &SqlCollector{sqls: make(map[string]struct{}, 128)}
+	return (&SqlCollector{sqls: make(map[string]struct{}, 128)}).SetEnabled(true)
 }
 
 // Sqls returns the executed sqls.

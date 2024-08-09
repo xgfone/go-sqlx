@@ -22,7 +22,7 @@ import (
 )
 
 func TestSqlCollector(t *testing.T) {
-	collector := NewSqlCollector()
+	collector := NewSqlCollector().SetEnabled(false)
 	_, _, _ = collector.Intercept("sql0", nil)
 
 	collector.SetEnabled(true)
