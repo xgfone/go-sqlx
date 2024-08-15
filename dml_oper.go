@@ -202,6 +202,20 @@ func (o Oper[T]) GetRowsContext(ctx context.Context, order op.Sorter, columns an
 	return q.Sort(order).Where(conds...).QueryContext(ctx)
 }
 
+// Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
+func (o Oper[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error) {
+	return o.QueryContext(context.Background(), page, pageSize, conds...)
+}
+
+// QueryContext is a simplified GetsContext, which is equal to
+//
+//	o.GetsContext(ctx, op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+//
+// page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
+func (o Oper[T]) QueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
+	return o.GetsContext(ctx, op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+}
+
 // MakeSlice makes a slice with the cap.
 //
 // If cap is equal to 0, use DefaultSliceCap instead.
@@ -354,35 +368,91 @@ func (o Oper[T]) SoftGetRowsContext(ctx context.Context, order op.Sorter, column
 	}
 }
 
-// Query is a simplified SoftGets, which is equal to
-//
-//	o.SoftGets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
-//
-// page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
+// SoftQuery is equal to o.SoftQueryContext(context.Background(), page, pageSize, conds...).
 func (o Oper[T]) SoftQuery(page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.SoftGets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+	return o.SoftQueryContext(context.Background(), page, pageSize, conds...)
 }
 
-// SoftSum is the same as Sum, but appending SoftCondition into the conditions.
+// SoftQueryContext is the same as QueryContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftQueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
+	switch len(conds) {
+	case 0:
+		return o.QueryContext(ctx, page, pageSize, o.SoftCondition)
+	case 1:
+		return o.QueryContext(ctx, page, pageSize, conds[0], o.SoftCondition)
+	default:
+		return o.QueryContext(ctx, page, pageSize, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftSum is equal to o.SoftSumContext(context.Background(), field, conds...).
 func (o Oper[T]) SoftSum(field string, conds ...op.Condition) (total int, err error) {
-	return o.Sum(field, op.And(conds...), o.SoftCondition)
+	return o.SoftSumContext(context.Background(), field, conds...)
 }
 
-// SoftCount is the same as Count, but appending SoftCondition
-// into the conditions.
+// SoftSumContext is the same as SumContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	switch len(conds) {
+	case 0:
+		return o.SumContext(ctx, field, o.SoftCondition)
+	case 1:
+		return o.SumContext(ctx, field, conds[0], o.SoftCondition)
+	default:
+		return o.SumContext(ctx, field, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftCount is equal to o.SoftCountContext(context.Background(), conds...).
 func (o Oper[T]) SoftCount(conds ...op.Condition) (total int, err error) {
-	return o.Count(op.And(conds...), o.SoftCondition)
+	return o.SoftCountContext(context.Background(), conds...)
 }
 
-// SoftCountDistinct is the same as CountDistinct, but appending SoftCondition
+// SoftCountContext is the same as CountContext, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftCountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	return o.CountDistinct(field, op.And(conds...), o.SoftCondition)
+func (o Oper[T]) SoftCountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
+	switch len(conds) {
+	case 0:
+		return o.CountContext(ctx, o.SoftCondition)
+	case 1:
+		return o.CountContext(ctx, conds[0], o.SoftCondition)
+	default:
+		return o.CountContext(ctx, op.And(conds...), o.SoftCondition)
+	}
 }
 
-// SoftExist is the same as Exist, but appending SoftCondition into the conditions.
+// SoftCountDistinct is equal to o.SoftCountDistinctContext(context.Background(), field, conds...).
+func (o Oper[T]) SoftCountDistinct(field string, conds ...op.Condition) (total int, err error) {
+	return o.SoftCountDistinctContext(context.Background(), field, conds...)
+}
+
+// SoftCountDistinctContext is the same as CountDistinctContext,
+// but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftCountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	switch len(conds) {
+	case 0:
+		return o.CountDistinctContext(ctx, field, o.SoftCondition)
+	case 1:
+		return o.CountDistinctContext(ctx, field, conds[0], o.SoftCondition)
+	default:
+		return o.CountDistinctContext(ctx, field, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftExist is equal to o.SoftExistContext(context.Background(), conds... ).
 func (o Oper[T]) SoftExist(conds ...op.Condition) (exist bool, err error) {
-	return o.Exist(op.And(conds...), o.SoftCondition)
+	return o.SoftExistContext(context.Background(), conds...)
+}
+
+// SoftExistContext is the same as ExistContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftExistContext(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
+	switch len(conds) {
+	case 0:
+		return o.ExistContext(ctx, o.SoftCondition)
+	case 1:
+		return o.ExistContext(ctx, conds[0], o.SoftCondition)
+	default:
+		return o.ExistContext(ctx, op.And(conds...), o.SoftCondition)
+	}
 }
 
 // SoftSelectsRow is the same as SelectsRow, but appends SoftCondition into the conditions.
