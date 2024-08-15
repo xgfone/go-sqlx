@@ -184,17 +184,7 @@ func (o Oper[T]) GetRows(columns any, sort op.Sorter, page op.Paginator, conds .
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
 func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (rows Rows, err error) {
-	var q *SelectBuilder
-	switch c := columns.(type) {
-	case string:
-		q = o.Table.Select(c)
-	case []string:
-		q = o.Table.Selects(c...)
-	default:
-		q = o.Table.SelectStruct(columns)
-	}
-
-	return q.Paginator(page).Sort(sort).Where(conds...).QueryContext(ctx)
+	return o.Select(columns, conds...).Paginator(page).Sort(sort).QueryContext(ctx)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
@@ -266,16 +256,25 @@ func (o Oper[T]) ExistContext(ctx context.Context, conds ...op.Condition) (exist
 	return
 }
 
-// SelectsRow returns a SELECT builder, which appends the given columns
-// and limits the number of the returned rows to 1.
-func (o Oper[T]) SelectsRow(columns ...string) *SelectBuilder {
-	return o.Table.Selects(columns...).Limit(1)
-}
-
-// SelectStructRow returns a SELECT builder, which appends the given columns
-// extracted from the struct and limits the number of the returned rows to 1.
-func (o Oper[T]) SelectStructRow(structvalue any) *SelectBuilder {
-	return o.Table.SelectStruct(structvalue).Limit(1)
+// Select returns a SELECT builder, which sets the selected columns
+// and the where condtions.
+//
+// columns supports one of types as follow:
+//
+//	string
+//	[]string
+//	struct
+func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
+	var q *SelectBuilder
+	switch c := columns.(type) {
+	case string:
+		q = o.Table.Select(c)
+	case []string:
+		q = o.Table.Selects(c...)
+	default:
+		q = o.Table.SelectStruct(columns)
+	}
+	return q.Where(conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
@@ -449,14 +448,16 @@ func (o Oper[T]) SoftExistContext(ctx context.Context, conds ...op.Condition) (e
 	}
 }
 
-// SoftSelectsRow is the same as SelectsRow, but appends SoftCondition into the conditions.
-func (o Oper[T]) SoftSelectsRow(columns ...string) *SelectBuilder {
-	return o.SelectsRow(columns...).Where(o.SoftCondition)
-}
-
-// SoftSelectStructRow is the same as SelectStructRow, but appends SoftCondition into the conditions.
-func (o Oper[T]) SoftSelectStructRow(structvalue any) *SelectBuilder {
-	return o.SelectStructRow(structvalue).Where(o.SoftCondition)
+// SoftSelect is the same as Select, but appends SoftCondition into the conditions.
+func (o Oper[T]) SoftSelect(columns any, conds ...op.Condition) *SelectBuilder {
+	switch len(conds) {
+	case 0:
+		return o.Select(columns, o.SoftCondition)
+	case 1:
+		return o.Select(columns, conds[0], o.SoftCondition)
+	default:
+		return o.Select(columns, op.And(conds...), o.SoftCondition)
+	}
 }
 
 /// ----------------------------------------------------------------------- ///
