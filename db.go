@@ -90,8 +90,8 @@ func ConnMaxIdleTime(d time.Duration) Config {
 
 // DB is the wrapper of the sql.DB.
 type DB struct {
-	*sql.DB
 	Dialect
+	Executor
 	Interceptor
 }
 
@@ -109,18 +109,18 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		return nil, err
 	}
 
-	xdb := &DB{Dialect: dialect, DB: db}
 	if configs == nil {
 		configs = DefaultConfigs
 	}
 	for _, c := range configs {
-		c(xdb.DB)
+		c(db)
 	}
 
+	xdb := &DB{Dialect: dialect, Executor: db}
 	return xdb, nil
 }
 
-func getDB(db *DB) *DB {
+func getDB(db Executor) Executor {
 	if db != nil {
 		return db
 	}
@@ -128,11 +128,15 @@ func getDB(db *DB) *DB {
 }
 
 // Set resets the current db to other.
-func (db *DB) Set(other *DB) {
+func (db *DB) Reset(other *DB) {
 	if other == nil {
-		*db = DB{}
+		db.Dialect = nil
+		db.Executor = nil
+		db.Interceptor = nil
 	} else {
-		*db = *other
+		db.Dialect = other.Dialect
+		db.Executor = other.Executor
+		db.Interceptor = other.Interceptor
 	}
 }
 
@@ -174,7 +178,7 @@ func (db *DB) QueryRow(query string, args ...any) *sql.Row {
 // ExecContext executes the sql statement.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (r sql.Result, err error) {
 	if query, args, err = db.Intercept(query, args); err == nil {
-		r, err = db.DB.ExecContext(ctx, query, args...)
+		r, err = db.Executor.ExecContext(ctx, query, args...)
 	}
 	return
 }
@@ -182,7 +186,7 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (r sql
 // QueryContext executes the query sql statement.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (rows *sql.Rows, err error) {
 	if query, args, err = db.Intercept(query, args); err == nil {
-		rows, err = db.DB.QueryContext(ctx, query, args...)
+		rows, err = db.Executor.QueryContext(ctx, query, args...)
 	}
 	return
 }
@@ -193,5 +197,5 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 	if err != nil {
 		panic(err)
 	}
-	return db.DB.QueryRowContext(ctx, query, args...)
+	return db.Executor.QueryRowContext(ctx, query, args...)
 }
