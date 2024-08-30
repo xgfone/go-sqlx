@@ -122,6 +122,7 @@ type SelectBuilder struct {
 	havings  []string
 	groupbys []string
 	orderbys []orderby
+	comment  string
 	offset   int64
 	limit    int64
 	page     op.Paginator
@@ -472,6 +473,12 @@ func (b *SelectBuilder) Paginator(page op.Paginator) *SelectBuilder {
 	return b
 }
 
+// Comment set the comment, which will be appended to the end of the built SQL statement.
+func (b *SelectBuilder) Comment(comment string) *SelectBuilder {
+	b.comment = comment
+	return b
+}
+
 // SetDB sets the db.
 func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
 	b.db = db
@@ -592,6 +599,12 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 		}
 		buf.WriteByte(' ')
 		buf.WriteString(BuildOper(args, b.page))
+	}
+
+	if b.comment != "" {
+		buf.WriteString("/* ")
+		buf.WriteString(b.comment)
+		buf.WriteString(" */")
 	}
 
 	sql = buf.String()

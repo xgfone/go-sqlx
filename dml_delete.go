@@ -39,6 +39,7 @@ func NewDeleteBuilder(tables ...string) *DeleteBuilder {
 // DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
 	db      *DB
+	comment string
 	dtables []string
 	ftables []sqlTable
 	jtables []joinTable
@@ -124,6 +125,12 @@ func (b *DeleteBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *DeleteBuilder {
 	return b
 }
 
+// Comment set the comment, which will be appended to the end of the built SQL statement.
+func (b *DeleteBuilder) Comment(comment string) *DeleteBuilder {
+	b.comment = comment
+	return b
+}
+
 // Where sets the "WHERE" conditions.
 func (b *DeleteBuilder) Where(andConditions ...op.Condition) *DeleteBuilder {
 	b.wheres = appendWheres(b.wheres, andConditions...)
@@ -200,6 +207,12 @@ func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 		args = GetArgsBuilderFromPool(dialect)
 		buf.WriteString(" WHERE ")
 		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
+	}
+
+	if b.comment != "" {
+		buf.WriteString("/* ")
+		buf.WriteString(b.comment)
+		buf.WriteString(" */")
 	}
 
 	sql = buf.String()

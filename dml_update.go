@@ -46,6 +46,7 @@ func NewUpdateBuilder(table ...string) *UpdateBuilder {
 // UpdateBuilder is used to build the UPDATE statement.
 type UpdateBuilder struct {
 	db      *DB
+	comment string
 	utables []sqlTable
 	ftables []sqlTable
 	jtables []joinTable
@@ -140,6 +141,12 @@ func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
 	for _, arg := range args {
 		b.Set(op.New(op.UpdateOpSet, arg.Name, arg.Value).Updater())
 	}
+	return b
+}
+
+// Comment set the comment, which will be appended to the end of the built SQL statement.
+func (b *UpdateBuilder) Comment(comment string) *UpdateBuilder {
+	b.comment = comment
 	return b
 }
 
@@ -248,6 +255,12 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	default:
 		buf.WriteString(" WHERE ")
 		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
+	}
+
+	if b.comment != "" {
+		buf.WriteString("/* ")
+		buf.WriteString(b.comment)
+		buf.WriteString(" */")
 	}
 
 	sql = buf.String()

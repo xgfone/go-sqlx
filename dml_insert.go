@@ -41,6 +41,7 @@ type InsertBuilder struct {
 
 	verb    string
 	table   string
+	comment string
 	columns []string
 	values  [][]any
 }
@@ -65,6 +66,12 @@ func (b *InsertBuilder) IgnoreInto(table string) *InsertBuilder {
 func (b *InsertBuilder) ReplaceInto(table string) *InsertBuilder {
 	b.verb = "REPLACE"
 	b.table = table
+	return b
+}
+
+// Comment set the comment, which will be appended to the end of the built SQL statement.
+func (b *InsertBuilder) Comment(comment string) *InsertBuilder {
+	b.comment = comment
 	return b
 }
 
@@ -302,6 +309,12 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 			}
 			b.addValues(dialect, buf, args, valnum, vs)
 		}
+	}
+
+	if b.comment != "" {
+		buf.WriteString("/* ")
+		buf.WriteString(b.comment)
+		buf.WriteString(" */")
 	}
 
 	sql = buf.String()
