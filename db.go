@@ -52,7 +52,7 @@ func SetConnURLLocation(connURL string, loc *time.Location) string {
 }
 
 // Config is used to configure the DB.
-type Config func(*DB)
+type Config func(*sql.DB)
 
 // Opener is used to open a *sql.DB.
 type Opener func(driverName, dataSourceName string) (*sql.DB, error)
@@ -70,22 +70,22 @@ func MaxOpenConns(maxnum int) Config {
 	if maxnum == 0 {
 		maxnum = runtime.NumCPU() * 2
 	}
-	return func(db *DB) { db.SetMaxOpenConns(maxnum) }
+	return func(db *sql.DB) { db.SetMaxOpenConns(maxnum) }
 }
 
 // MaxIdleConns returns a Config to set the maximum number of the idle connection.
 func MaxIdleConns(n int) Config {
-	return func(db *DB) { db.SetMaxIdleConns(n) }
+	return func(db *sql.DB) { db.SetMaxIdleConns(n) }
 }
 
 // ConnMaxLifetime returns a Config to set the maximum lifetime of the connection.
 func ConnMaxLifetime(d time.Duration) Config {
-	return func(db *DB) { db.SetConnMaxLifetime(d) }
+	return func(db *sql.DB) { db.SetConnMaxLifetime(d) }
 }
 
 // ConnMaxIdleTime returns a Config to set the maximum idle time of the connection.
 func ConnMaxIdleTime(d time.Duration) Config {
-	return func(db *DB) { db.SetConnMaxIdleTime(d) }
+	return func(db *sql.DB) { db.SetConnMaxIdleTime(d) }
 }
 
 // DB is the wrapper of the sql.DB.
@@ -114,7 +114,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		configs = DefaultConfigs
 	}
 	for _, c := range configs {
-		c(xdb)
+		c(xdb.DB)
 	}
 
 	return xdb, nil
