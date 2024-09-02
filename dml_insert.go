@@ -312,7 +312,7 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	if b.comment != "" {
-		buf.WriteString("/* ")
+		buf.WriteString(" /* ")
 		buf.WriteString(b.comment)
 		buf.WriteString(" */")
 	}

@@ -602,7 +602,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	if b.comment != "" {
-		buf.WriteString("/* ")
+		buf.WriteString(" /* ")
 		buf.WriteString(b.comment)
 		buf.WriteString(" */")
 	}

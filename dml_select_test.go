@@ -22,7 +22,7 @@ import (
 )
 
 func ExampleSelectBuilder() {
-	sel1 := Select("*").From("table").Where(op.Equal("id", 123))
+	sel1 := Select("*").From("table").Where(op.Equal("id", 123)).Comment("abc")
 	sel2 := Select("*").FromAlias("table", "alias").Where(op.Equal("id", 123))
 	sel3 := SelectAlias("id", "c1").SelectAlias("name", "c2").FromAlias("table", "alias").Where(op.Equal("id", 123))
 	sel4 := Select("A.id").Select("B.name").FromAlias("table1", "A").FromAlias("table2", "B").Where(op.EqualKey("A.id", "B.id"))
@@ -45,7 +45,7 @@ func ExampleSelectBuilder() {
 	fmt.Println(args4.Args())
 
 	// Output:
-	// SELECT * FROM `table` WHERE `id`=?
+	// SELECT * FROM `table` WHERE `id`=? /* abc */
 	// [123]
 	// SELECT * FROM `table` AS `alias` WHERE `id`=?
 	// [123]
