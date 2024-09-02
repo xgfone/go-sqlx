@@ -17,6 +17,7 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"io"
 )
 
 var (
@@ -26,6 +27,8 @@ var (
 
 // Executor is used to execute the sql statement.
 type Executor interface {
+	io.Closer
+
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row

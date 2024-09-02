@@ -1,4 +1,4 @@
-// Copyright 2020~2023 xgfone
+// Copyright 2020~2024 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,11 +58,7 @@ type Config func(db *sql.DB)
 type Opener func(driverName, dataSourceName string) (*sql.DB, error)
 
 // DefaultConfigs is the default configs.
-var DefaultConfigs = []Config{
-	MaxOpenConns(0),
-	ConnMaxIdleTime(time.Minute * 5),
-	Close(),
-}
+var DefaultConfigs = []Config{MaxOpenConns(0), ConnMaxIdleTime(time.Minute * 5)}
 
 // DefaultOpener is used to open a *sql.DB.
 var DefaultOpener Opener = sql.Open
@@ -90,12 +86,6 @@ func ConnMaxLifetime(d time.Duration) Config {
 // ConnMaxIdleTime returns a Config to set the maximum idle time of the connection.
 func ConnMaxIdleTime(d time.Duration) Config {
 	return func(db *sql.DB) { db.SetConnMaxIdleTime(d) }
-}
-
-// Close returns a Config, which registers an exit clean function
-// that is called before the program exits to close sql.DB.
-func Close() Config {
-	return func(db *sql.DB) { defaults.OnExitPost(func() { _ = db.Close() }) }
 }
 
 // DB is the wrapper of the sql.DB.
