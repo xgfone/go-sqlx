@@ -1,4 +1,4 @@
-// Copyright 2023 xgfone
+// Copyright 2023~2024 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,6 +65,17 @@ func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...an
 		t.Errorf(`expect sql "%s", but got "%s"`, expectsql, sql)
 	}
 	if (len(args) > 0 || len(expectargs) > 0) && !reflect.DeepEqual(args, expectargs) {
+		t.Errorf("expect args %v, but got %v", expectargs, args)
+	}
+}
+
+func TestUpdateSet(t *testing.T) {
+	key := op.KeyReason.WithLazy(op.StrCharsLen(32))
+
+	ab := GetArgsBuilderFromPool(MySQL)
+	BuildOper(ab, key.Set("abcdefghijklmnopqrstuvwxyz0123456789"))
+	expectargs := []any{"abcdefghijklmnopqrstuvwxyz012345"}
+	if args := ab.Args(); len(args) != len(expectargs) || !reflect.DeepEqual(args, expectargs) {
 		t.Errorf("expect args %v, but got %v", expectargs, args)
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright 2023 xgfone
+// Copyright 2023~2024 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -54,6 +54,9 @@ func newUpdaterBatch() OpBuilder {
 
 func newUpdaterSet() OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+		if op.Lazy != nil {
+			op = op.Lazy(op)
+		}
 		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(op)), ab.Add(op.Val))
 	})
 }
