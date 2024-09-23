@@ -281,6 +281,20 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 		q = o.Table.Select(c)
 	case []string:
 		q = o.Table.Selects(c...)
+
+	case op.Op:
+		q = o.Table.Select(c.Key)
+	case []op.Op:
+		q = o.Table.Selects()
+		for _, op := range c {
+			q.Select(op.Key)
+		}
+
+	case interface{ Column() string }:
+		q = o.Table.Select(c.Column())
+	case interface{ Columns() []string }:
+		q = o.Table.Selects(c.Columns()...)
+
 	default:
 		q = o.Table.SelectStruct(columns)
 	}
