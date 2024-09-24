@@ -23,6 +23,9 @@ import (
 	"time"
 )
 
+// SliceSep is used to combine a string slice to a string.
+const SliceSep = ","
+
 const (
 	// DateZero is the ZERO of the sql date.
 	DateZero = "0000-00-00"
@@ -41,6 +44,19 @@ type Base struct {
 	CreatedAt time.Time `sql:"created_at,omitempty"`
 	UpdatedAt time.Time `sql:"updated_at,omitempty"`
 	DeletedAt time.Time `sql:"deleted_at,omitempty" json:"-"`
+}
+
+// String is a string slice value type, which is encoded to a string or decoded from a []byte or string.
+type Strings []string
+
+// Value implements the interface driver.Valuer to encode the map to a sql value(string).
+func (vs Strings) Value() (driver.Value, error) {
+	return strings.Join(vs, ","), nil
+}
+
+// Scan implements the interface sql.Scanner to scan a sql value to the map.
+func (vs *Strings) Scan(src any) error {
+	return decodestrings((*[]string)(vs), src, SliceSep)
 }
 
 // Map is a map value type, which is encoded to a string or decoded from a []byte or string.
@@ -95,6 +111,19 @@ func decodemap[M ~map[string]T, T any](m *M, src any) (err error) {
 		}
 	default:
 		err = fmt.Errorf("converting %T to %T is unsupported", src, *m)
+	}
+	return
+}
+
+func decodestrings(vs *[]string, src any, sep string) (err error) {
+	switch data := src.(type) {
+	case nil:
+	case []byte:
+		*vs = strings.Split(string(data), sep)
+	case string:
+		*vs = strings.Split(data, sep)
+	default:
+		err = fmt.Errorf("converting %T to []string is unsupported", src)
 	}
 	return
 }
