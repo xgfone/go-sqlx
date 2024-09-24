@@ -52,7 +52,7 @@ type Strings []string
 // Value implements the interface driver.Valuer to encode the map to a sql value(string).
 func (vs Strings) Value() (driver.Value, error) {
 	if len(vs) == 0 || (len(vs) == 1 && vs[0] == "") {
-		return nil, nil
+		return "", nil
 	}
 	return strings.Join(vs, ","), nil
 }
