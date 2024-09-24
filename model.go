@@ -44,28 +44,15 @@ type Base struct {
 }
 
 // Map is a map value type, which is encoded to a string or decoded from a []byte or string.
-type Map map[string]any
+type Map[T any] map[string]T
 
 // Value implements the interface driver.Valuer to encode the map to a sql value(string).
-func (m Map) Value() (driver.Value, error) {
+func (m Map[T]) Value() (driver.Value, error) {
 	return encodemap(m)
 }
 
 // Scan implements the interface sql.Scanner to scan a sql value to the map.
-func (m *Map) Scan(src any) error {
-	return decodemap(m, src)
-}
-
-// StringMap is a map value type, which is encoded to a string or decoded from a []byte or string.
-type StringMap map[string]string
-
-// Value implements the interface driver.Valuer to encode the map to a string sql value.
-func (m StringMap) Value() (driver.Value, error) {
-	return encodemap(m)
-}
-
-// Scan implements the interface sql.Scanner to scan a sql value to the map.
-func (m *StringMap) Scan(src any) error {
+func (m *Map[T]) Scan(src any) error {
 	return decodemap(m, src)
 }
 
