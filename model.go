@@ -51,6 +51,9 @@ type Strings []string
 
 // Value implements the interface driver.Valuer to encode the map to a sql value(string).
 func (vs Strings) Value() (driver.Value, error) {
+	if len(vs) == 0 || (len(vs) == 1 && vs[0] == "") {
+		return nil, nil
+	}
 	return strings.Join(vs, ","), nil
 }
 
@@ -128,9 +131,13 @@ func decodestrings[S ~[]string](s *S, src any, sep string) (err error) {
 	switch data := src.(type) {
 	case nil:
 	case []byte:
-		*s = strings.Split(string(data), sep)
+		if len(data) > 0 {
+			*s = strings.Split(string(data), sep)
+		}
 	case string:
-		*s = strings.Split(data, sep)
+		if len(data) > 0 {
+			*s = strings.Split(data, sep)
+		}
 	default:
 		err = fmt.Errorf("converting %T to []string is unsupported", src)
 	}
