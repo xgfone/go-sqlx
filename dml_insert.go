@@ -103,12 +103,18 @@ func (b *InsertBuilder) Ops(ops ...op.Op) *InsertBuilder {
 		b.columns = make([]string, _len)
 		values = make([]any, _len)
 		for i, op := range ops {
+			if op.Lazy != nil {
+				op = op.Lazy(op)
+			}
 			b.columns[i] = getOpKey(op)
 			values[i] = op.Val
 		}
 	} else if _len == len(ops) {
 		values = make([]any, _len)
 		for i, op := range ops {
+			if op.Lazy != nil {
+				op = op.Lazy(op)
+			}
 			values[i] = op.Val
 		}
 	} else {

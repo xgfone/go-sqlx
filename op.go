@@ -55,6 +55,9 @@ func GetOpBuilder(op string) OpBuilder { return opbuilders[op] }
 // BuildOp builds the operation.
 func BuildOp(ab *ArgsBuilder, op op.Op) string {
 	if builder := GetOpBuilder(op.Op); builder != nil {
+		if op.Lazy != nil {
+			op = op.Lazy(op)
+		}
 		return builder.Build(ab, op)
 	}
 	panic(fmt.Errorf("sqlx: not found the builder for %s", op.String()))

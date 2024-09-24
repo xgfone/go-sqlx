@@ -54,9 +54,6 @@ func newUpdaterBatch() OpBuilder {
 
 func newUpdaterSet() OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
-		if op.Lazy != nil {
-			op = op.Lazy(op)
-		}
 		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(op)), ab.Add(op.Val))
 	})
 }
