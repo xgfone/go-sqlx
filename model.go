@@ -56,7 +56,7 @@ func (vs Strings) Value() (driver.Value, error) {
 
 // Scan implements the interface sql.Scanner to scan a sql value to the map.
 func (vs *Strings) Scan(src any) error {
-	return decodestrings((*[]string)(vs), src, SliceSep)
+	return decodestrings(vs, src, SliceSep)
 }
 
 // Map is a map value type, which is encoded to a string or decoded from a []byte or string.
@@ -80,6 +80,11 @@ func EncodeMap[M ~map[string]T, T any](m M) (string, error) {
 // DecodeMap decodes a map from string or []byte.
 func DecodeMap[M ~map[string]T, T any](m *M, src any) error {
 	return decodemap(m, src)
+}
+
+// DecodeStrings decodes a string slice from string or []byte.
+func DecodeStrings[S ~[]string](s *S, src any, sep string) error {
+	return decodestrings(s, src, sep)
 }
 
 func encodemap[M ~map[string]T, T any](m M) (s string, err error) {
@@ -115,13 +120,17 @@ func decodemap[M ~map[string]T, T any](m *M, src any) (err error) {
 	return
 }
 
-func decodestrings(vs *[]string, src any, sep string) (err error) {
+func decodestrings[S ~[]string](s *S, src any, sep string) (err error) {
+	if sep == "" {
+		panic("sqlx.DecodeStrings: sep must not be empty")
+	}
+
 	switch data := src.(type) {
 	case nil:
 	case []byte:
-		*vs = strings.Split(string(data), sep)
+		*s = strings.Split(string(data), sep)
 	case string:
-		*vs = strings.Split(data, sep)
+		*s = strings.Split(data, sep)
 	default:
 		err = fmt.Errorf("converting %T to []string is unsupported", src)
 	}
