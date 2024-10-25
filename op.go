@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/xgfone/go-op"
@@ -78,4 +79,16 @@ func getOpKey(op op.Op) string {
 		name = op.Key[:index+1] + name
 	}
 	return name
+}
+
+func opvalueisnil(op op.Op) bool {
+	if op.Val == nil {
+		return true
+	}
+
+	if v := reflect.ValueOf(op.Val); v.Kind() == reflect.Pointer && v.IsNil() {
+		return true
+	}
+
+	return false
 }

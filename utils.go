@@ -763,14 +763,16 @@ func isZero(v reflect.Value) bool {
 	return false
 }
 
-func toslice[S1 ~[]E1, E1, E2 any](srcs S1, to func(E1) E2) (dsts []E2) {
+func toslice[S ~[]E, E any](srcs S, to func(E) string) (dsts []string) {
 	if len(srcs) == 0 {
 		return
 	}
 
-	dsts = make([]E2, len(srcs))
-	for i, src := range srcs {
-		dsts[i] = to(src)
+	dsts = make([]string, 0, len(srcs))
+	for _, src := range srcs {
+		if s := to(src); s != "" {
+			dsts = append(dsts, s)
+		}
 	}
 	return
 }

@@ -23,11 +23,12 @@ import (
 
 func TestBatch(t *testing.T) {
 	updater1 := op.Set("k1", "v1")
-	updater2 := op.Batch(op.Inc("k2"), op.Dec("k3"))
+	updater2 := op.Batch(op.Inc("k2"), op.Dec("k3"), op.Set("noop1", nil))
 	updater3 := op.Batch(updater1, updater2, op.Add("k4", 123), op.Sub("k5", 456))
+	updater4 := op.Batch(updater3, op.Set("noop2", (*int)(nil)))
 
 	ab := GetArgsBuilderFromPool(MySQL)
-	sql := BuildOper(ab, updater3)
+	sql := BuildOper(ab, updater4)
 	args := ab.Args()
 
 	expectsql := "`k1`=?, `k2`=`k2`+1, `k3`=`k3`-1, `k4`=`k4`+?, `k5`=`k5`-?"
@@ -38,7 +39,7 @@ func TestBatch(t *testing.T) {
 	}
 
 	if len(args) != len(expectargs) {
-		t.Errorf("expect %d args, but got %d", len(expectargs), len(args))
+		t.Errorf("expect %d args, but got %d: %+v", len(expectargs), len(args), args)
 	} else {
 		for i, arg := range args {
 			if expect := expectargs[i]; expect != arg {

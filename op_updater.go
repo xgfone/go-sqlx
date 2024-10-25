@@ -48,12 +48,26 @@ func newUpdaterBatch() OpBuilder {
 		default:
 			panic(fmt.Errorf("sqlx: unsupported value type %T for op '%s:%v'", _op.Val, _op.Kind, _op.Op))
 		}
-		return strings.Join(ss, ", ")
+
+		switch len(ss) {
+		case 0:
+			panic("sqlx: update setters are empty")
+
+		case 1:
+			return ss[0]
+
+		default:
+			return strings.Join(ss, ", ")
+		}
 	})
 }
 
 func newUpdaterSet() OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+		if opvalueisnil(op) {
+			return ""
+		}
+
 		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(op)), ab.Add(op.Val))
 	})
 }

@@ -15,6 +15,7 @@
 package sqlx
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
@@ -52,6 +53,18 @@ func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
 	}
 
 	return wheres
+}
+
+func buildWheres(buf *bytes.Buffer, args *ArgsBuilder, dialect Dialect, conds []op.Condition) *ArgsBuilder {
+	if len(conds) > 0 {
+		if args == nil {
+			args = GetArgsBuilderFromPool(dialect)
+		}
+
+		buf.WriteString(" WHERE ")
+		buf.WriteString(BuildOper(args, op.And(conds...)))
+	}
+	return args
 }
 
 func init() {
@@ -93,12 +106,20 @@ func newCondOne(format string) OpBuilder {
 
 func newCondTwo(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+		if opvalueisnil(op) {
+			return ""
+		}
+
 		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(op.Val))
 	})
 }
 
 func newCondLike(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+		if opvalueisnil(op) {
+			return ""
+		}
+
 		value := op.Val.(string)
 		if strings.IndexByte(value, '%') < 0 {
 			value = strings.Join([]string{"%", "%"}, value)
@@ -268,10 +289,16 @@ func newCondGroup(sep string) OpBuilder {
 			panic(fmt.Errorf("sqlx: unsupported value type %T for op '%s:%v'", _op.Val, _op.Kind, _op.Op))
 		}
 
-		if len(ss) == 0 {
+		switch len(ss) {
+		case 0:
 			return ""
+
+		case 1:
+			return ss[0]
+
+		default:
+			return fmt.Sprintf("(%s)", strings.Join(ss, sep))
 		}
-		return fmt.Sprintf("(%s)", strings.Join(ss, sep))
 	})
 }
 

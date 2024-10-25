@@ -224,12 +224,7 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	// Set
 	buf.WriteString(" SET ")
 	args = GetArgsBuilderFromPool(dialect)
-	for i, setter := range b.setters {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(BuildOper(args, setter))
-	}
+	buf.WriteString(BuildOper(args, op.Batch(b.setters...)))
 
 	// From
 	for i, t := range b.ftables {
@@ -246,17 +241,9 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	// Where
-	switch _len := len(b.wheres); _len {
-	case 0:
-	case 1:
-		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(args, b.wheres[0]))
+	args = buildWheres(buf, args, dialect, b.wheres)
 
-	default:
-		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
-	}
-
+	// Comment
 	if b.comment != "" {
 		buf.WriteString(" /* ")
 		buf.WriteString(b.comment)

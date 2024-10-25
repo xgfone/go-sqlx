@@ -540,18 +540,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	// Where
-	switch _len := len(b.wheres); _len {
-	case 0:
-	case 1:
-		args = GetArgsBuilderFromPool(dialect)
-		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(args, b.wheres[0]))
-
-	default:
-		args = GetArgsBuilderFromPool(dialect)
-		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(args, op.And(b.wheres...)))
-	}
+	args = buildWheres(buf, args, dialect, b.wheres)
 
 	// Group By & Having By
 	if len(b.groupbys) > 0 {
@@ -601,6 +590,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 		buf.WriteString(BuildOper(args, b.page))
 	}
 
+	// Comment
 	if b.comment != "" {
 		buf.WriteString(" /* ")
 		buf.WriteString(b.comment)

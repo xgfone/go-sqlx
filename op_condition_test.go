@@ -23,9 +23,9 @@ import (
 
 func TestAnd(t *testing.T) {
 	cond1 := op.Eq("k1", "v1")
-	cond2 := op.And(cond1, op.Gt("k2", 111), op.Le("k3", 222))
+	cond2 := op.And(cond1, op.Gt("k2", 111), op.Le("k3", 222), op.Eq("noop1", nil))
 	cond3 := op.Or(op.In("k4", []string{"v41", "v42"}), op.Between("k5", 333, 444))
-	cond4 := op.And(cond2, cond3, op.And(op.And()))
+	cond4 := op.And(cond2, cond3, op.And(op.And()), op.NotEq("noop2", (*int)(nil)))
 
 	args := GetArgsBuilderFromPool(MySQL)
 	sql := BuildOper(args, op.And(appendWheres(nil, cond4)...))
