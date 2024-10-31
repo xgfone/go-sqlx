@@ -486,6 +486,18 @@ func (o Oper[T]) SoftSelect(columns any, conds ...op.Condition) *SelectBuilder {
 
 /// ----------------------------------------------------------------------- ///
 
+// GetAll is equal to o.Gets(nil, nil, conds...).
+func (o Oper[T]) GetAll(conds ...op.Condition) ([]T, error) {
+	return o.Gets(nil, nil, conds...)
+}
+
+// SoftGetAll is equal to o.SoftGets(nil, nil, conds...).
+func (o Oper[T]) SoftGetAll(conds ...op.Condition) ([]T, error) {
+	return o.SoftGets(nil, nil, conds...)
+}
+
+/// ----------------------------------------------------------------------- ///
+
 // UpdateById is equal to o.Update(op.Batch(updaters...), op.KeyId.Eq(id)).
 func (o Oper[T]) UpdateById(id int64, updaters ...op.Updater) error {
 	return o.Update(op.Batch(updaters...), op.KeyId.Eq(id))
