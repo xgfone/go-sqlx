@@ -106,13 +106,13 @@ func decodemap[M ~map[string]T, T any](m *M, src any) (err error) {
 	switch data := src.(type) {
 	case nil:
 	case []byte:
-		switch {
+		switch data = bytes.TrimSpace(data); {
 		case data == nil, bytes.Equal(data, _jsonbraces), bytes.Equal(data, _jsonnull):
 		default:
 			err = json.NewDecoder(bytes.NewReader(data)).Decode(m)
 		}
 	case string:
-		switch data {
+		switch data = strings.TrimSpace(data); data {
 		case "", "{}", "null":
 		default:
 			err = json.NewDecoder(strings.NewReader(data)).Decode(m)
@@ -131,11 +131,11 @@ func decodestrings[S ~[]string](s *S, src any, sep string) (err error) {
 	switch data := src.(type) {
 	case nil:
 	case []byte:
-		if len(data) > 0 {
+		if data = bytes.TrimSpace(data); len(data) > 0 {
 			*s = strings.Split(string(data), sep)
 		}
 	case string:
-		if len(data) > 0 {
+		if data = strings.TrimSpace(data); len(data) > 0 {
 			*s = strings.Split(data, sep)
 		}
 	default:
