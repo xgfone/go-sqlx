@@ -25,6 +25,11 @@ import (
 type Oper[T any] struct {
 	Table Table
 
+	// Sorter is used to sort the records when querying the records.
+	//
+	// Default: op.KeyId.OrderDesc()
+	Sorter op.Sorter
+
 	// SoftCondition is used by the method SoftXxxx as the WHERE condition.
 	//
 	// Default: op.IsNotDeletedCond
@@ -46,6 +51,7 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 	return Oper[T]{
 		Table: table,
 
+		Sorter:            op.KeyId.OrderDesc(),
 		SoftCondition:     op.IsNotDeletedCond,
 		SoftDeleteUpdater: softDeleteUpdater,
 	}
@@ -53,6 +59,13 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 
 func softDeleteUpdater(context.Context) op.Updater {
 	return op.KeyDeletedAt.Set(time.Now())
+}
+
+func (o Oper[T]) sorter(sorter op.Sorter) op.Sorter {
+	if sorter != nil {
+		return sorter
+	}
+	return o.Sorter
 }
 
 // WithDB returns a new Oper with the new db.
@@ -64,6 +77,12 @@ func (o Oper[T]) WithDB(db *DB) Oper[T] {
 // WithTable returns the a new Oper with the new table.
 func (o Oper[T]) WithTable(table Table) Oper[T] {
 	o.Table = table
+	return o
+}
+
+// WithSorter returns the a new Oper with the new sorter.
+func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
+	o.Sorter = sorter
 	return o
 }
 
@@ -140,13 +159,8 @@ func (o Oper[T]) Get(sort op.Sorter, conds ...op.Condition) (obj T, ok bool, err
 }
 
 // GetContext just queries a first record from table.
-func (o Oper[T]) GetContext(ctx context.Context, sort op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
-	b := o.Table.SelectStruct(obj).Where(conds...)
-	if sort != nil {
-		b.Sort(sort)
-	}
-
-	ok, err = b.Limit(1).BindRowStructContext(ctx, &obj)
+func (o Oper[T]) GetContext(ctx context.Context, sorter op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
+	ok, err = o.GetRowContext(ctx, obj, sorter, conds...).BindStruct(&obj)
 	return
 }
 
@@ -184,7 +198,7 @@ func (o Oper[T]) GetRow(ctx context.Context, columns any, sort op.Sorter, conds 
 
 // GetRowContext builds a SELECT statement and returns a Row.
 func (o Oper[T]) GetRowContext(ctx context.Context, columns any, sort op.Sorter, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Limit(1).Sort(sort).QueryRowContext(ctx)
+	return o.Select(columns, conds...).Limit(1).Sort(o.sorter(sort)).QueryRowContext(ctx)
 }
 
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, sort, page, conds...).
@@ -194,7 +208,7 @@ func (o Oper[T]) GetRows(columns any, sort op.Sorter, page op.Paginator, conds .
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
 func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (rows Rows, err error) {
-	return o.Select(columns, conds...).Paginator(page).Sort(sort).QueryContext(ctx)
+	return o.Select(columns, conds...).Paginator(page).Sort(o.sorter(sort)).QueryContext(ctx)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
