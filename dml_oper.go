@@ -61,13 +61,6 @@ func softDeleteUpdater(context.Context) op.Updater {
 	return op.KeyDeletedAt.Set(time.Now())
 }
 
-func (o Oper[T]) sorter(sorter op.Sorter) op.Sorter {
-	if sorter != nil {
-		return sorter
-	}
-	return o.Sorter
-}
-
 // WithDB returns a new Oper with the new db.
 func (o Oper[T]) WithDB(db *DB) Oper[T] {
 	o.Table.DB = db
@@ -153,28 +146,26 @@ func (o Oper[T]) DeleteContext(ctx context.Context, conds ...op.Condition) error
 	return err
 }
 
-// Get is equal to o.GetContext(context.Background(), sort, conds...).
-func (o Oper[T]) Get(sort op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
-	return o.GetContext(context.Background(), sort, conds...)
+// Get is equal to o.GetContext(context.Background(), conds...).
+func (o Oper[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
+	return o.GetContext(context.Background(), conds...)
 }
 
 // GetContext just queries a first record from table.
-func (o Oper[T]) GetContext(ctx context.Context, sorter op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
-	ok, err = o.GetRowContext(ctx, obj, sorter, conds...).BindStruct(&obj)
+func (o Oper[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
+	ok, err = o.GetRowContext(ctx, obj, conds...).BindStruct(&obj)
 	return
 }
 
-// Gets is equal to o.GetsContext(context.Background(), sort, page, conds...).
-func (o Oper[T]) Gets(sort op.Sorter, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
-	return o.GetsContext(context.Background(), sort, page, conds...)
+// Gets is equal to o.GetsContext(context.Background(), page, conds...).
+func (o Oper[T]) Gets(page op.Paginator, conds ...op.Condition) (objs []T, err error) {
+	return o.GetsContext(context.Background(), page, conds...)
 }
 
 // GetsContext queries a set of results from table.
-//
-// Any of sort, page and conds is equal to nil.
-func (o Oper[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
+func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
 	var obj T
-	rows, err := o.GetRowsContext(ctx, obj, sort, page, conds...)
+	rows, err := o.GetRowsContext(ctx, obj, page, conds...)
 	if err != nil {
 		return
 	}
@@ -191,24 +182,24 @@ func (o Oper[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Pagina
 	return
 }
 
-// GetRow is equal to o.GetRowContext(ctx, columns, sort, conds...).
-func (o Oper[T]) GetRow(ctx context.Context, columns any, sort op.Sorter, conds ...op.Condition) Row {
-	return o.GetRowContext(ctx, columns, sort, conds...)
+// GetRow is equal to o.GetRowContext(ctx, columns, conds...).
+func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
+	return o.GetRowContext(ctx, columns, conds...)
 }
 
 // GetRowContext builds a SELECT statement and returns a Row.
-func (o Oper[T]) GetRowContext(ctx context.Context, columns any, sort op.Sorter, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Limit(1).Sort(o.sorter(sort)).QueryRowContext(ctx)
+func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
+	return o.Select(columns, conds...).Limit(1).Sort(o.Sorter).QueryRowContext(ctx)
 }
 
-// GetRows is equal to o.GetRowsContext(context.Background(), columns, sort, page, conds...).
-func (o Oper[T]) GetRows(columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (Rows, error) {
-	return o.GetRowsContext(context.Background(), columns, sort, page, conds...)
+// GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).
+func (o Oper[T]) GetRows(columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
+	return o.GetRowsContext(context.Background(), columns, page, conds...)
 }
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
-func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (rows Rows, err error) {
-	return o.Select(columns, conds...).Paginator(page).Sort(o.sorter(sort)).QueryContext(ctx)
+func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) (rows Rows, err error) {
+	return o.Select(columns, conds...).Paginator(page).Sort(o.Sorter).QueryContext(ctx)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
@@ -218,11 +209,11 @@ func (o Oper[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error)
 
 // QueryContext is a simplified GetsContext, which is equal to
 //
-//	o.GetsContext(ctx, op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+//	o.GetsContext(ctx, op.Paginate(page, pageSize), conds...)
 //
 // page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
 func (o Oper[T]) QueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.GetsContext(ctx, op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
+	return o.GetsContext(ctx, op.Paginate(page, pageSize), conds...)
 }
 
 // CountQuery is equal to o.CountQueryContext(context.Background(), page, pagesize, conds...).
@@ -359,56 +350,56 @@ func (o Oper[T]) SoftDeleteContext(ctx context.Context, conds ...op.Condition) e
 	return o.SoftUpdateContext(ctx, o.SoftDeleteUpdater(ctx), conds...)
 }
 
-// SoftGet is equal to o.SoftGetContext(context.Background(), sort, conds...).
-func (o Oper[T]) SoftGet(sort op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
-	return o.SoftGetContext(context.Background(), sort, conds...)
+// SoftGet is equal to o.SoftGetContext(context.Background(), conds...).
+func (o Oper[T]) SoftGet(conds ...op.Condition) (obj T, ok bool, err error) {
+	return o.SoftGetContext(context.Background(), conds...)
 }
 
 // SoftGetContext is the same as GetContext, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftGetContext(ctx context.Context, sort op.Sorter, conds ...op.Condition) (obj T, ok bool, err error) {
+func (o Oper[T]) SoftGetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
 	switch len(conds) {
 	case 0:
-		return o.GetContext(ctx, sort, o.SoftCondition)
+		return o.GetContext(ctx, o.SoftCondition)
 	case 1:
-		return o.GetContext(ctx, sort, conds[0], o.SoftCondition)
+		return o.GetContext(ctx, conds[0], o.SoftCondition)
 	default:
-		return o.GetContext(ctx, sort, op.And(conds...), o.SoftCondition)
+		return o.GetContext(ctx, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftGets is equal to o.SoftGetsContext(context.Background(), sort, page, conds...).
-func (o Oper[T]) SoftGets(sort op.Sorter, page op.Paginator, conds ...op.Condition) ([]T, error) {
-	return o.SoftGetsContext(context.Background(), sort, page, conds...)
+// SoftGets is equal to o.SoftGetsContext(context.Background(), page, conds...).
+func (o Oper[T]) SoftGets(page op.Paginator, conds ...op.Condition) ([]T, error) {
+	return o.SoftGetsContext(context.Background(), page, conds...)
 }
 
 // SoftGetsContext is the same as GetsContext, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftGetsContext(ctx context.Context, sort op.Sorter, page op.Paginator, conds ...op.Condition) ([]T, error) {
+func (o Oper[T]) SoftGetsContext(ctx context.Context, page op.Paginator, conds ...op.Condition) ([]T, error) {
 	switch len(conds) {
 	case 0:
-		return o.GetsContext(ctx, sort, page, o.SoftCondition)
+		return o.GetsContext(ctx, page, o.SoftCondition)
 	case 1:
-		return o.GetsContext(ctx, sort, page, conds[0], o.SoftCondition)
+		return o.GetsContext(ctx, page, conds[0], o.SoftCondition)
 	default:
-		return o.GetsContext(ctx, sort, page, op.And(conds...), o.SoftCondition)
+		return o.GetsContext(ctx, page, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, sort, page, conds...).
-func (o Oper[T]) SoftGetRows(columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (Rows, error) {
-	return o.SoftGetRowsContext(context.Background(), columns, sort, page, conds...)
+// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, page, conds...).
+func (o Oper[T]) SoftGetRows(columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
+	return o.SoftGetRowsContext(context.Background(), columns, page, conds...)
 }
 
 // SoftGetRowsContext is the same as GetRowsContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, sort op.Sorter, page op.Paginator, conds ...op.Condition) (Rows, error) {
+func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
 	switch len(conds) {
 	case 0:
-		return o.GetRowsContext(ctx, columns, sort, page, o.SoftCondition)
+		return o.GetRowsContext(ctx, columns, page, o.SoftCondition)
 	case 1:
-		return o.GetRowsContext(ctx, columns, sort, page, conds[0], o.SoftCondition)
+		return o.GetRowsContext(ctx, columns, page, conds[0], o.SoftCondition)
 	default:
-		return o.GetRowsContext(ctx, columns, sort, page, op.And(conds...), o.SoftCondition)
+		return o.GetRowsContext(ctx, columns, page, op.And(conds...), o.SoftCondition)
 	}
 }
 
@@ -530,14 +521,14 @@ func (o Oper[T]) SoftSelect(columns any, conds ...op.Condition) *SelectBuilder {
 
 /// ----------------------------------------------------------------------- ///
 
-// GetAll is equal to o.Gets(nil, nil, conds...).
+// GetAll is equal to o.Gets(nil, conds...).
 func (o Oper[T]) GetAll(conds ...op.Condition) ([]T, error) {
-	return o.Gets(nil, nil, conds...)
+	return o.Gets(nil, conds...)
 }
 
-// SoftGetAll is equal to o.SoftGets(nil, nil, conds...).
+// SoftGetAll is equal to o.SoftGets(nil, conds...).
 func (o Oper[T]) SoftGetAll(conds ...op.Condition) ([]T, error) {
-	return o.SoftGets(nil, nil, conds...)
+	return o.SoftGets(nil, conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
