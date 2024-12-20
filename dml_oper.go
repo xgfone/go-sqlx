@@ -211,6 +211,19 @@ func (o Oper[T]) QueryContext(ctx context.Context, page, pageSize int64, conds .
 	return o.GetsContext(ctx, op.KeyId.OrderDesc(), op.Paginate(page, pageSize), conds...)
 }
 
+// CountQuery is equal to o.CountQueryContext(context.Background(), page, pagesize, conds...).
+func (o Oper[T]) CountQuery(page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+	return o.CountQueryContext(context.Background(), page, pagesize, conds...)
+}
+
+// CountQueryContext is the combination of CountContext and QueryContext.
+func (o Oper[T]) CountQueryContext(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+	if total, err = o.CountContext(ctx, conds...); err == nil && total > 0 {
+		objs, err = o.QueryContext(ctx, page, pagesize, conds...)
+	}
+	return
+}
+
 // MakeSlice makes a slice with the cap.
 //
 // If cap is equal to 0, use DefaultSliceCap instead.
@@ -399,6 +412,23 @@ func (o Oper[T]) SoftQueryContext(ctx context.Context, page, pageSize int64, con
 		return o.QueryContext(ctx, page, pageSize, conds[0], o.SoftCondition)
 	default:
 		return o.QueryContext(ctx, page, pageSize, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftCountQuery is equal to o.SoftCountQueryContext(context.Background(), page, pagesize, conds...).
+func (o Oper[T]) SoftCountQuery(page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+	return o.SoftCountQueryContext(context.Background(), page, pagesize, conds...)
+}
+
+// SoftCountQueryContext is the same as CountQueryContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftCountQueryContext(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+	switch len(conds) {
+	case 0:
+		return o.CountQueryContext(ctx, page, pagesize, o.SoftCondition)
+	case 1:
+		return o.CountQueryContext(ctx, page, pagesize, conds[0], o.SoftCondition)
+	default:
+		return o.CountQueryContext(ctx, page, pagesize, op.And(conds...), o.SoftCondition)
 	}
 }
 
