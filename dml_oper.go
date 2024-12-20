@@ -39,6 +39,11 @@ type Oper[T any] struct {
 	//
 	// Default: op.KeyDeletedAt.Set(time.Now())
 	SoftDeleteUpdater func(context.Context) op.Updater
+
+	// SliceCap is the default cap of the slice.
+	//
+	// Default: DefaultSliceCap
+	SliceCap int
 }
 
 // NewOper returns a new Oper with the table name.
@@ -54,6 +59,7 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 		Sorter:            op.KeyId.OrderDesc(),
 		SoftCondition:     op.IsNotDeletedCond,
 		SoftDeleteUpdater: softDeleteUpdater,
+		SliceCap:          DefaultSliceCap,
 	}
 }
 
@@ -67,15 +73,21 @@ func (o Oper[T]) WithDB(db *DB) Oper[T] {
 	return o
 }
 
-// WithTable returns the a new Oper with the new table.
+// WithTable returns a new Oper with the new table.
 func (o Oper[T]) WithTable(table Table) Oper[T] {
 	o.Table = table
 	return o
 }
 
-// WithSorter returns the a new Oper with the new sorter.
+// WithSorter returns a new Oper with the new sorter.
 func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
 	o.Sorter = sorter
+	return o
+}
+
+// WithSliceCap returns a new Oper with the slice cap.
+func (o Oper[T]) WithSliceCap(cap int) Oper[T] {
+	o.SliceCap = cap
 	return o
 }
 
@@ -170,10 +182,10 @@ func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op
 		return
 	}
 
-	var pagesize int64
+	var pagesize int
 	if page != nil {
 		if _op := page.Op(); _op.IsOp(op.PaginationOpPage) {
-			pagesize = _op.Val.(op.PageSize).Size
+			pagesize = int(_op.Val.(op.PageSize).Size)
 		}
 	}
 
@@ -231,12 +243,18 @@ func (o Oper[T]) CountQueryContext(ctx context.Context, page, pagesize int64, co
 
 // MakeSlice makes a slice with the cap.
 //
-// If cap is equal to 0, use DefaultSliceCap instead.
-func (o Oper[T]) MakeSlice(cap int64) []T {
-	if cap > 0 {
+// If cap is equal to 0, use SliceCap or DefaultSliceCap instead.
+func (o Oper[T]) MakeSlice(cap int) []T {
+	switch {
+	case cap > 0:
 		return make([]T, 0, cap)
+
+	case o.SliceCap > 0:
+		return make([]T, 0, o.SliceCap)
+
+	default:
+		return make([]T, 0, DefaultSliceCap)
 	}
-	return make([]T, 0, DefaultSliceCap)
 }
 
 // Sum is equal to o.SumContext(context.Background(), field, conds...).
