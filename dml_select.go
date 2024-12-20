@@ -408,41 +408,51 @@ func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder {
 	return b.OrderBy(column, Asc)
 }
 
-// Sort appends the sorts.
-func (b *SelectBuilder) Sort(sorts ...op.Sorter) *SelectBuilder {
-	switch _len := len(sorts); {
-	case _len == 0, _len == 1 && sorts[0] == nil:
+// Sort appends a sort.
+func (b *SelectBuilder) Sort(sorter op.Sorter) *SelectBuilder {
+	b.sort(sorter)
+	return b
+}
+
+// Sorts appends a set of sorts.
+func (b *SelectBuilder) Sorts(sorters ...op.Sorter) *SelectBuilder {
+	switch _len := len(sorters); {
+	case _len == 0, _len == 1 && sorters[0] == nil:
 		return b
 	}
 
 	if b.orderbys == nil {
-		b.orderbys = make([]orderby, 0, len(sorts))
+		b.orderbys = make([]orderby, 0, len(sorters))
 	}
 
-	for _, sort := range sorts {
-		if sort == nil {
-			continue
-		}
-
-		switch _op := sort.Op(); _op.Op {
-		case op.SortOpOrder:
-			switch v := _op.Val.(string); v {
-			case op.SortAsc, string(Asc):
-				b.OrderByAsc(getOpKey(_op))
-			case op.SortDesc, string(Desc):
-				b.OrderByDesc(getOpKey(_op))
-			default:
-				panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort value '%s'", v))
-			}
-
-		case op.SortOpOrders:
-			b.Sort(_op.Val.([]op.Sorter)...)
-
-		default:
-			panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
-		}
+	for _, sorter := range sorters {
+		b.sort(sorter)
 	}
 	return b
+}
+
+func (b *SelectBuilder) sort(sorter op.Sorter) {
+	if sorter == nil {
+		return
+	}
+
+	switch _op := sorter.Op(); _op.Op {
+	case op.SortOpOrder:
+		switch v := _op.Val.(string); v {
+		case op.SortAsc, string(Asc):
+			b.OrderByAsc(getOpKey(_op))
+		case op.SortDesc, string(Desc):
+			b.OrderByDesc(getOpKey(_op))
+		default:
+			panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort value '%s'", v))
+		}
+
+	case op.SortOpOrders:
+		b.Sorts(_op.Val.([]op.Sorter)...)
+
+	default:
+		panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
+	}
 }
 
 // Limit sets the LIMIT to limit.

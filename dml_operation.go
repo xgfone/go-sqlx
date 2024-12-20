@@ -168,7 +168,7 @@ func (o Operation[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.P
 
 	if sort != nil {
 		if _op := sort.Op(); _op.IsOp(op.SortOpOrders) {
-			q.Sort(_op.Val.([]op.Sorter)...)
+			q.Sorts(_op.Val.([]op.Sorter)...)
 		} else {
 			q.Sort(sort)
 		}
