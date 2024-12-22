@@ -182,14 +182,7 @@ func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op
 		return
 	}
 
-	var pagesize int
-	if page != nil {
-		if _op := page.Op(); _op.IsOp(op.PaginationOpPage) {
-			pagesize = int(_op.Val.(op.PageSize).Size)
-		}
-	}
-
-	objs = o.MakeSlice(pagesize)
+	objs = o.MakeSlice(op.GetLimitFromPaginator(page))
 	err = rows.BindSlice(&objs)
 	return
 }
@@ -221,11 +214,11 @@ func (o Oper[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error)
 
 // QueryContext is a simplified GetsContext, which is equal to
 //
-//	o.GetsContext(ctx, op.Paginate(page, pageSize), conds...)
+//	o.GetsContext(ctx, op.PageSize(page, pageSize), conds...)
 //
 // page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
 func (o Oper[T]) QueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.GetsContext(ctx, op.Paginate(page, pageSize), conds...)
+	return o.GetsContext(ctx, op.PageSize(page, pageSize), conds...)
 }
 
 // CountQuery is equal to o.CountQueryContext(context.Background(), page, pagesize, conds...).

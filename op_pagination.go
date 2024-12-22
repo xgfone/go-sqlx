@@ -17,12 +17,12 @@ package sqlx
 import "github.com/xgfone/go-op"
 
 func init() {
-	RegisterOpBuilder(op.PaginationOpPage, newPageSize())
+	RegisterOpBuilder(op.PaginationOpPageSize, newPageSize())
 }
 
 func newPageSize() OpBuilder {
 	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) (sql string) {
-		ps := _op.Val.(op.PageSize)
+		ps := _op.Val.(op.PageSizer)
 		if ps.Page > 0 && ps.Size > 0 {
 			sql = ab.Dialect.LimitOffset(ps.Size, (ps.Page-1)*ps.Size)
 		}

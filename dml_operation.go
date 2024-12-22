@@ -160,9 +160,8 @@ func (o Operation[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.P
 
 	var pagesize int64
 	if page != nil {
-		q.Paginator(page)
-		if _op := page.Op(); _op.IsOp(op.PaginationOpPage) {
-			pagesize = _op.Val.(op.PageSize).Size
+		if _op := page.Op(); _op.IsOp(op.PaginationOpPageSize) {
+			pagesize = _op.Val.(op.PageSizer).Size
 		}
 	}
 
@@ -251,11 +250,11 @@ func (o Operation[T]) GetById(id int64) (v T, ok bool, err error) {
 // Query is a simple convenient function to query the table records
 // with the pagination, which is equal to
 //
-//	o.Gets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
+//	o.Gets(op.KeyId.OrderDesc(), op.PageSize(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
 //
 // page starts with 1.
 func (o Operation[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.Gets(op.KeyId.OrderDesc(), op.Paginate(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
+	return o.Gets(op.KeyId.OrderDesc(), op.PageSize(page, pageSize), op.And(conds...), op.IsNotDeletedCond)
 }
 
 // Count is a simple convenient function to count the number of table records,
