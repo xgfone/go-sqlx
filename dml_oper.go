@@ -229,7 +229,7 @@ func (o Oper[T]) CountQuery(page, pagesize int64, conds ...op.Condition) (total 
 // CountQueryContext is the combination of CountContext and QueryContext.
 func (o Oper[T]) CountQueryContext(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
 	if total, err = o.CountContext(ctx, conds...); err == nil && total > 0 {
-		objs, err = o.QueryContext(ctx, page, pagesize, conds...)
+		objs, err = o.QueryContext(ctx, page, min(pagesize, int64(total)), conds...)
 	}
 	return
 }
