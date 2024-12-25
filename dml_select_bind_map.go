@@ -173,22 +173,12 @@ func (b MapBinder[K, V, M]) TryBind(rows Rows, err error, initcap int) (M, error
 
 // Bind scans the rows into a map with the init cap.
 func (b MapBinder[K, V, M]) Bind(rows Rows, initcap int) (m M, err error) {
-	defer rows.Close()
-
 	if initcap == 0 {
 		initcap = DefaultSliceCap
 	}
 
 	m = make(M, initcap)
-	for rows.Next() {
-		var k K
-		var v V
-		if k, v, err = b.ScanRow(rows); err != nil {
-			return
-		}
-		m[k] = v
-	}
-
+	err = b.BindInto(rows, m)
 	return
 }
 
