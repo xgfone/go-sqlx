@@ -76,6 +76,7 @@ func BindToMapEmptyStruct[M ~map[K]struct{}, K comparable](rows Rows, initcap in
 
 /// ------------------------------------------------------------------------------------------- ///
 
+// MapRowScanKey returns a new MapRowScanner that scans a column into the key and uses the fixed value.
 func MapRowScanKey[K comparable, V any](value V) MapRowScanner[K, V] {
 	return func(rows Rows) (k K, v V, err error) {
 		if err = rows.Scan(&k); err == nil {
@@ -85,6 +86,8 @@ func MapRowScanKey[K comparable, V any](value V) MapRowScanner[K, V] {
 	}
 }
 
+// MapRowScanValueStruct returns a new MapRowScanner that scans columns into a struct as the value
+// and extracts the key from the struct value.
 func MapRowScanValueStruct[K comparable, V any](key func(V) K) MapRowScanner[K, V] {
 	return func(rows Rows) (k K, v V, err error) {
 		if err = rows.ScanStruct(&v); err == nil {
@@ -94,6 +97,7 @@ func MapRowScanValueStruct[K comparable, V any](key func(V) K) MapRowScanner[K, 
 	}
 }
 
+// MapRowScanKeyValue returns a new MapRowScanner that scans two columns as the key and value.
 func MapRowScanKeyValue[K comparable, V any]() MapRowScanner[K, V] {
 	return func(rows Rows) (k K, v V, err error) {
 		err = rows.Scan(&k, &v)
@@ -101,33 +105,41 @@ func MapRowScanKeyValue[K comparable, V any]() MapRowScanner[K, V] {
 	}
 }
 
+// MapRowScanner is a scanner to scan a row into a key-value pair of map.
 type MapRowScanner[K comparable, V any] func(rows Rows) (K, V, error)
 
+// MapBinder is used to bind the rows into a map.
 type MapBinder[K comparable, V any, M map[K]V] struct {
 	ScanRow MapRowScanner[K, V]
 }
 
+// NewMapBinder returns a new MapBinder with the row scanner.
 func NewMapBinder[K comparable, V any, M map[K]V](scanrow MapRowScanner[K, V]) MapBinder[K, V, M] {
 	return MapBinder[K, V, M]{ScanRow: scanrow}
 }
 
+// NewKVMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanKeyValue[K, V]()).
 func NewKVMapBinder[K comparable, V any]() MapBinder[K, V, map[K]V] {
-	return NewMapBinder[K, V](MapRowScanKeyValue[K, V]())
+	return NewMapBinder(MapRowScanKeyValue[K, V]())
 }
 
+// NewBoolMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanKey[K](true)).
 func NewBoolMapBinder[K comparable]() MapBinder[K, bool, map[K]bool] {
-	return NewMapBinder[K](MapRowScanKey[K](true))
+	return NewMapBinder(MapRowScanKey[K](true))
 }
 
+// NewEmptyMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanKey[K](struct{}{})).
 func NewEmptyMapBinder[K comparable]() MapBinder[K, struct{}, map[K]struct{}] {
 	var empty struct{}
-	return NewMapBinder[K](MapRowScanKey[K](empty))
+	return NewMapBinder(MapRowScanKey[K](empty))
 }
 
+// NewStructMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanValueStruct[K, V](key)).
 func NewStructMapBinder[K comparable, V any](key func(V) K) MapBinder[K, V, map[K]V] {
-	return NewMapBinder[K, V](MapRowScanValueStruct[K, V](key))
+	return NewMapBinder(MapRowScanValueStruct[K, V](key))
 }
 
+// TryBind is the same as Bind, but calls it only if err==nil.
 func (b MapBinder[K, V, M]) TryBind(rows Rows, err error, initcap int) (M, error) {
 	var m M
 	if err == nil {
@@ -136,6 +148,7 @@ func (b MapBinder[K, V, M]) TryBind(rows Rows, err error, initcap int) (M, error
 	return m, err
 }
 
+// Bind scans the rows into a map.
 func (b MapBinder[K, V, M]) Bind(rows Rows, initcap int) (m M, err error) {
 	defer rows.Close()
 
