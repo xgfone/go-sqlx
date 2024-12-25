@@ -86,6 +86,17 @@ func MapRowScanKey[K comparable, V any](value V) MapRowScanner[K, V] {
 	}
 }
 
+// MapRowScanKeyStruct returns a new MapRowScanner that scans columns into a struct as the key
+// and extracts the value from the struct key.
+func MapRowScanKeyStruct[K comparable, V any](value func(K) V) MapRowScanner[K, V] {
+	return func(rows Rows) (k K, v V, err error) {
+		if err = rows.ScanStruct(&k); err == nil {
+			v = value(k)
+		}
+		return
+	}
+}
+
 // MapRowScanValueStruct returns a new MapRowScanner that scans columns into a struct as the value
 // and extracts the key from the struct value.
 func MapRowScanValueStruct[K comparable, V any](key func(V) K) MapRowScanner[K, V] {
@@ -134,8 +145,20 @@ func NewEmptyMapBinder[K comparable]() MapBinder[K, struct{}, map[K]struct{}] {
 	return NewMapBinder(MapRowScanKey[K](empty))
 }
 
-// NewStructMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanValueStruct[K, V](key)).
+// NewStructMapBinder is the alias of NewValueStructMapBinder.
+//
+// Deprecated: Use NewValueStructMapBinder instead.
 func NewStructMapBinder[K comparable, V any](key func(V) K) MapBinder[K, V, map[K]V] {
+	return NewValueStructMapBinder(key)
+}
+
+// NewKeyStructMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanKeyStruct[K, V](value)).
+func NewKeyStructMapBinder[K comparable, V any](value func(K) V) MapBinder[K, V, map[K]V] {
+	return NewMapBinder(MapRowScanKeyStruct[K, V](value))
+}
+
+// NewValueStructMapBinder is a convenient function, which is equal to NewMapBinder(MapRowScanValueStruct[K, V](key)).
+func NewValueStructMapBinder[K comparable, V any](key func(V) K) MapBinder[K, V, map[K]V] {
 	return NewMapBinder(MapRowScanValueStruct[K, V](key))
 }
 
