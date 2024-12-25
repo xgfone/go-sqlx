@@ -171,7 +171,7 @@ func (b MapBinder[K, V, M]) TryBind(rows Rows, err error, initcap int) (M, error
 	return m, err
 }
 
-// Bind scans the rows into a map.
+// Bind scans the rows into a map with the init cap.
 func (b MapBinder[K, V, M]) Bind(rows Rows, initcap int) (m M, err error) {
 	defer rows.Close()
 
@@ -189,5 +189,27 @@ func (b MapBinder[K, V, M]) Bind(rows Rows, initcap int) (m M, err error) {
 		m[k] = v
 	}
 
+	return
+}
+
+// TryBindInto is the same as BindInto, but calls it only if err==nil.
+func (b MapBinder[K, V, M]) TryBindInto(rows Rows, err error, m M) error {
+	if err != nil {
+		return err
+	}
+	return b.BindInto(rows, m)
+}
+
+// BindInto scans the rows into m.
+func (b MapBinder[K, V, M]) BindInto(rows Rows, m M) (err error) {
+	defer rows.Close()
+	for rows.Next() {
+		var k K
+		var v V
+		if k, v, err = b.ScanRow(rows); err != nil {
+			return
+		}
+		m[k] = v
+	}
 	return
 }
