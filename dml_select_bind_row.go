@@ -150,7 +150,7 @@ func getFields(s any) map[string]reflect.Value {
 		panic("not a pointer to struct")
 	}
 
-	vs := make(map[string]reflect.Value, v.NumField()*2)
+	vs := make(map[string]reflect.Value, v.NumField())
 	getFieldsFromStruct("", v, vs)
 	return vs
 }

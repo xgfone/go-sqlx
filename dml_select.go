@@ -19,6 +19,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -119,6 +120,7 @@ type SelectBuilder struct {
 	jtables  []joinTable
 	columns  []selectedColumn
 	wheres   []op.Condition
+	ignores  []string // Ignored the columns
 	havings  []string
 	groupbys []string
 	orderbys []orderby
@@ -287,15 +289,25 @@ func (b *SelectBuilder) SelectedFullColumns() []string {
 // SelectedColumns is the same as SelectedFullColumns, but returns the short
 // names instead.
 func (b *SelectBuilder) SelectedColumns() []string {
-	cs := make([]string, len(b.columns))
-	for i, c := range b.columns {
+	cs := make([]string, 0, len(b.columns)-len(b.ignores))
+	for _, c := range b.columns {
 		if c.Alias == "" {
-			cs[i] = extractName(c.Column)
+			c.Column = extractName(c.Column)
 		} else {
-			cs[i] = c.Alias
+			c.Column = c.Alias
+		}
+
+		if len(b.ignores) == 0 || !slices.Contains(b.ignores, c.Column) {
+			cs = append(cs, c.Column)
 		}
 	}
 	return cs
+}
+
+// IgnoredColumns sets the ignored columns and returns itself.
+func (b *SelectBuilder) IgnoreColumns(columns []string) *SelectBuilder {
+	b.ignores = columns
+	return b
 }
 
 // FromAlias appends the FROM table name in SELECT with the alias.
