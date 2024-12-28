@@ -204,3 +204,37 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestSelectBuilderSelectStructWithTable(t *testing.T) {
+	type SS1 struct {
+		F1 int32
+		F2 int32
+	}
+
+	type SS2 struct {
+		F1 int32
+		F2 int32
+	}
+
+	SelectStructWithTable(SS1{}, "")
+	SelectStructWithTable(SS1{}, "A")
+	SelectStructWithTable(SS2{}, "")
+	SelectStructWithTable(SS2{}, "A")
+
+	SelectStructWithTable(SS1{}, "")
+	SelectStructWithTable(SS1{}, "A")
+	SelectStructWithTable(SS2{}, "")
+	SelectStructWithTable(SS2{}, "A")
+
+	var num int
+	for key := range typetables.Load().(map[typetable][]string) {
+		switch fmt.Sprint(key.RType) {
+		case "sqlx.SS1", "sqlx.SS2":
+			num++
+		}
+	}
+
+	if num != 4 {
+		t.Errorf("expect the length of typetables is 4, but got %d", num)
+	}
+}

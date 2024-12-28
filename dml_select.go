@@ -18,9 +18,12 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xgfone/go-op"
@@ -189,6 +192,11 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 	return b
 }
 
+// SelectStruct is equal to b.SelectStructWithTable(s, "").
+func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
+	return b.SelectStructWithTable(s, "")
+}
+
 // SelectStructWithTable reflects and extracts the fields of the struct
 // as the selected columns, which supports the tag named "sql"
 // to modify the column name.
@@ -201,12 +209,50 @@ func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilde
 		return b
 	}
 
+	key := typetable{RType: reflect.TypeOf(s), Table: table}
+	columntables := typetables.Load().(map[typetable][]string)
+	columns, ok := columntables[key]
+	if !ok {
+		ttlock.Lock()
+		defer ttlock.Unlock()
+
+		columntables = typetables.Load().(map[typetable][]string)
+		columns, ok = columntables[key]
+		if !ok {
+			columns = b.getColumnsFromStruct(s, table)
+
+			_columntables := make(map[typetable][]string, len(columntables)+1)
+			maps.Copy(_columntables, columntables)
+			_columntables[key] = columns
+
+			typetables.Store(_columntables)
+		}
+	}
+
+	return b.Selects(columns...)
+}
+
+func init() {
+	typetables.Store(map[typetable][]string(nil))
+}
+
+var (
+	ttlock     = new(sync.Mutex)
+	typetables = new(atomic.Value) //  map[typetable][]string
+)
+
+type typetable struct {
+	RType reflect.Type
+	Table string
+}
+
+func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []string) {
 	v := reflect.ValueOf(s)
 	switch kind := v.Kind(); kind {
 	case reflect.Struct:
 	case reflect.Ptr:
 		if v.IsNil() {
-			return b
+			return
 		}
 
 		v = v.Elem()
@@ -217,16 +263,11 @@ func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilde
 		panic("not a struct")
 	}
 
-	b.selectStruct(v, table, "")
-	return b
+	columns = make([]string, 0, v.NumField())
+	return b.selectStruct(columns, v, table, "")
 }
 
-// SelectStruct is equal to b.SelectStructWithTable(s, "").
-func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
-	return b.SelectStructWithTable(s, "")
-}
-
-func (b *SelectBuilder) selectStruct(v reflect.Value, ftable, prefix string) {
+func (b *SelectBuilder) selectStruct(columns []string, v reflect.Value, ftable, prefix string) []string {
 	vt := v.Type()
 
 LOOP:
@@ -258,7 +299,7 @@ LOOP:
 			case time.Time:
 			case driver.Valuer:
 			default:
-				b.selectStruct(vf, ftable, formatFieldName(prefix, tname))
+				columns = b.selectStruct(columns, vf, ftable, formatFieldName(prefix, tname))
 				continue LOOP
 			}
 		}
@@ -267,8 +308,11 @@ LOOP:
 		if ftable != "" {
 			name = fmt.Sprintf("%s.%s", ftable, name)
 		}
-		b.Select(name)
+
+		columns = append(columns, name)
 	}
+
+	return columns
 }
 
 // SelectedFullColumns returns the full names of the selected columns.
