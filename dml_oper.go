@@ -194,7 +194,7 @@ func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition)
 
 // GetRowContext builds a SELECT statement and returns a Row.
 func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Limit(1).Sort(o.Sorter).QueryRowContext(ctx)
+	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx)
 }
 
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).

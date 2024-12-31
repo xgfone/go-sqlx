@@ -67,7 +67,7 @@ func (b *SelectBuilder) QueryRow() Row {
 
 // QueryRowContext builds the sql and executes it.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
-	query, args := b.Build()
+	query, args := b.Limit(1).Build()
 	defer args.Release()
 	return b.queryRowContext(ctx, query, args.Args()...)
 }
