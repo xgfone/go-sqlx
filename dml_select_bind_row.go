@@ -24,13 +24,13 @@ import (
 	"time"
 )
 
-// QueryRowx executes the row query sql statement and returns Row instead of *sql.Row.
-func (db *DB) QueryRowx(query string, args ...any) Row {
-	return db.QueryRowxContext(context.Background(), query, args...)
+// QueryRowOne executes the row query sql statement and returns Row instead of *sql.Row.
+func (db *DB) QueryRowOne(query string, args ...any) Row {
+	return db.QueryRowOneContext(context.Background(), query, args...)
 }
 
-// QueryRowxContext executes the row query sql statement and returns Row instead of *sql.Row.
-func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...any) Row {
+// QueryRowOneContext executes the row query sql statement and returns Row instead of *sql.Row.
+func (db *DB) QueryRowOneContext(ctx context.Context, query string, args ...any) Row {
 	query, args, err := db.Intercept(query, args)
 	if err != nil {
 		panic(err)
