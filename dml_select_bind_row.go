@@ -33,28 +33,6 @@ func (db *DB) QueryRowOneContext(ctx context.Context, query string, args ...any)
 	return Row{Row: getDB(db).QueryRowContext(ctx, query, args...)}
 }
 
-// BindRow is equal to b.BindRowContext(context.Background(), dest...).
-func (b *SelectBuilder) BindRow(dest ...any) (bool, error) {
-	return b.BindRowContext(context.Background(), dest...)
-}
-
-// BindRowStruct is equal to b.BindRowStructContext(context.Background(), dest).
-func (b *SelectBuilder) BindRowStruct(dest any) (bool, error) {
-	return b.BindRowStructContext(context.Background(), dest)
-}
-
-// BindRowContext is convenient function, which is equal to
-// b.QueryRowContext(c).Bind(dest...).
-func (b *SelectBuilder) BindRowContext(c context.Context, dest ...any) (bool, error) {
-	return b.QueryRowContext(c).Bind(dest...)
-}
-
-// BindRowStructContext is convenient function, which is equal to
-// b.QueryRowContext(c).BindStruct(dest).
-func (b *SelectBuilder) BindRowStructContext(c context.Context, dest any) (bool, error) {
-	return b.QueryRowContext(c).BindStruct(dest)
-}
-
 // QueryRow builds the sql and executes it.
 func (b *SelectBuilder) QueryRow() Row {
 	return b.QueryRowContext(context.Background())
@@ -89,27 +67,8 @@ func (r Row) Bind(dests ...any) (ok bool, err error) {
 	return
 }
 
-// Bind is the same as BindStruct, but returns (false, nil) if Scan returns sql.ErrNoRows.
-func (r Row) BindStruct(s any) (ok bool, err error) {
-	err = r.ScanStruct(s)
-	ok, err = CheckErrNoRows(err)
-	return
-}
-
 // Scan implements the interface sql.Scanner, which is the proxy of sql.Row
 // and supports that the sql value is NULL.
 func (r Row) Scan(dests ...any) (err error) {
 	return ScanRow(r.Row.Scan, dests...)
-}
-
-// ScanStruct is the same as Scan, but the columns are scanned into the struct
-// s, which uses ScanColumnsToStruct.
-func (r Row) ScanStruct(s any) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.Columns, s)
-}
-
-// ScanStructWithColumns is the same as Scan, but the columns are scanned
-// into the struct s by using ScanColumnsToStruct.
-func (r Row) ScanStructWithColumns(s any, columns ...string) (err error) {
-	return ScanColumnsToStruct(r.Scan, columns, s)
 }
