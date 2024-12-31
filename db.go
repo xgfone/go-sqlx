@@ -120,7 +120,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 	return xdb, nil
 }
 
-func getDB(db *DB) Executor {
+func getDB(db *DB) *DB {
 	if db != nil {
 		return db
 	}
