@@ -213,7 +213,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 
 		case *M:
 			if *v == nil {
-				m = make(M, DefaultSliceCap)
+				m = make(M, DefaultRowsCap)
 				*v = m
 			}
 

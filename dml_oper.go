@@ -189,7 +189,7 @@ func (o Oper[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
 
 // GetContext just queries a first record from table.
 func (o Oper[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	ok, err = o.GetRowContext(ctx, obj, conds...).BindStruct(&obj)
+	ok, err = o.GetRowContext(ctx, obj, conds...).Bind(&obj)
 	return
 }
 

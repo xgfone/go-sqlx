@@ -174,7 +174,7 @@ func (o Operation[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.P
 	}
 
 	objs = o.MakeSlice(pagesize)
-	err = q.BindRowsContext(ctx, &objs)
+	err = q.QueryRowsContext(ctx).Bind(&objs)
 	return
 }
 
@@ -185,7 +185,7 @@ func (o Operation[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
 
 // GetContext just queries a result.
 func (o Operation[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	ok, err = o.SelectStruct(obj).Where(conds...).Limit(1).BindRowStructContext(ctx, &obj)
+	ok, err = o.SelectStruct(obj).Where(conds...).QueryRowContext(ctx).Bind(&obj)
 	return
 }
 
@@ -196,7 +196,7 @@ func (o Operation[T]) MakeSlice(cap int64) []T {
 	if cap > 0 {
 		return make([]T, 0, cap)
 	}
-	return make([]T, 0, DefaultSliceCap)
+	return make([]T, 0, DefaultRowsCap)
 }
 
 /// ----------------------------------------------------------------------- ///
@@ -262,7 +262,7 @@ func (o Operation[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, e
 //
 //	o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 func (o Operation[T]) Count(conds ...op.Condition) (total int, err error) {
-	_, err = o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	_, err = o.Select(Count("*")).Where(conds...).Where(op.IsNotDeletedCond).QueryRow().Bind(&total)
 	return
 }
 
@@ -271,13 +271,13 @@ func (o Operation[T]) Count(conds ...op.Condition) (total int, err error) {
 //
 //	o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
 func (o Operation[T]) CountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	_, err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&total)
+	_, err = o.Select(CountDistinct(field)).Where(conds...).Where(op.IsNotDeletedCond).QueryRow().Bind(&total)
 	return
 }
 
 func (o Operation[T]) Exist(conds ...op.Condition) (exist bool, err error) {
 	var id int
-	_, err = o.Select(op.KeyId.Key).Where(conds...).Where(op.IsNotDeletedCond).BindRow(&id)
+	_, err = o.Select(op.KeyId.Key).Where(conds...).Where(op.IsNotDeletedCond).QueryRow().Bind(&id)
 	exist, err = CheckErrNoRows(err)
 	return
 }
