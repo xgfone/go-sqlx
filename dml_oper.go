@@ -1,4 +1,4 @@
-// Copyright 2024 xgfone
+// Copyright 2024~2025 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -422,6 +422,23 @@ func (o Oper[T]) SoftGetsContext(ctx context.Context, page op.Paginator, conds .
 		return o.GetsContext(ctx, page, conds[0], o.SoftCondition)
 	default:
 		return o.GetsContext(ctx, page, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftGetRow is equal to o.SoftGetRowContext(context.Background(), columns, conds...).
+func (o Oper[T]) SoftGetRow(columns any, conds ...op.Condition) Row {
+	return o.SoftGetRowContext(context.Background(), columns, conds...)
+}
+
+// SoftGetRowContext is the same as GetRowContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftGetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
+	switch len(conds) {
+	case 0:
+		return o.GetRowContext(ctx, columns, o.SoftCondition)
+	case 1:
+		return o.GetRowContext(ctx, columns, conds[0], o.SoftCondition)
+	default:
+		return o.GetRowContext(ctx, columns, op.And(conds...), o.SoftCondition)
 	}
 }
 
