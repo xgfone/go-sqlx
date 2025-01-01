@@ -52,10 +52,10 @@ db, _ := sqlx.Open("mysql", "user:password@tcp(127.0.0.1:3306)/db")
 builder := db.Select("*").From("table").Where(op.Equal("id", 123))
 
 sql, args := builder.Build()
-rows, err := db.Query(sql, args...)
+rows, err := db.QueryRows(sql, args...)
 
 // Or
-// rows, err := builder.Query()
+// rows, err := builder.QueryRows()
 ```
 
 ### Intercept SQL
@@ -88,7 +88,7 @@ func main() {
 	// Build the SELECT SQL statement
 	builder := db.Select("*").From("table")
 	builder.Where(op.Equal("id", 123))
-	rows, err := builder.Query()
+	rows, err := builder.QueryRows()
 	// ...
 
 	// Interceptor will output:
