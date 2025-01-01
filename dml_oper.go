@@ -205,7 +205,7 @@ func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op
 	}
 
 	var obj T
-	err = o.GetRowsContext(ctx, obj, page, conds...).Bind(&obj)
+	err = o.GetRowsContext(ctx, obj, page, conds...).Bind(&objs)
 	return
 }
 
