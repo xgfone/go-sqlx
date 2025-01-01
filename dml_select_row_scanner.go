@@ -46,9 +46,35 @@ type rowscanner struct {
 	scan func(dst ...any) error
 }
 
+func (r rowscanner) Unwrap() RowScanner    { return r.RowScanner }
 func (r rowscanner) Scan(dst ...any) error { return ScanRow(r.scan, dst...) }
 func newrowscanner(scanner RowScanner, scan func(...any) error) rowscanner {
 	return rowscanner{RowScanner: scanner, scan: scan}
+}
+
+func getrowscap(scanner RowScanner, defaultcap int) int {
+	type (
+		RowCaper interface {
+			RowsCap() int
+		}
+
+		RowScannerUnwraper interface {
+			Unwrap() RowScanner
+		}
+	)
+
+	for {
+		switch v := scanner.(type) {
+		case RowCaper:
+			return v.RowsCap()
+
+		case RowScannerUnwraper:
+			scanner = v.Unwrap()
+
+		default:
+			return defaultcap
+		}
+	}
 }
 
 var _timetype = reflect.TypeFor[time.Time]()

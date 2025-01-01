@@ -59,6 +59,7 @@ type Rows struct {
 	*sql.Rows
 	Err error
 
+	rowscap int
 	columns []string
 	wrapper RowScannerWrapper
 	binder  RowsBinder
@@ -71,9 +72,15 @@ func NewRows(rows *sql.Rows, columns []string, err error) Rows {
 		Err:  err,
 
 		columns: columns,
+		rowscap: DefaultRowsCap,
 		wrapper: DefaultRowScanWrapper,
 		binder:  DefaultMixRowsBinder,
 	}
+}
+
+// RowsCap returns the capacity of the rows.
+func (r Rows) RowsCap() int {
+	return r.rowscap
 }
 
 // Columns returns the names of the selected columns.
@@ -82,6 +89,12 @@ func (r Rows) Columns() ([]string, error) {
 		return r.columns, nil
 	}
 	return r.Rows.Columns()
+}
+
+// WithRowsCap resets the capacity of the rows and returns a new Rows.
+func (r Rows) WithRowsCap(cap int) Rows {
+	r.rowscap = cap
+	return r
 }
 
 // WithColumns resets the names of the selected columns and returns a new Rows.

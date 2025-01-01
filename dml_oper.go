@@ -200,14 +200,12 @@ func (o Oper[T]) Gets(page op.Paginator, conds ...op.Condition) (objs []T, err e
 
 // GetsContext queries a set of results from table.
 func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
-	var obj T
-	rows := o.GetRowsContext(ctx, obj, page, conds...)
-	if rows.Err != nil {
-		return
+	if limit := op.GetLimitFromPaginator(page); limit > 0 {
+		o = o.WithRowsCap(limit)
 	}
 
-	objs = o.MakeSlice(op.GetLimitFromPaginator(page))
-	err = rows.Bind(&objs)
+	var obj T
+	err = o.GetRowsContext(ctx, obj, page, conds...).Bind(&obj)
 	return
 }
 
@@ -229,7 +227,7 @@ func (o Oper[T]) GetRows(columns any, page op.Paginator, conds ...op.Condition) 
 // GetRowsContext builds a SELECT statement and returns a Rows.
 func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) Rows {
 	return o.Select(columns, conds...).Paginator(page).Sort(o.Sorter).QueryRowsContext(ctx).
-		WithBinder(o.SliceRowsBinder).WithScanner(o.RowScannerWrapper)
+		WithBinder(o.SliceRowsBinder).WithScanner(o.RowScannerWrapper).WithRowsCap(o.RowsCap)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).

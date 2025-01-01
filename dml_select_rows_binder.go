@@ -144,7 +144,7 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 
 		case *M:
 			if *v == nil {
-				m = make(M, DefaultRowsCap)
+				m = make(M, getrowscap(scanner, DefaultRowsCap))
 				*v = m
 			}
 
@@ -178,7 +178,7 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 
 		case *M:
 			if *v == nil {
-				m = make(M, DefaultRowsCap)
+				m = make(M, getrowscap(scanner, DefaultRowsCap))
 				*v = m
 			}
 
@@ -213,7 +213,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 
 		case *M:
 			if *v == nil {
-				m = make(M, DefaultRowsCap)
+				m = make(M, getrowscap(scanner, DefaultRowsCap))
 				*v = m
 			}
 
@@ -246,7 +246,7 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 
 		dsts := *dstps
 		if cap(dsts) == 0 {
-			dsts = make(S, 0, DefaultRowsCap)
+			dsts = make(S, 0, getrowscap(scanner, DefaultRowsCap))
 		}
 
 		for scanner.Next() {
@@ -276,7 +276,7 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 	vt := vf.Type()
 	et := vt.Elem()
 	if vf.Cap() == 0 {
-		vf.Set(reflect.MakeSlice(vt, 0, DefaultRowsCap))
+		vf.Set(reflect.MakeSlice(vt, 0, getrowscap(scanner, DefaultRowsCap)))
 	}
 
 	for scanner.Next() {
