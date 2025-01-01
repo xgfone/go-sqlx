@@ -40,10 +40,20 @@ type Oper[T any] struct {
 	// Default: op.KeyDeletedAt.Set(time.Now())
 	SoftDeleteUpdater func(context.Context) op.Updater
 
-	// SliceCap is the default cap of the slice.
+	// RowScannerWrapper is used to wrap the row scanner to customize to scan the row.
 	//
-	// Default: DefaultSliceCap
-	SliceCap int
+	// Default: DefaultRowScanWrapper
+	RowScannerWrapper RowScannerWrapper
+
+	// SliceBinder is used to bind the rows to a slice.
+	//
+	// Default: NewSliceRowsBinder[[]T]()
+	SliceRowsBinder RowsBinder
+
+	// RowsCap is the default cap of the rows to be scanned into the container, such as slice.
+	//
+	// Default: DefaultRowsCap
+	RowsCap int
 }
 
 // NewOper returns a new Oper with the table name.
@@ -59,7 +69,9 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 		Sorter:            op.KeyId.OrderDesc(),
 		SoftCondition:     op.IsNotDeletedCond,
 		SoftDeleteUpdater: softDeleteUpdater,
-		SliceCap:          DefaultSliceCap,
+		RowScannerWrapper: DefaultRowScanWrapper,
+		SliceRowsBinder:   NewSliceRowsBinder[[]T](),
+		RowsCap:           DefaultRowsCap,
 	}
 }
 
@@ -85,9 +97,21 @@ func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
 	return o
 }
 
-// WithSliceCap returns a new Oper with the slice cap.
-func (o Oper[T]) WithSliceCap(cap int) Oper[T] {
-	o.SliceCap = cap
+// WithRowsCap returns a new Oper with the rows cap.
+func (o Oper[T]) WithRowsCap(cap int) Oper[T] {
+	o.RowsCap = cap
+	return o
+}
+
+// WithSliceRowsBinder returns a new Oper with the slice binder.
+func (o Oper[T]) WithSliceRowsBinder(binder RowsBinder) Oper[T] {
+	o.SliceRowsBinder = binder
+	return o
+}
+
+// WithRowScannerWrapper returns a new Oper with the row scanner wrapper.
+func (o Oper[T]) WithRowScannerWrapper(wrapper RowScannerWrapper) Oper[T] {
+	o.RowScannerWrapper = wrapper
 	return o
 }
 
@@ -177,13 +201,13 @@ func (o Oper[T]) Gets(page op.Paginator, conds ...op.Condition) (objs []T, err e
 // GetsContext queries a set of results from table.
 func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
 	var obj T
-	rows, err := o.GetRowsContext(ctx, obj, page, conds...)
-	if err != nil {
+	rows := o.GetRowsContext(ctx, obj, page, conds...)
+	if rows.Err != nil {
 		return
 	}
 
 	objs = o.MakeSlice(op.GetLimitFromPaginator(page))
-	err = rows.BindSlice(&objs)
+	err = rows.Bind(&objs)
 	return
 }
 
@@ -194,17 +218,18 @@ func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition)
 
 // GetRowContext builds a SELECT statement and returns a Row.
 func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx)
+	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx).WithScanner(o.RowScannerWrapper)
 }
 
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).
-func (o Oper[T]) GetRows(columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
+func (o Oper[T]) GetRows(columns any, page op.Paginator, conds ...op.Condition) Rows {
 	return o.GetRowsContext(context.Background(), columns, page, conds...)
 }
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
-func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) (rows Rows, err error) {
-	return o.Select(columns, conds...).Paginator(page).Sort(o.Sorter).QueryContext(ctx)
+func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) Rows {
+	return o.Select(columns, conds...).Paginator(page).Sort(o.Sorter).QueryRowsContext(ctx).
+		WithBinder(o.SliceRowsBinder).WithScanner(o.RowScannerWrapper)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
@@ -236,17 +261,17 @@ func (o Oper[T]) CountQueryContext(ctx context.Context, page, pagesize int64, co
 
 // MakeSlice makes a slice with the cap.
 //
-// If cap is equal to 0, use SliceCap or DefaultSliceCap instead.
+// If cap is equal to 0, use RowsCap or DefaultRowsCap instead.
 func (o Oper[T]) MakeSlice(cap int) []T {
 	switch {
 	case cap > 0:
 		return make([]T, 0, cap)
 
-	case o.SliceCap > 0:
-		return make([]T, 0, o.SliceCap)
+	case o.RowsCap > 0:
+		return make([]T, 0, o.RowsCap)
 
 	default:
-		return make([]T, 0, DefaultSliceCap)
+		return make([]T, 0, DefaultRowsCap)
 	}
 }
 
@@ -257,7 +282,8 @@ func (o Oper[T]) Sum(field string, conds ...op.Condition) (int, error) {
 
 // SumContext is used to sum the field values of the records by the condition.
 func (o Oper[T]) SumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	_, err = o.Table.Select(Sum(field)).Where(conds...).BindRowContext(ctx, &total)
+	// _, err = o.Table.Select(Sum(field)).Where(conds...).QueryRowContext(ctx).Bind(&total)
+	_, err = o.GetRowContext(ctx, Sum(field), conds...).Bind(&total)
 	return
 }
 
@@ -268,7 +294,8 @@ func (o Oper[T]) Count(conds ...op.Condition) (total int, err error) {
 
 // CountContext is used to count the number of records by the condition.
 func (o Oper[T]) CountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
-	_, err = o.Table.Select(Count("*")).Where(conds...).BindRowContext(ctx, &total)
+	// _, err = o.Table.Select(Count("*")).Where(conds...).QueryRowContext(ctx).Bind(&total)
+	_, err = o.GetRowContext(ctx, Count("*"), conds...).Bind(&total)
 	return
 }
 
@@ -279,7 +306,8 @@ func (o Oper[T]) CountDistinct(field string, conds ...op.Condition) (total int, 
 
 // CountDistinctContext is the same as Count, but excluding the same field records.
 func (o Oper[T]) CountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	_, err = o.Table.Select(CountDistinct(field)).Where(conds...).BindRowContext(ctx, &total)
+	// _, err = o.Table.Select(CountDistinct(field)).Where(conds...).QueryRowContext(ctx).Bind(&total)
+	_, err = o.GetRowContext(ctx, CountDistinct(field), conds...).Bind(&total)
 	return
 }
 
@@ -398,12 +426,12 @@ func (o Oper[T]) SoftGetsContext(ctx context.Context, page op.Paginator, conds .
 }
 
 // SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, page, conds...).
-func (o Oper[T]) SoftGetRows(columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
+func (o Oper[T]) SoftGetRows(columns any, page op.Paginator, conds ...op.Condition) Rows {
 	return o.SoftGetRowsContext(context.Background(), columns, page, conds...)
 }
 
 // SoftGetRowsContext is the same as GetRowsContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) (Rows, error) {
+func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, page op.Paginator, conds ...op.Condition) Rows {
 	switch len(conds) {
 	case 0:
 		return o.GetRowsContext(ctx, columns, page, o.SoftCondition)

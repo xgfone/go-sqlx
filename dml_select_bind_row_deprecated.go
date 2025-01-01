@@ -48,7 +48,7 @@ func (r Row) BindStruct(s any) (ok bool, err error) {
 // ScanStruct is the same as Scan, but the columns are scanned into the struct
 // s, which uses ScanColumnsToStruct.
 func (r Row) ScanStruct(s any) (err error) {
-	return ScanColumnsToStruct(r.Scan, r.Columns, s)
+	return ScanColumnsToStruct(r.Scan, r.columns, s)
 }
 
 // ScanStructWithColumns is the same as Scan, but the columns are scanned
