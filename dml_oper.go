@@ -211,9 +211,9 @@ func (o Oper[T]) GetsContext(ctx context.Context, page op.Paginator, conds ...op
 	return
 }
 
-// GetRow is equal to o.GetRowContext(ctx, columns, conds...).
-func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.GetRowContext(ctx, columns, conds...)
+// GetRow is equal to o.GetRowContext(context.Background(), columns, conds...).
+func (o Oper[T]) GetRow(columns any, conds ...op.Condition) Row {
+	return o.GetRowContext(context.Background(), columns, conds...)
 }
 
 // GetRowContext builds a SELECT statement and returns a Row.
