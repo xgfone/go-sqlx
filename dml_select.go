@@ -217,8 +217,7 @@ func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilde
 		defer ttlock.Unlock()
 
 		columntables = typetables.Load().(map[typetable][]string)
-		columns, ok = columntables[key]
-		if !ok {
+		if columns, ok = columntables[key]; !ok {
 			columns = b.getColumnsFromStruct(s, table)
 
 			_columntables := make(map[typetable][]string, len(columntables)+1)
