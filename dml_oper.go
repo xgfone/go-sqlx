@@ -47,7 +47,7 @@ type Oper[T any] struct {
 
 	// SliceBinder is used to bind the rows to a slice.
 	//
-	// Default: NewSliceRowsBinder[[]T]()
+	// Default: NewDegradedSliceRowsBinder[[]T](CommonSliceRowsBinder)
 	SliceRowsBinder RowsBinder
 
 	// RowsCap is the default cap of the rows to be scanned into the container, such as slice.
@@ -70,7 +70,7 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 		SoftCondition:     op.IsNotDeletedCond,
 		SoftDeleteUpdater: softDeleteUpdater,
 		RowScannerWrapper: DefaultRowScanWrapper,
-		SliceRowsBinder:   NewSliceRowsBinder[[]T](),
+		SliceRowsBinder:   NewDegradedSliceRowsBinder[[]T](CommonSliceRowsBinder),
 		RowsCap:           DefaultRowsCap,
 	}
 }

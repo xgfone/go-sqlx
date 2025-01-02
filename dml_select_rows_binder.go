@@ -78,11 +78,11 @@ func (b *MixRowsBinder) BindRows(scanner RowScanner, dst any) (err error) {
 		return binder.BindRows(scanner, dst)
 	}
 
-	if vtype.Kind() == reflect.Slice {
+	if vtype.Kind() == reflect.Pointer && vtype.Elem().Kind() == reflect.Slice {
 		return CommonSliceRowsBinder.BindRows(scanner, dst)
 	}
 
-	return fmt.Errorf("unsupport the type %s for rows binder", vtype)
+	return fmt.Errorf("sqlx.MixRowsBinder.BindRows: unsupport the type %s for rows binder", vtype)
 }
 
 func init() {
@@ -289,4 +289,16 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 
 	oldvf.Elem().Set(vf)
 	return
+}
+
+// NewDegradedSliceRowsBinder returns a rows binder which prefers to try to
+// bind *[]T to the rows, or use the degraded rows binder to bind the rows.
+func NewDegradedSliceRowsBinder[S ~[]T, T any](degraded RowsBinder) RowsBinder {
+	binder := NewSliceRowsBinder[S]()
+	return RowsBinderFunc(func(scanner RowScanner, dst any) error {
+		if dstps, ok := dst.(*[]T); ok {
+			return binder.BindRows(scanner, dstps)
+		}
+		return degraded.BindRows(scanner, dst)
+	})
 }
