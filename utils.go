@@ -695,8 +695,14 @@ func (s nullScanner) Scan(src any) (err error) {
 			err = fmt.Errorf("converting %T to string is unsupported", src)
 		}
 
+	case *any:
+		*v = src
+
+	case nil:
+		// ignore the column value
+
 	default:
-		panic(fmt.Errorf("unsupported type '%T'", src))
+		panic(fmt.Errorf("unsupported type '%T'", s.Value))
 	}
 
 	return
