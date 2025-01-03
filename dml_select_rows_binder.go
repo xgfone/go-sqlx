@@ -63,7 +63,7 @@ func NewMixRowsBinder() *MixRowsBinder {
 // Register registers a rows binder for a specific type.
 func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old RowsBinder) {
 	if binder == nil {
-		panic("binder-typed must not be nil")
+		panic("sqlx.MixRowsBinder: binder-typed must not be nil")
 	}
 
 	old = b.types[vtype]
@@ -270,7 +270,7 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 
 	vf := oldvf.Elem()
 	if vf.Kind() != reflect.Slice {
-		panic("sqlx.CommonCommonSliceRowsBinderSliceBinder: the value must be a pointer to a slice")
+		panic("sqlx.CommonSliceRowsBinder: the value must be a pointer to a slice")
 	}
 
 	vt := vf.Type()
