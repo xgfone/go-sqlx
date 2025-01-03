@@ -17,14 +17,9 @@ package sqlx
 import (
 	"bytes"
 	"database/sql"
-	"database/sql/driver"
-	"encoding/json"
 	"reflect"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/xgfone/go-defaults"
 )
 
 // DefaultBufferCap is the default capacity to be allocated for buffer from pool.
@@ -69,68 +64,6 @@ func CheckErrNoRows(err error) (exist bool, e error) {
 	}
 
 	return
-}
-
-// Today returns the today time, that's, 00:00:00 of the current day.
-func Today() time.Time {
-	now := defaults.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-}
-
-var (
-	_ json.Marshaler = Time{}
-	_ driver.Valuer  = Time{}
-	_ sql.Scanner    = new(Time)
-
-	emptyJSONString = []byte(`""`)
-)
-
-// Time is used to read/write the time.Time from/to DB.
-type Time struct {
-	Layout string // If empty, use defaults.TimeFormat instead when formatting time.
-	time.Time
-}
-
-// Now returns the current Time.
-func Now() Time { return Time{Time: defaults.Now()} }
-
-// Value implements the interface driver.Valuer.
-func (t Time) Value() (driver.Value, error) { return t.Time, nil }
-
-// SetFormat sets the format layout.
-func (t *Time) SetFormat(layout string) { t.Layout = layout }
-
-// Scan implements the interface sql.Scanner.
-func (t *Time) Scan(src any) (err error) {
-	t.Time, err = toTime(src, defaults.TimeLocation.Get())
-	return
-}
-
-func (t Time) String() string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format(t.layout())
-}
-
-func (t Time) layout() string {
-	if len(t.Layout) > 0 {
-		return t.Layout
-	}
-	return defaults.TimeFormat.Get()
-}
-
-// MarshalJSON implements the interface json.Marshaler.
-func (t Time) MarshalJSON() ([]byte, error) {
-	if t.IsZero() {
-		return emptyJSONString, nil
-	}
-
-	b := make([]byte, 0, 48)
-	b = append(b, '"')
-	b = t.AppendFormat(b, t.layout())
-	b = append(b, '"')
-	return b, nil
 }
 
 func isZero(v reflect.Value) bool {
