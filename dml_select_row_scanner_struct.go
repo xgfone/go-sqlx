@@ -15,7 +15,6 @@
 package sqlx
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
 	"maps"
@@ -39,9 +38,9 @@ func ScanColumnsToStruct(scan func(...any) error, columns []string, s any) (err 
 
 	value := reflect.ValueOf(s)
 	extract := getscannerextractfunc(value.Type())
-	scanners := make([]any, len(columns))
-	extract(value, scanners, columns)
-	return scan(scanners...)
+	values := make([]any, len(columns))
+	extract(value, values, columns)
+	return scan(values...)
 }
 
 func getscannerextractfunc(vtype reflect.Type) scannerExtractFunc {
@@ -64,7 +63,7 @@ func getscannerextractfunc(vtype reflect.Type) scannerExtractFunc {
 	return extract
 }
 
-type scannerExtractFunc func(value reflect.Value, scanners []any, columns []string)
+type scannerExtractFunc func(value reflect.Value, values []any, columns []string)
 
 var (
 	_scannedstructlock sync.Mutex
@@ -85,13 +84,13 @@ func getScannerFieldsFromStruct(vtype reflect.Type) scannerExtractFunc {
 	fields := make(map[string]scannedfield, 16)
 	_getScannerFieldsFromStruct(fields, vtype, "", nil)
 
-	return func(value reflect.Value, scanners []any, columns []string) {
+	return func(value reflect.Value, values []any, columns []string) {
 		value = value.Elem()
 		for i, column := range columns {
 			if field, ok := fields[column]; ok && column != "deleted_at" {
-				scanners[i] = field.Scanner(value)
+				values[i] = field.Value(value)
 			} else {
-				scanners[i] = nullScanner{}
+				values[i] = GeneralScanner{}
 			}
 		}
 	}
@@ -101,11 +100,11 @@ type scannedfield struct {
 	Indexes []int
 }
 
-func (f scannedfield) Scanner(value reflect.Value) sql.Scanner {
+func (f scannedfield) Value(value reflect.Value) any {
 	for _, index := range f.Indexes {
 		value = value.Field(index)
 	}
-	return nullScanner{Value: value.Addr().Interface()}
+	return value.Addr().Interface()
 }
 
 func _getScannerFieldsFromStruct(fields map[string]scannedfield, vtype reflect.Type, prefix string, indexes []int) {

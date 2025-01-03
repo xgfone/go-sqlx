@@ -17,6 +17,7 @@ package sqlx
 import (
 	"database/sql"
 	"reflect"
+	"slices"
 	"time"
 )
 
@@ -100,4 +101,36 @@ func scanStruct(scanner RowScanner, dst any) (err error) {
 		return
 	}
 	return ScanColumnsToStruct(scanner.Scan, columns, dst)
+}
+
+func needScannerWrapper(v any) bool {
+	switch v.(type) {
+	case *time.Duration, *time.Time,
+		*bool, *float32, *float64, *string,
+		*int, *int8, *int16, *int32, *int64,
+		*uint, *uint8, *uint16, *uint32, *uint64:
+		return true
+
+	default:
+		return false
+	}
+}
+
+// ScanRow uses the function scan to scan the sql row into dests,
+// which may be used as a proxy of the function sql.Row.Scan or sql.Rows.Scan.
+//
+// For the pointers to the built-in types, it will use GeneralScanner to wrap them.
+func ScanRow(scan func(dests ...any) error, dests ...any) error {
+	if slices.ContainsFunc(dests, needScannerWrapper) {
+		newdests := make([]any, len(dests))
+		for i, dest := range dests {
+			if needScannerWrapper(dest) {
+				newdests[i] = GeneralScanner{Value: dest}
+			} else {
+				newdests[i] = dest
+			}
+		}
+		dests = newdests
+	}
+	return scan(dests...)
 }
