@@ -14,7 +14,10 @@
 
 package sqlx
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestTagContainAttr(t *testing.T) {
 	if !tagContainAttr("abc", "abc") {
@@ -35,5 +38,23 @@ func TestTagContainAttr(t *testing.T) {
 
 	if !tagContainAttr("abc,rst,xyz", "xyz") {
 		t.Error("not expect false")
+	}
+}
+
+func TestIsPointerToStruct(t *testing.T) {
+	if IsPointerToStruct(nil) {
+		t.Error("expect false, but got true")
+	}
+
+	if v := 123; IsPointerToStruct(&v) {
+		t.Error("expect false, but got true")
+	}
+
+	if v := (time.Time{}); IsPointerToStruct(&v) {
+		t.Error("expect false, but got true")
+	}
+
+	if v := (struct{}{}); !IsPointerToStruct(&v) {
+		t.Error("expect true, but got false")
 	}
 }

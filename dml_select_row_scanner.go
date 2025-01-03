@@ -16,7 +16,6 @@ package sqlx
 
 import (
 	"database/sql"
-	"reflect"
 	"slices"
 	"time"
 )
@@ -78,19 +77,13 @@ func getrowscap(scanner RowScanner, defaultcap int) int {
 	}
 }
 
-var _timetype = reflect.TypeFor[time.Time]()
-
 func defaultRowScanWrapper(scanner RowScanner, dsts ...any) error {
 	return scanrow(scanner, dsts...)
 }
 
 func scanrow(scanner RowScanner, dsts ...any) (err error) {
-	if len(dsts) == 1 {
-		if vt := reflect.TypeOf(dsts[0]); vt.Kind() == reflect.Pointer {
-			if vt = vt.Elem(); vt.Kind() == reflect.Struct && vt != _timetype {
-				return scanStruct(scanner, dsts[0])
-			}
-		}
+	if len(dsts) == 1 && IsPointerToStruct(dsts[0]) {
+		return scanStruct(scanner, dsts[0])
 	}
 	return scanner.Scan(dsts...)
 }

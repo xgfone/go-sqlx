@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 )
 
 // DefaultBufferCap is the default capacity to be allocated for buffer from pool.
@@ -44,6 +45,25 @@ func tagContainAttr(targ, attr string) bool {
 			targ = targ[index+1:]
 		}
 	}
+}
+
+var _timetype = reflect.TypeFor[time.Time]()
+
+// IsPointerToStruct returns true if v is a pointer to struct, else false.
+//
+// Notice: struct{} is considered as a struct, but time.Time is not.
+func IsPointerToStruct(v any) (ok bool) {
+	if v == nil {
+		return
+	}
+
+	if vt := reflect.TypeOf(v); vt.Kind() == reflect.Pointer {
+		if vt = vt.Elem(); vt.Kind() == reflect.Struct && vt != _timetype {
+			ok = true
+		}
+	}
+
+	return
 }
 
 // CheckErrNoRows extracts the error sql.ErrNoRows as the bool, which returns
