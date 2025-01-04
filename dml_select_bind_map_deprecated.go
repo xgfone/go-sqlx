@@ -117,9 +117,13 @@ func MapRowScanKeyValue[K comparable, V any]() MapRowScanner[K, V] {
 }
 
 // MapRowScanner is a scanner to scan a row into a key-value pair of map.
+//
+// DEPRECATED!!! Please use Rows.WithBinder.
 type MapRowScanner[K comparable, V any] func(rows Rows) (K, V, error)
 
 // MapBinder is used to bind the rows into a map.
+//
+// DEPRECATED!!! Please use Rows.WithBinder.
 type MapBinder[K comparable, V any, M map[K]V] struct {
 	ScanRow MapRowScanner[K, V]
 }
