@@ -86,37 +86,97 @@ func (b *MixRowsBinder) BindRows(scanner RowScanner, dst any) (err error) {
 }
 
 func init() {
-	// []int, []uint, []int64, []uint64, []string, []time.Time
+	// []int, []uint, []int32, []uint32, []int64, []uint64, []string, []time.Time
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int](), NewSliceRowsBinder[[]int]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint](), NewSliceRowsBinder[[]uint]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int32](), NewSliceRowsBinder[[]int32]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint32](), NewSliceRowsBinder[[]uint32]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int64](), NewSliceRowsBinder[[]int64]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint64](), NewSliceRowsBinder[[]uint64]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]string](), NewSliceRowsBinder[[]string]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]time.Time](), NewSliceRowsBinder[[]time.Time]())
 
-	// map[K]bool
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
+	/// ------------------------------------- map[K]bool -------------------------------------- ///
 
+	// map[int]bool
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]bool](), NewMapRowsBinderForKey[map[int]bool](fixedvaluebooltrue[int]))
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]bool](), NewMapRowsBinderForKey[map[int]bool](fixedvaluebooltrue[int]))
 
+	// map[int32]bool
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int32]bool](), NewMapRowsBinderForKey[map[int32]bool](fixedvaluebooltrue[int32]))
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int32]bool](), NewMapRowsBinderForKey[map[int32]bool](fixedvaluebooltrue[int32]))
+
+	// map[int64]bool
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]bool](), NewMapRowsBinderForKey[map[int64]bool](fixedvaluebooltrue[int64]))
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]bool](), NewMapRowsBinderForKey[map[int64]bool](fixedvaluebooltrue[int64]))
 
-	// map[K]struct{}
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
+	// map[string]bool
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
 
+	/// ----------------------------------- map[K]struct{} ------------------------------------ ///
+
+	// map[int]struct{}
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]struct{}](), NewMapRowsBinderForKey[map[int]struct{}](fixedvaluestructempty[int]))
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]struct{}](), NewMapRowsBinderForKey[map[int]struct{}](fixedvaluestructempty[int]))
 
+	// map[int32]struct{}
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int32]struct{}](), NewMapRowsBinderForKey[map[int32]struct{}](fixedvaluestructempty[int32]))
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int32]struct{}](), NewMapRowsBinderForKey[map[int32]struct{}](fixedvaluestructempty[int32]))
+
+	// map[int64]struct{}
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]struct{}](), NewMapRowsBinderForKey[map[int64]struct{}](fixedvaluestructempty[int64]))
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]struct{}](), NewMapRowsBinderForKey[map[int64]struct{}](fixedvaluestructempty[int64]))
+
+	// map[string]struct{}
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
+
+	/// -------------------------------------- map[int]V -------------------------------------- ///
+
+	// map[int]int
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int](), NewMapRowsBinderForKeyValue[map[int]int]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int](), NewMapRowsBinderForKeyValue[map[int]int]())
+
+	// map[int]int32
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int32](), NewMapRowsBinderForKeyValue[map[int]int32]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int32](), NewMapRowsBinderForKeyValue[map[int]int32]())
+
+	// map[int]int64
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int64](), NewMapRowsBinderForKeyValue[map[int]int64]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int64](), NewMapRowsBinderForKeyValue[map[int]int64]())
+
+	// map[int]string
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]string](), NewMapRowsBinderForKeyValue[map[int]string]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]string](), NewMapRowsBinderForKeyValue[map[int]string]())
+
+	/// ------------------------------------- map[int64]V ------------------------------------- ///
+
+	// map[int64]int
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int](), NewMapRowsBinderForKeyValue[map[int64]int]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int](), NewMapRowsBinderForKeyValue[map[int64]int]())
+
+	// map[int64]int32
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int32](), NewMapRowsBinderForKeyValue[map[int64]int32]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int32](), NewMapRowsBinderForKeyValue[map[int64]int32]())
+
+	// map[int64]int64
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int64](), NewMapRowsBinderForKeyValue[map[int64]int64]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int64](), NewMapRowsBinderForKeyValue[map[int64]int64]())
+
+	// map[int64]string
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]string](), NewMapRowsBinderForKeyValue[map[int64]string]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]string](), NewMapRowsBinderForKeyValue[map[int64]string]())
+
+	/// ------------------------------------ map[string]V ------------------------------------- ///
 
 	// map[string]int
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int](), NewMapRowsBinderForKeyValue[map[string]int]())
 	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]int](), NewMapRowsBinderForKeyValue[map[string]int]())
+
+	// map[string]int32
+	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int32](), NewMapRowsBinderForKeyValue[map[string]int32]())
+	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]int32](), NewMapRowsBinderForKeyValue[map[string]int32]())
 
 	// map[string]int64
 	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int64](), NewMapRowsBinderForKeyValue[map[string]int64]())
@@ -144,9 +204,9 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 
 		case *M:
 			if *v == nil {
-				m = make(M, getrowscap(scanner, DefaultRowsCap))
-				*v = m
+				*v = make(M, getrowscap(scanner, DefaultRowsCap))
 			}
+			m = *v
 
 		default:
 			panic(fmt.Errorf("sqlx. NewMapRowsBinderForKey: unsupport the type %T", dst))
@@ -178,9 +238,9 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 
 		case *M:
 			if *v == nil {
-				m = make(M, getrowscap(scanner, DefaultRowsCap))
-				*v = m
+				*v = make(M, getrowscap(scanner, DefaultRowsCap))
 			}
+			m = *v
 
 		default:
 			panic(fmt.Errorf("sqlx.NewMapRowsBinderForValue: unsupport the type %T", dst))
@@ -213,9 +273,9 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 
 		case *M:
 			if *v == nil {
-				m = make(M, getrowscap(scanner, DefaultRowsCap))
-				*v = m
+				*v = make(M, getrowscap(scanner, DefaultRowsCap))
 			}
+			m = *v
 
 		default:
 			panic(fmt.Errorf("sqlx. NewMapRowsBinderForKeyValue: unsupport the type %T", dst))
