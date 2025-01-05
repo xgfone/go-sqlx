@@ -190,6 +190,13 @@ func init() {
 func fixedvaluebooltrue[K comparable](K) bool        { return true }
 func fixedvaluestructempty[K comparable](K) struct{} { return struct{}{} }
 
+// NewMapRowsBinderForKeyAndFixedValue is short for NewMapRowsBinderForKey, which is equal to
+//
+//	NewMapRowsBinderForKey[M](func(K) V { return value })
+func NewMapRowsBinderForKeyAndFixedValue[M ~map[K]V, K comparable, V any](value V) RowsBinder {
+	return NewMapRowsBinderForKey[M](func(K) V { return value })
+}
+
 // NewMapRowsBinderForKey returns a rows binder which binds the rows as the map keys
 // and extracts the map values from the keys.
 func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) RowsBinder {
