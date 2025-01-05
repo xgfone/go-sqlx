@@ -57,7 +57,7 @@ type MixRowsBinder struct {
 
 // NewMixRowsBinder returns a new MixRowsBinder.
 func NewMixRowsBinder() *MixRowsBinder {
-	return &MixRowsBinder{types: make(map[reflect.Type]RowsBinder, 16)}
+	return &MixRowsBinder{types: make(map[reflect.Type]RowsBinder, 64)}
 }
 
 // Register registers a rows binder for a specific type.
@@ -334,11 +334,11 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 	}
 
 	vt := vf.Type()
-	et := vt.Elem()
 	if vf.Cap() == 0 {
 		vf.Set(reflect.MakeSlice(vt, 0, getrowscap(scanner, DefaultRowsCap)))
 	}
 
+	et := vt.Elem()
 	for scanner.Next() {
 		e := reflect.New(et)
 		if err := scanner.Scan(e.Interface()); err != nil {
