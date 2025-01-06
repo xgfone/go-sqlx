@@ -130,7 +130,7 @@ type SelectBuilder struct {
 	comment  string
 	offset   int64
 	limit    int64
-	page     op.Paginator
+	page     op.Pagination
 }
 
 // Count returns a COUNT(field).
@@ -532,8 +532,13 @@ func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 	return b
 }
 
-// Paginator sets the paginator, which is the same as b.Paginate.
-func (b *SelectBuilder) Paginator(page op.Paginator) *SelectBuilder {
+// Paginator is deprecated and reserved as the alias of Pagination for backward compatibility.
+func (b *SelectBuilder) Paginator(page op.Pagination) *SelectBuilder {
+	return b.Pagination(page)
+}
+
+// Pagination sets the Pagination, which is the same as b.Paginate.
+func (b *SelectBuilder) Pagination(page op.Pagination) *SelectBuilder {
 	b.page = page
 	return b
 }

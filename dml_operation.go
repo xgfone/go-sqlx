@@ -147,14 +147,14 @@ func (o Operation[T]) UpdateRemoveContext(ctx context.Context, conds ...op.Condi
 }
 
 // Gets is equal to o.GetsContext(context.Background(), sort, page, conds...).
-func (o Operation[T]) Gets(sort op.Sorter, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
+func (o Operation[T]) Gets(sort op.Sorter, page op.Pagination, conds ...op.Condition) (objs []T, err error) {
 	return o.GetsContext(context.Background(), sort, page, conds...)
 }
 
 // GetsContext queyies a set of results.
 //
 // Any of sort, page and conds is equal to nil.
-func (o Operation[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Paginator, conds ...op.Condition) (objs []T, err error) {
+func (o Operation[T]) GetsContext(ctx context.Context, sort op.Sorter, page op.Pagination, conds ...op.Condition) (objs []T, err error) {
 	var obj T
 	q := o.SelectStruct(obj).Where(conds...)
 
