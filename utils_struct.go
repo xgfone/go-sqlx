@@ -78,10 +78,10 @@ func _extractStructFields(fields []structfield, vtype reflect.Type, prefix strin
 		var targs []string
 		tname := ftype.Tag.Get("sql")
 		if index := strings.IndexByte(tname, ','); index > -1 {
-			tname = strings.TrimSpace(tname[:index])
 			if args := tname[index+1:]; args != "" {
 				targs = strings.Split(args, ",")
 			}
+			tname = strings.TrimSpace(tname[:index])
 		}
 
 		if tname == "-" {

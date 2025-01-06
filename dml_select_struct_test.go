@@ -70,7 +70,7 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 		S1 `sql:"s1"`
 		S2 `sql:"s2"`
 		S3 string `sql:"s3"`
-		No S2     `sql:",notpropagate"`
+		No S2     `sql:"-"`
 	}
 
 	var s S
