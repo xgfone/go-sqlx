@@ -167,7 +167,7 @@ func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 		panic("sqlx.DeleteBuilder: no FROM table name")
 	}
 
-	dialect := b.db.GetDialect()
+	dialect := getDB(b.db).GetDialect()
 
 	buf := getBuffer()
 	buf.WriteString("DELETE ")
