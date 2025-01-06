@@ -93,7 +93,7 @@ func defaultGetColumnsFromStruct(s any, table string) []Namer {
 }
 
 func init() {
-	typetables.Store(map[typetable][]string(nil))
+	typetables.Store(map[typetable][]Namer(nil))
 }
 
 var (

@@ -133,7 +133,7 @@ func TestSelectBuilderSelectStructWithTable(t *testing.T) {
 	SelectStructWithTable(SS2{}, "A")
 
 	var num int
-	for key := range typetables.Load().(map[typetable][]string) {
+	for key := range typetables.Load().(map[typetable][]Namer) {
 		switch fmt.Sprint(key.RType) {
 		case "sqlx.SS1", "sqlx.SS2":
 			num++
