@@ -41,9 +41,9 @@ const (
 type Base struct {
 	Id int64 `sql:"id,omitempty" json:",omitempty"`
 
-	CreatedAt time.Time `sql:"created_at,omitempty"`
-	UpdatedAt time.Time `sql:"updated_at,omitempty"`
-	DeletedAt time.Time `sql:"deleted_at,omitempty" json:"-"`
+	CreatedAt time.Time `sql:"created_at,omitempty" json:",omitempty,omitzero"`
+	UpdatedAt time.Time `sql:"updated_at,omitempty" json:",omitempty,omitzero"`
+	DeletedAt time.Time `sql:"deleted_at,omitempty" json:",omitempty,omitzero"`
 }
 
 // String is a string slice value type, which is encoded to a string or decoded from a []byte or string.
