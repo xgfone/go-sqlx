@@ -26,18 +26,7 @@ func (db *DB) QueryRowOne(query string, args ...any) Row {
 
 // QueryRowOneContext executes the row query sql statement and returns Row instead of *sql.Row.
 func (db *DB) QueryRowOneContext(ctx context.Context, query string, args ...any) Row {
-	query, args, err := db.Intercept(query, args)
-	if err != nil {
-		return NewRow(nil, nil, err)
-	}
-
-	rows, err := getDB(db).QueryContext(ctx, query, args...)
-	if err != nil {
-		return NewRow(nil, nil, err)
-	}
-
-	columns, err := rows.Columns()
-	return NewRow(rows, columns, err)
+	return NewRow(db.queryRowsContext(ctx, nil, query, args...))
 }
 
 // QueryRow builds the sql and executes it.
@@ -49,10 +38,20 @@ func (b *SelectBuilder) QueryRow() Row {
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	query, args := b.Limit(1).Build()
 	defer args.Release()
-	return getDB(b.db).QueryRowOneContext(ctx, query, args.Args()...)
+
+	_args := args.Args()
+	columns := b.SelectedColumns()
+	return b.binder.Row(getDB(b.db).queryRowsContext(ctx, columns, query, _args...))
 }
 
 /// ---------------------------------------------------------------------- ///
+
+func (b *binder) Row(rows *sql.Rows, columns []string, err error) Row {
+	if b.wrapper == nil {
+		return Row{rows: rows, err: err, columns: columns, wrapper: defaultbinder.wrapper}
+	}
+	return Row{rows: rows, err: err, columns: columns, wrapper: b.wrapper}
+}
 
 // Row is the same as sql.Row to scan the row to the values.
 type Row struct {
@@ -65,13 +64,7 @@ type Row struct {
 
 // NewRow returns a new Row.
 func NewRow(rows *sql.Rows, columns []string, err error) Row {
-	return Row{
-		rows: rows,
-		err:  err,
-
-		columns: columns,
-		wrapper: DefaultRowScanWrapper,
-	}
+	return defaultbinder.Row(rows, columns, err)
 }
 
 // Next is the same as sql.Row.Next, but only used to implement RowScanner and must not be called.

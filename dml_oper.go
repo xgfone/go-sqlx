@@ -40,20 +40,7 @@ type Oper[T any] struct {
 	// Default: op.KeyDeletedAt.Set(time.Now())
 	SoftDeleteUpdater func(context.Context) op.Updater
 
-	// RowScannerWrapper is used to wrap the row scanner to customize to scan the row.
-	//
-	// Default: DefaultRowScanWrapper
-	RowScannerWrapper RowScannerWrapper
-
-	// SliceBinder is used to bind the rows to a slice.
-	//
-	// Default: NewDegradedSliceRowsBinder[[]T](CommonSliceRowsBinder)
-	SliceRowsBinder RowsBinder
-
-	// RowsCap is the default cap of the rows to be scanned into the container, such as slice.
-	//
-	// Default: DefaultRowsCap
-	RowsCap int
+	binder binder
 }
 
 // NewOper returns a new Oper with the table name.
@@ -63,16 +50,16 @@ func NewOper[T any](table string) Oper[T] {
 
 // NewOperWithTable returns a new Oper with the table.
 func NewOperWithTable[T any](table Table) Oper[T] {
+	binder := NewDegradedSliceRowsBinder[[]T](defaultbinder.binder)
 	return Oper[T]{
 		Table: table,
 
 		Sorter:            op.KeyId.OrderDesc(),
 		SoftCondition:     op.IsNotDeletedCond,
 		SoftDeleteUpdater: softDeleteUpdater,
-		RowScannerWrapper: DefaultRowScanWrapper,
-		SliceRowsBinder:   NewDegradedSliceRowsBinder[[]T](CommonSliceRowsBinder),
-		RowsCap:           DefaultRowsCap,
-	}
+
+		binder: defaultbinder,
+	}.WithRowsBinder(binder)
 }
 
 func softDeleteUpdater(context.Context) op.Updater {
@@ -97,21 +84,29 @@ func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
 	return o
 }
 
-// WithRowsCap returns a new Oper with the rows cap.
+// WithRowsCap returns a new Oper with the default cap of the container,
+// such as slice or map, bound from rows.
+//
+// Default: DefaultRowsCap
 func (o Oper[T]) WithRowsCap(cap int) Oper[T] {
-	o.RowsCap = cap
+	o.binder.rowscap = cap
 	return o
 }
 
-// WithSliceRowsBinder returns a new Oper with the slice binder.
-func (o Oper[T]) WithSliceRowsBinder(binder RowsBinder) Oper[T] {
-	o.SliceRowsBinder = binder
+// WithRowsBinder returns a new Oper with the rows binder to bind the rows to a slice, map or other.
+//
+// Default: NewDegradedSliceRowsBinder[[]T](DefaultMixRowsBinder)
+func (o Oper[T]) WithRowsBinder(binder RowsBinder) Oper[T] {
+	o.binder.binder = binder
 	return o
 }
 
-// WithRowScannerWrapper returns a new Oper with the row scanner wrapper.
+// WithRowScannerWrapper returns a new Oper with the row scanner wrapper
+// to wrap the row scanner to customize to scan the row.
+//
+// Default: DefaultRowScanWrapper
 func (o Oper[T]) WithRowScannerWrapper(wrapper RowScannerWrapper) Oper[T] {
-	o.RowScannerWrapper = wrapper
+	o.binder.wrapper = wrapper
 	return o
 }
 
@@ -216,7 +211,7 @@ func (o Oper[T]) GetRow(columns any, conds ...op.Condition) Row {
 
 // GetRowContext builds a SELECT statement and returns a Row.
 func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx).WithScanner(o.RowScannerWrapper)
+	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx)
 }
 
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).
@@ -226,8 +221,7 @@ func (o Oper[T]) GetRows(columns any, page op.Pagination, conds ...op.Condition)
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
 func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
-	return o.Select(columns, conds...).Pagination(page).Sort(o.Sorter).QueryRowsContext(ctx).
-		WithBinder(o.SliceRowsBinder).WithScanner(o.RowScannerWrapper).WithRowsCap(o.RowsCap)
+	return o.Select(columns, conds...).Pagination(page).Sort(o.Sorter).QueryRowsContext(ctx)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
@@ -265,8 +259,8 @@ func (o Oper[T]) MakeSlice(cap int) []T {
 	case cap > 0:
 		return make([]T, 0, cap)
 
-	case o.RowsCap > 0:
-		return make([]T, 0, o.RowsCap)
+	case o.binder.rowscap > 0:
+		return make([]T, 0, o.binder.rowscap)
 
 	default:
 		return make([]T, 0, DefaultRowsCap)
@@ -353,6 +347,8 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	default:
 		q = o.Table.SelectStruct(columns)
 	}
+
+	q.binder = o.binder
 	return q.Where(conds...)
 }
 

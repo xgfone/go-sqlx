@@ -102,6 +102,8 @@ type SelectBuilder struct {
 	offset   int64
 	limit    int64
 	page     op.Pagination
+
+	binder binder
 }
 
 // Count returns a COUNT(field).
