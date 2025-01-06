@@ -1,4 +1,4 @@
-// Copyright 2020~2023 xgfone
+// Copyright 2020~2025 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -110,4 +110,22 @@ func ExampleSelectBuilder_Join() {
 	// Output:
 	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` ASC LIMIT 10 OFFSET 100
 	// [123]
+}
+
+func ExampleSelectBuilder_SelectedColumns() {
+	b := Select("A.C1").SelectAlias("B.C2", "F2").FromAlias("table1", "A").FromAlias("table2", "B")
+	columns := b.SelectedColumns()
+	fmt.Println(columns)
+
+	// Output:
+	// [C1 F2]
+}
+
+func ExampleSelectBuilder_SelectedFullColumns() {
+	b := Select("A.C1").SelectAlias("B.C2", "F2").FromAlias("table1", "A").FromAlias("table2", "B")
+	columns := b.SelectedFullColumns()
+	fmt.Println(columns)
+
+	// Output:
+	// [A.C1 B.C2]
 }

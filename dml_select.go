@@ -169,33 +169,32 @@ func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
 //
 // Notice: if the column has the alias, the alias will be returned instead.
 func (b *SelectBuilder) SelectedFullColumns() []string {
-	cs := make([]string, len(b.columns))
-	for i, c := range b.columns {
-		if c.Alias == "" {
-			cs[i] = c.Column
-		} else {
-			cs[i] = c.Alias
-		}
-	}
-	return cs
+	return b.selected(make([]string, 0, len(b.columns)), nil)
 }
 
-// SelectedColumns is the same as SelectedFullColumns, but returns the short
-// names instead.
+// SelectedColumns is the same as SelectedFullColumns, but returns the short names instead.
 func (b *SelectBuilder) SelectedColumns() []string {
-	cs := make([]string, 0, len(b.columns)-len(b.ignores))
+	return b.selected(make([]string, 0, len(b.columns)), fmtshortcolumns)
+}
+
+func fmtshortcolumns(c selectedColumn) string {
+	if c.Alias != "" {
+		return c.Alias
+	}
+	return extractName(c.Column)
+}
+
+func (b *SelectBuilder) selected(columns []string, fmt func(selectedColumn) string) []string {
 	for _, c := range b.columns {
-		if c.Alias == "" {
-			c.Column = extractName(c.Column)
-		} else {
-			c.Column = c.Alias
+		if fmt != nil {
+			c.Column = fmt(c)
 		}
 
 		if len(b.ignores) == 0 || !slices.Contains(b.ignores, c.Column) {
-			cs = append(cs, c.Column)
+			columns = append(columns, c.Column)
 		}
 	}
-	return cs
+	return columns
 }
 
 // IgnoredColumns sets the ignored columns and returns itself.
