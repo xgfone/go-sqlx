@@ -21,6 +21,8 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+var ignoredcolumns = []string{"updated_at", "deleted_at"}
+
 // Oper is used to collect a set of SQL DML & DQL operations based on a table.
 type Oper[T any] struct {
 	Table Table
@@ -40,7 +42,8 @@ type Oper[T any] struct {
 	// Default: op.KeyDeletedAt.Set(time.Now())
 	SoftDeleteUpdater func(context.Context) op.Updater
 
-	binder binder
+	columns []string
+	binder  binder
 }
 
 // NewOper returns a new Oper with the table name.
@@ -51,15 +54,13 @@ func NewOper[T any](table string) Oper[T] {
 // NewOperWithTable returns a new Oper with the table.
 func NewOperWithTable[T any](table Table) Oper[T] {
 	binder := NewDegradedSliceRowsBinder[[]T](defaultbinder.binder)
-	return Oper[T]{
-		Table: table,
-
-		Sorter:            op.KeyId.OrderDesc(),
-		SoftCondition:     op.IsNotDeletedCond,
-		SoftDeleteUpdater: softDeleteUpdater,
-
-		binder: defaultbinder,
-	}.WithRowsBinder(binder)
+	return Oper[T]{binder: defaultbinder}.
+		WithTable(table).
+		WithSorter(op.KeyId.OrderDesc()).
+		WithSoftCondition(op.IsNotDeletedCond).
+		WithSoftDeleteUpdater(softDeleteUpdater).
+		WithIgnoredColumns(ignoredcolumns).
+		WithRowsBinder(binder)
 }
 
 func softDeleteUpdater(context.Context) op.Updater {
@@ -120,6 +121,19 @@ func (o Oper[T]) WithSoftCondition(softcond op.Condition) Oper[T] {
 func (o Oper[T]) WithSoftDeleteUpdater(softDeleteUpdater func(context.Context) op.Updater) Oper[T] {
 	o.SoftDeleteUpdater = softDeleteUpdater
 	return o
+}
+
+// WithIgnoredColumns returns a new Oper with the ignored selected columns.
+//
+// Default: []string{"updated_at", "deleted_at"}
+func (o Oper[T]) WithIgnoredColumns(columns []string) Oper[T] {
+	o.columns = columns
+	return o
+}
+
+// IgnoredColumns returned the ignored selected columns.
+func (o Oper[T]) IgnoredColumns() []string {
+	return o.columns
 }
 
 /// ----------------------------------------------------------------------- ///
@@ -349,7 +363,7 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	}
 
 	q.binder = o.binder
-	return q.Sort(o.Sorter).Where(conds...)
+	return q.IgnoreColumns(o.columns).Sort(o.Sorter).Where(conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
