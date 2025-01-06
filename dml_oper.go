@@ -211,7 +211,7 @@ func (o Oper[T]) GetRow(columns any, conds ...op.Condition) Row {
 
 // GetRowContext builds a SELECT statement and returns a Row.
 func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).Sort(o.Sorter).QueryRowContext(ctx)
+	return o.Select(columns, conds...).QueryRowContext(ctx)
 }
 
 // GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).
@@ -221,7 +221,7 @@ func (o Oper[T]) GetRows(columns any, page op.Pagination, conds ...op.Condition)
 
 // GetRowsContext builds a SELECT statement and returns a Rows.
 func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
-	return o.Select(columns, conds...).Pagination(page).Sort(o.Sorter).QueryRowsContext(ctx)
+	return o.Select(columns, conds...).Pagination(page).QueryRowsContext(ctx)
 }
 
 // Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
@@ -349,7 +349,7 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	}
 
 	q.binder = o.binder
-	return q.Where(conds...)
+	return q.Sort(o.Sorter).Where(conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
