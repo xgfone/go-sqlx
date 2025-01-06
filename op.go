@@ -61,7 +61,7 @@ func BuildOp(ab *ArgsBuilder, op op.Op) string {
 		}
 		return builder.Build(ab, op)
 	}
-	panic(fmt.Errorf("sqlx: not found the builder for %s", op.String()))
+	panic(fmt.Errorf("sqlx.BuildOp: not found the builder for %s", op.String()))
 }
 
 // BuildOper is equal to BuildOp(ab, op.Operation()).

@@ -195,9 +195,9 @@ func (b *UpdateBuilder) String() string {
 // Build builds the "UPDATE" sql statement.
 func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.utables) == 0 {
-		panic("UpdateBuilder: no table name")
+		panic("sqlx.UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
-		panic("UpdateBuilder: no SET values")
+		panic("sqlx.UpdateBuilder: no SET values")
 	}
 
 	dialect := b.db.GetDialect()

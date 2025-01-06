@@ -575,7 +575,7 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		// ignore the column value
 
 	default:
-		panic(fmt.Errorf("unsupported type '%T'", s.Value))
+		panic(fmt.Errorf("sqlx.GeneralScanner.Scan: unsupported type '%T'", s.Value))
 	}
 
 	return

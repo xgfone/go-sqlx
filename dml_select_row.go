@@ -75,7 +75,7 @@ func NewRow(rows *sql.Rows, columns []string, err error) Row {
 }
 
 // Next is the same as sql.Row.Next, but only used to implement RowScanner and must not be called.
-func (r Row) Next() bool { panic("cannot be called") }
+func (r Row) Next() bool { panic("sqlx.Row.Next: cannot be called") }
 
 // Columns returns the names of the selected columns.
 func (r Row) Columns() ([]string, error) {

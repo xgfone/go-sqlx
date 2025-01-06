@@ -84,7 +84,7 @@ func (b *InsertBuilder) Columns(columns ...string) *InsertBuilder {
 // Values appends the inserted values.
 func (b *InsertBuilder) Values(values ...any) *InsertBuilder {
 	if _len := len(b.columns); _len > 0 && _len != len(values) {
-		panic("InsertBuilder: the number of the values is not equal to that of columns")
+		panic("sqlx.InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
 	b.values = append(b.values, values)
@@ -118,7 +118,7 @@ func (b *InsertBuilder) Ops(ops ...op.Op) *InsertBuilder {
 			values[i] = op.Val
 		}
 	} else {
-		panic("InsertBuilder: the number of the values is not equal to that of columns")
+		panic("sqlx.InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
 	b.values = append(b.values, values)
@@ -146,7 +146,7 @@ func (b *InsertBuilder) NamedValues(nvs ...sql.NamedArg) *InsertBuilder {
 			values[i] = nv.Value
 		}
 	} else {
-		panic("InsertBuilder: the number of the values is not equal to that of columns")
+		panic("sqlx.InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
 	b.values = append(b.values, values)
@@ -175,11 +175,11 @@ func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 
 		v = v.Elem()
 		if v.Kind() != reflect.Struct {
-			panic("not a pointer to struct")
+			panic("sqlx.InsertBuilder: not a pointer to struct")
 		}
 	case reflect.Struct:
 	default:
-		panic("not a struct")
+		panic("sqlx.InsertBuilder: not a struct")
 	}
 
 	args := make([]sql.NamedArg, 0, v.NumField())
@@ -274,16 +274,16 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 	colnum := len(b.columns)
 	if colnum == 0 {
 		if valnum == 0 {
-			panic("InsertBuilder: no columns or values")
+			panic("sqlx.InsertBuilder: no columns or values")
 		}
 	} else if valnum == 0 {
 		valnum = colnum
 	} else if colnum != valnum {
-		panic("InsertBuilder: the number of the values is not equal to that of columns")
+		panic("sqlx.InsertBuilder: the number of the values is not equal to that of columns")
 	}
 
 	if b.table == "" {
-		panic("InsertBuilder: no table name")
+		panic("sqlx.InsertBuilder: no table name")
 	}
 
 	dialect := b.db.GetDialect()

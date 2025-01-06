@@ -160,7 +160,7 @@ func (d dialect) Quote(item string) string {
 
 	leftIndex := strings.LastIndexByte(s, '(') + 1
 	if leftIndex < 1 {
-		panic(fmt.Errorf("invalid sql syntax: %s", item))
+		panic(fmt.Errorf("Dialect(%s): invalid sql syntax: %s", d.name, item))
 	}
 
 	return strings.Join([]string{

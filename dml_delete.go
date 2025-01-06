@@ -164,7 +164,7 @@ func (b *DeleteBuilder) String() string {
 // Build builds the DELETE FROM TABLE sql statement.
 func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.ftables) == 0 {
-		panic("DeleteBuilder: no FROM table name")
+		panic("sqlx.DeleteBuilder: no FROM table name")
 	}
 
 	dialect := b.db.GetDialect()

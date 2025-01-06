@@ -256,10 +256,10 @@ func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []str
 
 		v = v.Elem()
 		if v.Kind() != reflect.Struct {
-			panic("not a pointer to struct")
+			panic("sqlx.SelectBuilder: not a pointer to struct")
 		}
 	default:
-		panic("not a struct")
+		panic("sqlx.SelectBuilder: not a struct")
 	}
 
 	columns = make([]string, 0, v.NumField())
@@ -499,14 +499,14 @@ func (b *SelectBuilder) sort(sorter op.Sorter) {
 		case op.SortDesc, string(Desc):
 			b.OrderByDesc(getOpKey(_op))
 		default:
-			panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort value '%s'", v))
+			panic(fmt.Errorf("sqlx.SelectBuilder.Sort: unsupported sort value '%s'", v))
 		}
 
 	case op.SortOpOrders:
 		b.Sorts(_op.Val.([]op.Sorter)...)
 
 	default:
-		panic(fmt.Errorf("SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
+		panic(fmt.Errorf("sqlx.SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
 	}
 }
 
@@ -565,9 +565,9 @@ func (b *SelectBuilder) String() string {
 // Build builds the SELECT sql statement.
 func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	if len(b.ftables) == 0 {
-		panic("SelectBuilder: no from table names")
+		panic("sqlx.SelectBuilder: no from table names")
 	} else if len(b.columns) == 0 {
-		panic("SelectBuilder: no selected columns")
+		panic("sqlx.SelectBuilder: no selected columns")
 	}
 
 	buf := getBuffer()
