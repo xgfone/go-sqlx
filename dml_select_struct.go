@@ -57,26 +57,30 @@ func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
 //
 // If the value of the tag is "-", however, the field will be ignored.
 func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
-	return b.Selects(defaultGetColumnsFromStruct(s, table)...)
+	columns := defaultGetColumnsFromStruct(s, table)
+	for _, c := range columns {
+		b.SelectAlias(c.Name, c.Alias)
+	}
+	return b
 }
 
-func defaultGetColumnsFromStruct(s any, table string) []string {
+func defaultGetColumnsFromStruct(s any, table string) []Namer {
 	if s == nil {
 		return nil
 	}
 
 	key := typetable{RType: reflect.TypeOf(s), Table: table}
-	columntables := typetables.Load().(map[typetable][]string)
+	columntables := typetables.Load().(map[typetable][]Namer)
 	columns, ok := columntables[key]
 	if !ok {
 		ttlock.Lock()
 		defer ttlock.Unlock()
 
-		columntables = typetables.Load().(map[typetable][]string)
+		columntables = typetables.Load().(map[typetable][]Namer)
 		if columns, ok = columntables[key]; !ok {
 			columns = getColumnsFromStruct(s, table)
 
-			_columntables := make(map[typetable][]string, len(columntables)+1)
+			_columntables := make(map[typetable][]Namer, len(columntables)+1)
 			maps.Copy(_columntables, columntables)
 			_columntables[key] = columns
 
@@ -101,16 +105,22 @@ type typetable struct {
 	Table string
 }
 
+// Namer represents the name and alias of a column.
+type Namer struct {
+	Name  string
+	Alias string
+}
+
 type columner interface {
-	Columns() []string
+	Columns(talbe string) []Namer
 }
 
 var _columnstype = reflect.TypeFor[columner]()
 
-func getColumnsFromStruct(s any, table string) (columns []string) {
+func getColumnsFromStruct(s any, table string) (columns []Namer) {
 	vtype := reflect.TypeOf(s)
 	if vtype.Implements(_columnstype) {
-		return s.(columner).Columns()
+		return s.(columner).Columns(table)
 	}
 
 	switch vtype.Kind() {
@@ -124,11 +134,11 @@ func getColumnsFromStruct(s any, table string) (columns []string) {
 		panic("sqlx.SelectBuilder: not a struct or pointer to struct")
 	}
 
-	columns = make([]string, 0, vtype.NumField())
+	columns = make([]Namer, 0, vtype.NumField())
 	return selectStruct(columns, vtype, table, "")
 }
 
-func selectStruct(columns []string, vtype reflect.Type, ftable, prefix string) []string {
+func selectStruct(columns []Namer, vtype reflect.Type, ftable, prefix string) []Namer {
 	_len := vtype.NumField()
 	for i := 0; i < _len; i++ {
 		ftype := vtype.Field(i)
@@ -159,7 +169,7 @@ func selectStruct(columns []string, vtype reflect.Type, ftable, prefix string) [
 			if ftable != "" {
 				name = fmt.Sprintf("%s.%s", ftable, name)
 			}
-			columns = append(columns, name)
+			columns = append(columns, Namer{Name: name})
 		}
 	}
 
