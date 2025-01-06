@@ -42,8 +42,9 @@ type Oper[T any] struct {
 	// Default: op.KeyDeletedAt.Set(time.Now())
 	SoftDeleteUpdater func(context.Context) op.Updater
 
-	columns []string
-	binder  binder
+	ignoredcolumns []string
+
+	binder binder
 }
 
 // NewOper returns a new Oper with the table name.
@@ -127,13 +128,13 @@ func (o Oper[T]) WithSoftDeleteUpdater(softDeleteUpdater func(context.Context) o
 //
 // Default: []string{"updated_at", "deleted_at"}
 func (o Oper[T]) WithIgnoredColumns(columns []string) Oper[T] {
-	o.columns = columns
+	o.ignoredcolumns = columns
 	return o
 }
 
 // IgnoredColumns returned the ignored selected columns.
 func (o Oper[T]) IgnoredColumns() []string {
-	return o.columns
+	return o.ignoredcolumns
 }
 
 /// ----------------------------------------------------------------------- ///
@@ -363,7 +364,7 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	}
 
 	q.binder = o.binder
-	return q.IgnoreColumns(o.columns).Sort(o.Sorter).Where(conds...)
+	return q.IgnoreColumns(o.ignoredcolumns).Sort(o.Sorter).Where(conds...)
 }
 
 /// ----------------------------------------------------------------------- ///

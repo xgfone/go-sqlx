@@ -57,8 +57,12 @@ func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
 //
 // If the value of the tag is "-", however, the field will be ignored.
 func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
+	return b.Selects(defaultGetColumnsFromStruct(s, table)...)
+}
+
+func defaultGetColumnsFromStruct(s any, table string) []string {
 	if s == nil {
-		return b
+		return nil
 	}
 
 	key := typetable{RType: reflect.TypeOf(s), Table: table}
@@ -70,7 +74,7 @@ func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilde
 
 		columntables = typetables.Load().(map[typetable][]string)
 		if columns, ok = columntables[key]; !ok {
-			columns = b.getColumnsFromStruct(s, table)
+			columns = getColumnsFromStruct(s, table)
 
 			_columntables := make(map[typetable][]string, len(columntables)+1)
 			maps.Copy(_columntables, columntables)
@@ -80,7 +84,7 @@ func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilde
 		}
 	}
 
-	return b.Selects(columns...)
+	return columns
 }
 
 func init() {
@@ -97,8 +101,18 @@ type typetable struct {
 	Table string
 }
 
-func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []string) {
+type columner interface {
+	Columns() []string
+}
+
+var _columnstype = reflect.TypeFor[columner]()
+
+func getColumnsFromStruct(s any, table string) (columns []string) {
 	vtype := reflect.TypeOf(s)
+	if vtype.Implements(_columnstype) {
+		return s.(columner).Columns()
+	}
+
 	switch vtype.Kind() {
 	case reflect.Struct:
 	case reflect.Pointer:
@@ -111,10 +125,10 @@ func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []str
 	}
 
 	columns = make([]string, 0, vtype.NumField())
-	return b.selectStruct(columns, vtype, table, "")
+	return selectStruct(columns, vtype, table, "")
 }
 
-func (b *SelectBuilder) selectStruct(columns []string, vtype reflect.Type, ftable, prefix string) []string {
+func selectStruct(columns []string, vtype reflect.Type, ftable, prefix string) []string {
 	_len := vtype.NumField()
 	for i := 0; i < _len; i++ {
 		ftype := vtype.Field(i)
@@ -139,7 +153,7 @@ func (b *SelectBuilder) selectStruct(columns []string, vtype reflect.Type, ftabl
 
 		isvaluer := ftype.Type.Implements(_valuertype)
 		if !isvaluer && ftype.Type.Kind() == reflect.Struct && ftype.Type != _timetype {
-			columns = b.selectStruct(columns, ftype.Type, ftable, formatFieldName(prefix, tname))
+			columns = selectStruct(columns, ftype.Type, ftable, formatFieldName(prefix, tname))
 		} else {
 			name = formatFieldName(prefix, name)
 			if ftable != "" {
