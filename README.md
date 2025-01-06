@@ -52,10 +52,18 @@ db, _ := sqlx.Open("mysql", "user:password@tcp(127.0.0.1:3306)/db")
 builder := db.Select("*").From("table").Where(op.Equal("id", 123))
 
 sql, args := builder.Build()
-rows, err := db.QueryRows(sql, args...)
+rows := db.QueryRows(sql, args.Args()...)
 
 // Or
-// rows, err := builder.QueryRows()
+// rows := builder.QueryRows()
+
+if rows.Err != nil {
+	// TODO: ...
+	return
+}
+
+defer rows.Close()
+// TODO: ...
 ```
 
 ### Intercept SQL
@@ -88,8 +96,12 @@ func main() {
 	// Build the SELECT SQL statement
 	builder := db.Select("*").From("table")
 	builder.Where(op.Equal("id", 123))
-	rows, err := builder.QueryRows()
-	// ...
+	rows := builder.QueryRows()
+	if rows.Err != nil {
+		fmt.Println(err)
+		return
+	}
+	// TODO: ...
 
 	// Interceptor will output:
 	// SELECT * FROM `table` WHERE `id`=?
