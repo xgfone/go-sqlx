@@ -19,28 +19,6 @@ import (
 	"time"
 )
 
-func TestTagContainAttr(t *testing.T) {
-	if !tagContainAttr("abc", "abc") {
-		t.Error("not expect false")
-	}
-
-	if !tagContainAttr(",abc", "abc") {
-		t.Error("not expect false")
-	}
-
-	if !tagContainAttr("abc,rst", "abc") {
-		t.Error("not expect false")
-	}
-
-	if !tagContainAttr("abc,rst,xyz", "rst") {
-		t.Error("not expect false")
-	}
-
-	if !tagContainAttr("abc,rst,xyz", "xyz") {
-		t.Error("not expect false")
-	}
-}
-
 func TestIsPointerToStruct(t *testing.T) {
 	if IsPointerToStruct(nil) {
 		t.Error("expect false, but got true")

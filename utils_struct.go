@@ -15,14 +15,13 @@
 package sqlx
 
 import (
-	"database/sql/driver"
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type (
@@ -30,9 +29,11 @@ type (
 
 	structfield struct {
 		Column  string
-		TagArgs []string
 		Indexes []int
-		Ignored bool
+		TagArgs []string
+
+		IsValuer   bool
+		IgnoreZero bool
 	}
 )
 
@@ -71,16 +72,16 @@ func extractStructFields(fields []structfield, vtype reflect.Type) []structfield
 
 func _extractStructFields(fields []structfield, vtype reflect.Type, prefix string, indexes []int) []structfield {
 	_len := vtype.NumField()
-
-LOOP:
 	for i := 0; i < _len; i++ {
 		ftype := vtype.Field(i)
 
-		var targs string
+		var targs []string
 		tname := ftype.Tag.Get("sql")
 		if index := strings.IndexByte(tname, ','); index > -1 {
-			targs = tname[index+1:]
 			tname = strings.TrimSpace(tname[:index])
+			if args := tname[index+1:]; args != "" {
+				targs = strings.Split(args, ",")
+			}
 		}
 
 		if tname == "-" {
@@ -96,27 +97,19 @@ LOOP:
 		_indexes = append(_indexes, indexes...)
 		_indexes = append(_indexes, i)
 
-		if ftype.Type.Kind() == reflect.Struct {
-			if tagContainAttr(targs, "notpropagate") {
-				continue
-			}
+		isvaluer := ftype.Type.Implements(_valuertype)
+		if !isvaluer && ftype.Type.Kind() == reflect.Struct && ftype.Type != _timetype {
+			fields = _extractStructFields(fields, ftype.Type, formatFieldName(prefix, tname), _indexes)
+		} else {
+			fields = append(fields, structfield{
+				Column:  formatFieldName(prefix, name),
+				Indexes: _indexes,
+				TagArgs: targs,
 
-			fvalue := reflect.New(ftype.Type).Elem()
-			switch fvalue.Interface().(type) {
-			case time.Time:
-			case driver.Valuer:
-			default:
-				fields = _extractStructFields(fields, ftype.Type, formatFieldName(prefix, tname), _indexes)
-				continue LOOP
-			}
+				IsValuer:   isvaluer,
+				IgnoreZero: slices.Contains(targs, "omitempty") || slices.Contains(targs, "omitzero"),
+			})
 		}
-
-		ignored := tagContainAttr(targs, "omitempty") || tagContainAttr(targs, "omitzero")
-		fields = append(fields, structfield{
-			Column:  formatFieldName(prefix, name),
-			Indexes: _indexes,
-			Ignored: ignored,
-		})
 	}
 
 	return fields

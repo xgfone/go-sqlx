@@ -15,14 +15,12 @@
 package sqlx
 
 import (
-	"database/sql/driver"
 	"fmt"
 	"maps"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 // Sep is the separator by the select struct.
@@ -58,8 +56,6 @@ func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
 // to modify the column name.
 //
 // If the value of the tag is "-", however, the field will be ignored.
-// If the tag contains the attribute "notpropagate", for the embeded struct,
-// do not scan the fields of the embeded struct.
 func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
 	if s == nil {
 		return b
@@ -102,69 +98,55 @@ type typetable struct {
 }
 
 func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []string) {
-	v := reflect.ValueOf(s)
-	switch kind := v.Kind(); kind {
+	vtype := reflect.TypeOf(s)
+	switch vtype.Kind() {
 	case reflect.Struct:
 	case reflect.Pointer:
-		if v.IsNil() {
-			return
-		}
-
-		v = v.Elem()
-		if v.Kind() != reflect.Struct {
+		vtype = vtype.Elem()
+		if vtype.Kind() != reflect.Struct {
 			panic("sqlx.SelectBuilder: not a pointer to struct")
 		}
 	default:
-		panic("sqlx.SelectBuilder: not a struct")
+		panic("sqlx.SelectBuilder: not a struct or pointer to struct")
 	}
 
-	columns = make([]string, 0, v.NumField())
-	return b.selectStruct(columns, v, table, "")
+	columns = make([]string, 0, vtype.NumField())
+	return b.selectStruct(columns, vtype, table, "")
 }
 
-func (b *SelectBuilder) selectStruct(columns []string, v reflect.Value, ftable, prefix string) []string {
-	vt := v.Type()
+func (b *SelectBuilder) selectStruct(columns []string, vtype reflect.Type, ftable, prefix string) []string {
+	_len := vtype.NumField()
+	for i := 0; i < _len; i++ {
+		ftype := vtype.Field(i)
 
-LOOP:
-	for i, _len := 0, v.NumField(); i < _len; i++ {
-		vft := vt.Field(i)
-
-		var targs string
-		tname := vft.Tag.Get("sql")
+		// var targs []string
+		tname := ftype.Tag.Get("sql")
 		if index := strings.IndexByte(tname, ','); index > -1 {
-			targs = tname[index+1:]
 			tname = strings.TrimSpace(tname[:index])
+			// if args := tname[index+1:]; args != "" {
+			// 	targs = strings.Split(args, ",")
+			// }
 		}
 
 		if tname == "-" {
 			continue
 		}
 
-		name := vft.Name
+		name := ftype.Name
 		if tname != "" {
 			name = tname
 		}
 
-		if vft.Type.Kind() == reflect.Struct {
-			if tagContainAttr(targs, "notpropagate") {
-				continue
+		isvaluer := ftype.Type.Implements(_valuertype)
+		if !isvaluer && ftype.Type.Kind() == reflect.Struct && ftype.Type != _timetype {
+			columns = b.selectStruct(columns, ftype.Type, ftable, formatFieldName(prefix, tname))
+		} else {
+			name = formatFieldName(prefix, name)
+			if ftable != "" {
+				name = fmt.Sprintf("%s.%s", ftable, name)
 			}
-
-			switch vf := v.Field(i); vf.Interface().(type) {
-			case time.Time:
-			case driver.Valuer:
-			default:
-				columns = b.selectStruct(columns, vf, ftable, formatFieldName(prefix, tname))
-				continue LOOP
-			}
+			columns = append(columns, name)
 		}
-
-		name = formatFieldName(prefix, name)
-		if ftable != "" {
-			name = fmt.Sprintf("%s.%s", ftable, name)
-		}
-
-		columns = append(columns, name)
 	}
 
 	return columns

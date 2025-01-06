@@ -17,8 +17,8 @@ package sqlx
 import (
 	"bytes"
 	"database/sql"
+	"database/sql/driver"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
@@ -35,19 +35,10 @@ var bufpool = sync.Pool{New: func() any {
 func getBuffer() *bytes.Buffer    { return bufpool.Get().(*bytes.Buffer) }
 func putBuffer(buf *bytes.Buffer) { buf.Reset(); bufpool.Put(buf) }
 
-func tagContainAttr(targ, attr string) bool {
-	for {
-		if index := strings.IndexByte(targ, ','); index == -1 {
-			return targ == attr
-		} else if targ[:index] == attr {
-			return true
-		} else {
-			targ = targ[index+1:]
-		}
-	}
-}
-
-var _timetype = reflect.TypeFor[time.Time]()
+var (
+	_timetype   = reflect.TypeFor[time.Time]()
+	_valuertype = reflect.TypeFor[driver.Valuer]()
+)
 
 // IsPointerToStruct returns true if v is a pointer to struct, else false.
 //

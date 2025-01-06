@@ -24,8 +24,6 @@ import (
 // which supports the tag named "sql" to modify the field name.
 //
 // If the value of the tag is "-", however, the field will be ignored.
-// If the tag contains the attribute "notpropagate", for the embeded struct,
-// do not scan the fields of the embeded struct.
 func ScanColumnsToStruct(scan func(...any) error, columns []string, s any) (err error) {
 	if len(columns) == 0 {
 		panic("sqlx.ScanColumnsToStruct: no selected columns")

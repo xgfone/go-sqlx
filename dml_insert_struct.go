@@ -26,8 +26,6 @@ import (
 //
 //  1. If the value of the tag is "-", however, the field will be ignored.
 //  2. If the tag value contains "omitempty" or "omitzero", the ZERO field will be ignored.
-//  3. If the tag contains the attribute "notpropagate", for the embeded struct,
-//     do not scan the fields of the embeded struct.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	value := reflect.ValueOf(s)
 	extract := getFieldExtracter(value.Type(), getInsertedFieldsFromStruct)
@@ -80,7 +78,7 @@ func (f *structfield) InsertedValue(value reflect.Value) (reflect.Value, bool) {
 		value = value.Field(index)
 	}
 
-	ignored := !value.IsValid() || (f.Ignored && isZero(value))
+	ignored := !value.IsValid() || (f.IgnoreZero && isZero(value))
 	if !ignored && value.Kind() == reflect.Pointer {
 		value = value.Elem()
 	}
