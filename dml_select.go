@@ -142,6 +142,14 @@ func (b *SelectBuilder) Distinct() *SelectBuilder {
 	return b
 }
 
+func (b *SelectBuilder) growcolumns(n int) {
+	if cap(b.columns)-len(b.columns) < n {
+		columns := make([]selectedColumn, len(b.columns), len(b.columns)+n)
+		copy(columns, b.columns)
+		b.columns = columns
+	}
+}
+
 // Select appends the selected column in SELECT.
 func (b *SelectBuilder) Select(column string) *SelectBuilder {
 	return b.SelectAlias(column, "")
@@ -157,10 +165,20 @@ func (b *SelectBuilder) SelectAlias(column, alias string) *SelectBuilder {
 	return b
 }
 
-// Selects is equal to b.Select(columns[0]).Select(columns[1])...
+// Selects appends a group of columns in SELECT from the column names.
 func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
+	b.growcolumns(len(columns))
 	for _, c := range columns {
 		b.Select(c)
+	}
+	return b
+}
+
+// SelectNamers appends the selected column in SELECT from the column names and aliases.
+func (b *SelectBuilder) SelectNamers(columns ...Namer) *SelectBuilder {
+	b.growcolumns(len(columns))
+	for _, c := range columns {
+		b.SelectAlias(c.Name, c.Alias)
 	}
 	return b
 }

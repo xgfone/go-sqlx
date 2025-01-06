@@ -58,6 +58,7 @@ func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
 // If the value of the tag is "-", however, the field will be ignored.
 func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
 	columns := defaultGetColumnsFromStruct(s, table)
+	b.growcolumns(len(columns))
 	for _, c := range columns {
 		b.SelectAlias(c.Name, c.Alias)
 	}
