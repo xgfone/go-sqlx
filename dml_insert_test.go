@@ -86,23 +86,3 @@ func ExampleInsertBuilder_NamedValues() {
 	// INSERT INTO `table` (`column1`, `column2`, `column3`) VALUES (?, ?, ?)
 	// [value1 value2 value3]
 }
-
-func ExampleInsertBuilder_Struct() {
-	type S struct {
-		DefaultField  string
-		ModifiedField string `sql:"field"`
-		ZeroField     string `sql:",omitempty"`
-		IgnoredField  string `sql:"-"`
-	}
-
-	s := S{DefaultField: "v1", IgnoredField: "v2"}
-	insert := Insert().Into("table").Struct(s)
-	sql, args := insert.Build()
-
-	fmt.Println(sql)
-	fmt.Println(args.Args())
-
-	// Output:
-	// INSERT INTO `table` (`DefaultField`, `field`) VALUES (?, ?)
-	// [v1 ]
-}

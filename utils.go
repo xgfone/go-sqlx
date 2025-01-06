@@ -24,7 +24,7 @@ import (
 )
 
 // DefaultBufferCap is the default capacity to be allocated for buffer from pool.
-var DefaultBufferCap = 256
+var DefaultBufferCap = 512
 
 var bufpool = sync.Pool{New: func() any {
 	b := new(bytes.Buffer)

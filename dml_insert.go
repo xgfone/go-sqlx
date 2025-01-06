@@ -18,10 +18,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"database/sql/driver"
-	"reflect"
-	"strings"
-	"time"
 
 	"github.com/xgfone/go-op"
 )
@@ -151,92 +147,6 @@ func (b *InsertBuilder) NamedValues(nvs ...sql.NamedArg) *InsertBuilder {
 
 	b.values = append(b.values, values)
 	return b
-}
-
-// Struct is the same as NamedValues, but extracts the fields of the struct
-// as the named values to be inserted, which supports the tag named "sql"
-// to modify the column name.
-//
-//  1. If the value of the tag is "-", however, the field will be ignored.
-//  2. If the tag value contains "omitempty", the ZERO field will be ignored.
-//  3. If the tag contains the attribute "notpropagate", for the embeded struct,
-//     do not scan the fields of the embeded struct.
-func (b *InsertBuilder) Struct(s any) *InsertBuilder {
-	if s == nil {
-		return b
-	}
-
-	v := reflect.ValueOf(s)
-	switch kind := v.Kind(); kind {
-	case reflect.Ptr:
-		if v.IsNil() {
-			return b
-		}
-
-		v = v.Elem()
-		if v.Kind() != reflect.Struct {
-			panic("sqlx.InsertBuilder: not a pointer to struct")
-		}
-	case reflect.Struct:
-	default:
-		panic("sqlx.InsertBuilder: not a struct")
-	}
-
-	args := make([]sql.NamedArg, 0, v.NumField())
-	args = b.insertStruct("", v, args)
-	return b.NamedValues(args...)
-}
-
-func (b *InsertBuilder) insertStruct(prefix string, v reflect.Value, args []sql.NamedArg) []sql.NamedArg {
-	vt := v.Type()
-
-LOOP:
-	for i, _len := 0, v.NumField(); i < _len; i++ {
-		vft := vt.Field(i)
-
-		var targs string
-		tname := vft.Tag.Get("sql")
-		if index := strings.IndexByte(tname, ','); index > -1 {
-			targs = tname[index+1:]
-			tname = strings.TrimSpace(tname[:index])
-		}
-
-		if tname == "-" {
-			continue
-		}
-
-		name := vft.Name
-		if tname != "" {
-			name = tname
-		}
-
-		vf := v.Field(i)
-		if vft.Type.Kind() == reflect.Struct {
-			if tagContainAttr(targs, "notpropagate") {
-				continue
-			}
-
-			switch vf.Interface().(type) {
-			case time.Time:
-			case driver.Valuer:
-			default:
-				args = b.insertStruct(formatFieldName(prefix, tname), vf, args)
-				continue LOOP
-			}
-		}
-
-		if !vf.IsValid() {
-			continue
-		} else if tagContainAttr(targs, "omitempty") && isZero(vf) {
-			continue
-		} else if vf.Kind() == reflect.Ptr {
-			vf = vf.Elem()
-		}
-
-		args = append(args, sql.NamedArg{Name: name, Value: vf.Interface()})
-	}
-
-	return args
 }
 
 // Exec builds the sql and executes it by *sql.DB.

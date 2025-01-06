@@ -331,7 +331,7 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 
 func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 	oldvf := reflect.ValueOf(dst)
-	if oldvf.Kind() != reflect.Ptr {
+	if oldvf.Kind() != reflect.Pointer {
 		panic("sqlx.CommonSliceRowsBinder: the value must be a pointer to a slice")
 	}
 

@@ -105,7 +105,7 @@ func (b *SelectBuilder) getColumnsFromStruct(s any, table string) (columns []str
 	v := reflect.ValueOf(s)
 	switch kind := v.Kind(); kind {
 	case reflect.Struct:
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v.IsNil() {
 			return
 		}
