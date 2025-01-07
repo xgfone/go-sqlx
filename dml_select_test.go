@@ -129,3 +129,19 @@ func ExampleSelectBuilder_SelectedFullColumns() {
 	// Output:
 	// [A.C1 B.C2]
 }
+
+func ExampleSelectBuilder_IgnoreColumns() {
+	b := Selects("id", "name", "age", "updated_at").From("table").
+		Where(op.Equal("id", 123)).IgnoreColumns([]string{"updated_at"})
+
+	sql, args := b.Build()
+
+	fmt.Println(b.SelectedColumns())
+	fmt.Println(sql)
+	fmt.Println(args.Args())
+
+	// Output:
+	// [id name age]
+	// SELECT `id`, `name`, `age` FROM `table` WHERE `id`=?
+	// [123]
+}
