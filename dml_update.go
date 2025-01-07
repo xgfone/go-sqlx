@@ -214,17 +214,12 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 		}
 	}
 
-	// Join
-	for _, join := range b.jtables {
-		join.Build(buf, dialect)
-	}
-
 	// Set
 	buf.WriteString(" SET ")
 	args = GetArgsBuilderFromPool(dialect)
 	buf.WriteString(BuildOper(args, op.Batch(b.setters...)))
 
-	// From
+	// From Table
 	for i, t := range b.ftables {
 		if i == 0 {
 			buf.WriteString(" FROM ")
@@ -236,6 +231,11 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 			buf.WriteString(" AS ")
 			buf.WriteString(dialect.Quote(t.Alias))
 		}
+	}
+
+	// Join
+	for _, join := range b.jtables {
+		join.Build(buf, dialect)
 	}
 
 	// Where
