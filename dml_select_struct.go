@@ -116,14 +116,12 @@ type columner interface {
 	Columns(talbe string) []Namer
 }
 
-var _columnstype = reflect.TypeFor[columner]()
-
 func getColumnsFromStruct(s any, table string) (columns []Namer) {
-	vtype := reflect.TypeOf(s)
-	if vtype.Implements(_columnstype) {
-		return s.(columner).Columns(table)
+	if c, ok := s.(columner); ok {
+		return c.Columns(table)
 	}
 
+	vtype := reflect.TypeOf(s)
 	switch vtype.Kind() {
 	case reflect.Struct:
 	case reflect.Pointer:
