@@ -26,42 +26,28 @@ func (db *DB) DeleteBuilder() *DeleteBuilder {
 	return NewDeleteBuilder().SetDB(db)
 }
 
-// Delete returns a DELETE SQL builder.
-func (db *DB) Delete(tables ...string) *DeleteBuilder {
-	return Delete(tables...).SetDB(db)
+// Delete returns a DELETE SQL builder, which is short for DeleteBuilder.
+func (db *DB) Delete() *DeleteBuilder {
+	return Delete().SetDB(db)
 }
 
 // Delete is short for NewDeleteBuilder.
-func Delete(tables ...string) *DeleteBuilder {
-	return NewDeleteBuilder(tables...)
+func Delete() *DeleteBuilder {
+	return NewDeleteBuilder()
 }
 
 // NewDeleteBuilder returns a new DELETE builder.
-func NewDeleteBuilder(tables ...string) *DeleteBuilder {
-	return &DeleteBuilder{dtables: tables}
+func NewDeleteBuilder() *DeleteBuilder {
+	return new(DeleteBuilder)
 }
 
 // DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
 	db      *DB
 	comment string
-	dtables []string
 	ftables []sqlTable
 	jtables []joinTable
 	wheres  []op.Condition
-}
-
-// Table appends the table name to delete the rows from it.
-func (b *DeleteBuilder) Table(table string) *DeleteBuilder {
-	if table != "" {
-		for _, t := range b.dtables {
-			if t == table {
-				return b
-			}
-		}
-		b.dtables = append(b.dtables, table)
-	}
-	return b
 }
 
 // From is equal to b.FromAlias(table, "").
@@ -176,12 +162,6 @@ func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 
 	buf := getBuffer()
 	buf.WriteString("DELETE ")
-	for i, table := range b.dtables {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(dialect.Quote(table))
-	}
 
 	buf.WriteString("FROM ")
 	for i, t := range b.ftables {

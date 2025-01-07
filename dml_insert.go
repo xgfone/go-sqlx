@@ -27,7 +27,7 @@ func (db *DB) InsertBuilder() *InsertBuilder {
 	return NewInsertBuilder().SetDB(db)
 }
 
-// Insert returns a INSERT SQL builder.
+// Insert returns a INSERT SQL builder, which is short for InsertBuilder.
 func (db *DB) Insert() *InsertBuilder { return Insert().SetDB(db) }
 
 // Insert is short for NewInsertBuilder.
