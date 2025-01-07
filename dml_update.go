@@ -26,26 +26,19 @@ func (db *DB) UpdateBuilder() *UpdateBuilder {
 	return NewUpdateBuilder().SetDB(db)
 }
 
-// Update returns a UPDATE SQL builder.
-func (db *DB) Update(table ...string) *UpdateBuilder {
-	return Update(table...).SetDB(db)
+// Update returns a UPDATE SQL builder, which is short for NewUpdateBuilder.
+func (db *DB) Update() *UpdateBuilder {
+	return Update().SetDB(db)
 }
 
 // Update is short for NewUpdateBuilder.
-func Update(table ...string) *UpdateBuilder {
-	return NewUpdateBuilder(table...)
+func Update() *UpdateBuilder {
+	return NewUpdateBuilder()
 }
 
 // NewUpdateBuilder returns a new UPDATE builder.
-func NewUpdateBuilder(table ...string) *UpdateBuilder {
-	var tables []sqlTable
-	if len(table) > 0 {
-		tables = make([]sqlTable, len(table))
-		for i, _len := 0, len(table); i < _len; i++ {
-			tables[i] = sqlTable{Table: table[i]}
-		}
-	}
-	return &UpdateBuilder{utables: tables}
+func NewUpdateBuilder() *UpdateBuilder {
+	return new(UpdateBuilder)
 }
 
 // UpdateBuilder is used to build the UPDATE statement.

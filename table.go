@@ -59,7 +59,7 @@ func (t Table) InsertInto() *InsertBuilder {
 
 // Update returns a UPDATE builder.
 func (t Table) Update(updaters ...op.Updater) *UpdateBuilder {
-	return t.GetDB().Update(t.Name).Set(updaters...)
+	return t.GetDB().Update().Table(t.Name).Set(updaters...)
 }
 
 // SelectAlias is equal to t.GetDB().SelectAlias(column, alias).
