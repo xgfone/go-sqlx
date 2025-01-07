@@ -217,11 +217,15 @@ func (b *SelectBuilder) selected(columns []string, fmt func(selectedColumn) stri
 			c.Column = fmt(c)
 		}
 
-		if len(b.ignores) == 0 || !slices.Contains(b.ignores, c.Column) {
+		if !b.columnIsIgnored(c.Column) {
 			columns = append(columns, c.Column)
 		}
 	}
 	return columns
+}
+
+func (b *SelectBuilder) columnIsIgnored(column string) bool {
+	return len(column) > 0 && len(b.ignores) > 0 && slices.Contains(b.ignores, column)
 }
 
 // IgnoredColumns sets the ignored columns and returns itself.
@@ -457,8 +461,13 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	dialect := getDB(b.db).GetDialect()
 
 	// Selected Columns
-	for i, column := range b.columns {
-		if i > 0 {
+	var i int
+	for _, column := range b.columns {
+		if b.columnIsIgnored(column.Alias) || b.columnIsIgnored(extractName(column.Column)) {
+			continue
+		}
+
+		if i++; i > 1 {
 			buf.WriteString(", ")
 		}
 		buf.WriteString(dialect.Quote(column.Column))
