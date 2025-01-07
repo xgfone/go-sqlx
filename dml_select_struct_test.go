@@ -17,6 +17,7 @@ package sqlx
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func ExampleSelectBuilder_SelectStruct() {
@@ -24,6 +25,8 @@ func ExampleSelectBuilder_SelectStruct() {
 		DefaultField  string
 		ModifiedField string `sql:"field"`
 		IgnoredField  string `sql:"-"`
+
+		Valuer MyTime `sql:"time"`
 	}
 
 	s := S{}
@@ -32,15 +35,21 @@ func ExampleSelectBuilder_SelectStruct() {
 	fmt.Println(columns)
 
 	err := ScanColumnsToStruct(func(values ...any) error {
+		_time := time.Date(2025, 1, 2, 3, 4, 5, 0, time.Local)
 		for i, v := range values {
-			vp := v.(*string)
-			switch i {
-			case 0:
-				*vp = "a"
-			case 1:
-				*vp = "b"
-			default:
-				fmt.Printf("unknown %dth column value\n", i)
+			switch vp := v.(type) {
+			case *MyTime:
+				vp.Time = _time
+
+			case *string:
+				switch i {
+				case 0:
+					*vp = "a"
+				case 1:
+					*vp = "b"
+				default:
+					fmt.Printf("unknown %dth column value\n", i)
+				}
 			}
 		}
 		return nil
@@ -52,13 +61,15 @@ func ExampleSelectBuilder_SelectStruct() {
 		fmt.Println(s.DefaultField)
 		fmt.Println(s.ModifiedField)
 		fmt.Println(s.IgnoredField)
+		fmt.Println(s.Valuer.String())
 	}
 
 	// Output:
-	// [DefaultField field]
+	// [DefaultField field time]
 	// a
 	// b
 	//
+	// 2025-01-02/03:04:05
 }
 
 func TestSelectBuilderSelectStruct(t *testing.T) {

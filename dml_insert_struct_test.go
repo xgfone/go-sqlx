@@ -14,23 +14,28 @@
 
 package sqlx
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type InsertStruct struct {
-	Base
+	Base2
 
 	DefaultField  string
 	ModifiedField string `sql:"field"`
 	ZeroField     string `sql:",omitempty"`
 	IgnoredField  string `sql:"-"`
+	Valuer        MyTime `sql:"time,omitempty"`
 }
 
 func ExampleInsertBuilder_Struct() {
-	s1 := InsertStruct{DefaultField: "v1", IgnoredField: "v2"}
+	_time := time.Date(2025, 1, 2, 3, 4, 5, 0, time.Local)
+	s1 := InsertStruct{DefaultField: "v1", IgnoredField: "v2", Valuer: NewMyTime(_time)}
 	insert1 := Insert().Into("table").Struct(s1)
 	sql1, args1 := insert1.Build()
 
-	s2 := InsertStruct{Base: Base{Id: 123}, DefaultField: "v1", ModifiedField: "v2", ZeroField: "v3", IgnoredField: "v4"}
+	s2 := InsertStruct{Base2: Base2{Id: 123}, DefaultField: "v1", ModifiedField: "v2", ZeroField: "v3", IgnoredField: "v4"}
 	insert2 := Insert().Into("table").Struct(s2)
 	sql2, args2 := insert2.Build()
 
@@ -41,8 +46,8 @@ func ExampleInsertBuilder_Struct() {
 	fmt.Println(args2.Args())
 
 	// Output:
-	// INSERT INTO `table` (`DefaultField`, `field`) VALUES (?, ?)
-	// [v1 ]
+	// INSERT INTO `table` (`DefaultField`, `field`, `time`) VALUES (?, ?, ?)
+	// [v1  2025-01-02/03:04:05]
 	// INSERT INTO `table` (`id`, `DefaultField`, `field`, `ZeroField`) VALUES (?, ?, ?, ?)
 	// [123 v1 v2 v3]
 }
