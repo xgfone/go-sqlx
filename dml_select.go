@@ -23,6 +23,11 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+// SelectBuilder returns a new empty SelectBuilder.
+func (db *DB) SelectBuilder() *SelectBuilder {
+	return NewSelectBuilder().SetDB(db)
+}
+
 // SelectAlias is equal to SelectAlias(column, alias).
 func (db *DB) SelectAlias(column, alias string) *SelectBuilder {
 	return SelectAlias(column, alias).SetDB(db)
@@ -167,18 +172,22 @@ func (b *SelectBuilder) SelectAlias(column, alias string) *SelectBuilder {
 
 // Selects appends a group of columns in SELECT from the column names.
 func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
-	b.growcolumns(len(columns))
-	for _, c := range columns {
-		b.Select(c)
+	if _len := len(columns); _len > 0 {
+		b.growcolumns(_len)
+		for _, c := range columns {
+			b.Select(c)
+		}
 	}
 	return b
 }
 
 // SelectNamers appends the selected column in SELECT from the column names and aliases.
 func (b *SelectBuilder) SelectNamers(columns ...Namer) *SelectBuilder {
-	b.growcolumns(len(columns))
-	for _, c := range columns {
-		b.SelectAlias(c.Name, c.Alias)
+	if _len := len(columns); _len > 0 {
+		b.growcolumns(_len)
+		for _, c := range columns {
+			b.SelectAlias(c.Name, c.Alias)
+		}
 	}
 	return b
 }

@@ -22,6 +22,11 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+// InsertBuilder returns a new empty InsertBuilder.
+func (db *DB) InsertBuilder() *InsertBuilder {
+	return NewInsertBuilder().SetDB(db)
+}
+
 // Insert returns a INSERT SQL builder.
 func (db *DB) Insert() *InsertBuilder { return Insert().SetDB(db) }
 

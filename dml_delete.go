@@ -21,6 +21,11 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+// DeleteBuilder returns a new empty DeleteBuilder.
+func (db *DB) DeleteBuilder() *DeleteBuilder {
+	return NewDeleteBuilder().SetDB(db)
+}
+
 // Delete returns a DELETE SQL builder.
 func (db *DB) Delete(tables ...string) *DeleteBuilder {
 	return Delete(tables...).SetDB(db)

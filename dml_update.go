@@ -21,6 +21,11 @@ import (
 	"github.com/xgfone/go-op"
 )
 
+// UpdateBuilder returns a new empty UpdateBuilder.
+func (db *DB) UpdateBuilder() *UpdateBuilder {
+	return NewUpdateBuilder().SetDB(db)
+}
+
 // Update returns a UPDATE SQL builder.
 func (db *DB) Update(table ...string) *UpdateBuilder {
 	return Update(table...).SetDB(db)
