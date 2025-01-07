@@ -39,7 +39,7 @@ const (
 
 // Base is the common columns of the sql table.
 type Base struct {
-	Id int64 `sql:"id,omitempty" json:",omitempty"`
+	Id int64 `sql:"id,omitempty" json:",omitempty,omitzero"`
 
 	CreatedAt time.Time `sql:"created_at,omitempty" json:",omitempty,omitzero"`
 	UpdatedAt time.Time `sql:"updated_at,omitempty" json:",omitempty,omitzero"`
