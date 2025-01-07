@@ -1,4 +1,4 @@
-// Copyright 2022~2024 xgfone
+// Copyright 2022~2025 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,8 +37,18 @@ const (
 	DateTimeZero = "0000-00-00 00:00:00"
 )
 
-// Base is the common columns of the sql table.
-type Base struct {
+// Base is the alias of Base1.
+type Base = Base1
+
+// Base1 is the simplified model columns of the sql table.
+type Base1 struct {
+	Id int64 `sql:"id,omitempty" json:",omitempty,omitzero"`
+
+	CreatedAt time.Time `sql:"created_at,omitempty" json:",omitempty,omitzero"`
+}
+
+// Base2 is the richer model columns of the sql table.
+type Base2 struct {
 	Id int64 `sql:"id,omitempty" json:",omitempty,omitzero"`
 
 	CreatedAt time.Time `sql:"created_at,omitempty" json:",omitempty,omitzero"`
