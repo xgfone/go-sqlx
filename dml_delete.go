@@ -51,7 +51,7 @@ type DeleteBuilder struct {
 }
 
 // From is equal to b.FromAlias(table, "").
-func (b *DeleteBuilder) From(table string, alias ...string) *DeleteBuilder {
+func (b *DeleteBuilder) From(table string) *DeleteBuilder {
 	return b.FromAlias(table, "")
 }
 
