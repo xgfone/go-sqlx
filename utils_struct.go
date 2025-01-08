@@ -107,13 +107,15 @@ func _extractStructFields(fields []structfield, vtype reflect.Type, prefix strin
 				TagArgs: targs,
 
 				IsValuer:   isvaluer,
-				IgnoreZero: slices.Contains(targs, "omitempty") || slices.Contains(targs, "omitzero"),
+				IgnoreZero: slices.ContainsFunc(targs, ignorezero),
 			})
 		}
 	}
 
 	return fields
 }
+
+func ignorezero(s string) bool { return s == "omitempty" || s == "omitzero" }
 
 func formatFieldName(prefix, name string) string {
 	if len(prefix) == 0 {
