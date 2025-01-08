@@ -21,8 +21,6 @@ import (
 	"github.com/xgfone/go-op"
 )
 
-var ignoredcolumns = []string{"updated_at", "deleted_at"}
-
 // Oper is used to collect a set of SQL DML & DQL operations based on a table.
 type Oper[T any] struct {
 	Table Table
@@ -60,7 +58,6 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 		WithSorter(op.KeyId.OrderDesc()).
 		WithSoftCondition(op.IsNotDeletedCond).
 		WithSoftDeleteUpdater(softDeleteUpdater).
-		WithIgnoredColumns(ignoredcolumns).
 		WithRowsBinder(binder)
 }
 
@@ -126,7 +123,7 @@ func (o Oper[T]) WithSoftDeleteUpdater(softDeleteUpdater func(context.Context) o
 
 // WithIgnoredColumns returns a new Oper with the ignored selected columns.
 //
-// Default: []string{"updated_at", "deleted_at"}
+// Default: nil
 func (o Oper[T]) WithIgnoredColumns(columns []string) Oper[T] {
 	o.ignoredcolumns = columns
 	return o
