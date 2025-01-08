@@ -359,11 +359,11 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 }
 
 // NewDegradedSliceRowsBinder returns a rows binder which prefers to try to
-// bind *[]T to the rows, or use the degraded rows binder to bind the rows.
+// bind *S to the rows, or use the degraded rows binder to bind the rows.
 func NewDegradedSliceRowsBinder[S ~[]T, T any](degraded RowsBinder) RowsBinder {
 	binder := NewSliceRowsBinder[S]()
 	return RowsBinderFunc(func(scanner RowScanner, dst any) error {
-		if dstps, ok := dst.(*[]T); ok {
+		if dstps, ok := dst.(*S); ok {
 			return binder.BindRows(scanner, dstps)
 		}
 		return degraded.BindRows(scanner, dst)
