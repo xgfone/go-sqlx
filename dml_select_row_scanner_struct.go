@@ -30,7 +30,7 @@ func ScanColumnsToStruct(scan func(...any) error, columns []string, s any) (err 
 	}
 
 	value := reflect.ValueOf(s)
-	extract := getFieldExtracter(value.Type(), getScannedFieldsFromStruct)
+	extract := getFieldExtracter("selectscancolumns", value.Type(), getScannedFieldsFromStruct)
 	values := make([]any, len(columns))
 	extract(value, scannerData{Values: values, Columns: columns})
 	return scan(values...)

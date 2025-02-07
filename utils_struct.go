@@ -35,30 +35,36 @@ type (
 		IsValuer   bool
 		IgnoreZero bool
 	}
+
+	kindKeyer struct {
+		Kind string
+		Type reflect.Type
+	}
 )
 
 var (
 	_fieldextracterlock sync.Mutex
-	_fieldextractermaps atomic.Value // map[reflect.Type]fieldExtracter
+	_fieldextractermaps atomic.Value // map[kindKeyer]fieldExtracter
 )
 
 func init() {
-	_fieldextractermaps.Store(map[reflect.Type]fieldExtracter(nil))
+	_fieldextractermaps.Store(map[kindKeyer]fieldExtracter(nil))
 }
 
-func getFieldExtracter(vtype reflect.Type, get func(reflect.Type) fieldExtracter) fieldExtracter {
-	extracter, ok := _fieldextractermaps.Load().(map[reflect.Type]fieldExtracter)[vtype]
+func getFieldExtracter(kind string, vtype reflect.Type, get func(reflect.Type) fieldExtracter) fieldExtracter {
+	key := kindKeyer{Kind: kind, Type: vtype}
+	extracter, ok := _fieldextractermaps.Load().(map[kindKeyer]fieldExtracter)[key]
 	if !ok {
 		_fieldextracterlock.Lock()
 		defer _fieldextracterlock.Unlock()
 
-		types := _fieldextractermaps.Load().(map[reflect.Type]fieldExtracter)
-		if extracter, ok = types[vtype]; !ok {
+		types := _fieldextractermaps.Load().(map[kindKeyer]fieldExtracter)
+		if extracter, ok = types[key]; !ok {
 			extracter = get(vtype)
 
-			newtypes := make(map[reflect.Type]fieldExtracter, len(types)+1)
+			newtypes := make(map[kindKeyer]fieldExtracter, len(types)+1)
 			maps.Copy(newtypes, types)
-			newtypes[vtype] = extracter
+			newtypes[key] = extracter
 
 			_fieldextractermaps.Store(newtypes)
 		}

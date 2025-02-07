@@ -30,7 +30,7 @@ import (
 //  2. If the tag value contains "omitempty" or "omitzero", the ZERO field will be ignored.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	value := reflect.ValueOf(s)
-	extract := getFieldExtracter(value.Type(), getInsertedFieldsFromStruct)
+	extract := getFieldExtracter("insertvaluesfromstruct", value.Type(), getInsertedFieldsFromStruct)
 	extract(value, b)
 	return b
 }
@@ -117,7 +117,7 @@ func (b *InsertBuilder) ValuesFromStructs(slice any) *InsertBuilder {
 		panic("sqlx.InsertBuilder.ValuesFromStructs: not a struct slice")
 	}
 
-	extract := getFieldExtracter(vtype, func(t reflect.Type) fieldExtracter {
+	extract := getFieldExtracter("insertvaluesfromstructs", vtype, func(t reflect.Type) fieldExtracter {
 		fields := make([]structfield, 0, 16)
 		fields = extractStructFields(fields, vtype)
 		fieldm := slicex.Map(fields, func(f structfield) (string, *structfield) { return f.Column, &f })
