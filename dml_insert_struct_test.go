@@ -51,3 +51,22 @@ func ExampleInsertBuilder_Struct() {
 	// INSERT INTO `table` (`id`, `DefaultField`, `field`, `ZeroField`) VALUES (?, ?, ?, ?)
 	// [123 v1 v2 v3]
 }
+
+func ExampleInsertBuilder_ValuesFromStructs() {
+	_time := time.Date(2025, 1, 2, 3, 4, 5, 0, time.Local)
+	sql1, args1 := Insert().
+		Into("table").
+		Columns("field", "time", "ZeroField").
+		ValuesFromStructs([]InsertStruct{
+			{DefaultField: "v1", IgnoredField: "v2", Valuer: NewMyTime(_time)},
+			{ModifiedField: "v3", ZeroField: "v4"},
+		}).
+		Build()
+
+	fmt.Println(sql1)
+	fmt.Println(args1.Args())
+
+	// Output:
+	// INSERT INTO `table` (`field`, `time`, `ZeroField`) VALUES (?, ?, ?), (?, ?, ?)
+	// [ 2025-01-02/03:04:05  v3 0001-01-01/00:00:00 v4]
+}

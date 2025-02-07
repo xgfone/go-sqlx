@@ -18,6 +18,8 @@ import (
 	"database/sql"
 	"reflect"
 	"sync"
+
+	"github.com/xgfone/go-toolkit/slicex"
 )
 
 // Struct is the same as NamedValues, but extracts the fields of the struct
@@ -84,4 +86,59 @@ func (f *structfield) InsertedValue(value reflect.Value) (reflect.Value, bool) {
 	}
 
 	return value, !ignored
+}
+
+func (f *structfield) ForceInsertedValue(value reflect.Value) reflect.Value {
+	for _, index := range f.Indexes {
+		value = value.Field(index)
+	}
+
+	if value.Kind() == reflect.Pointer {
+		value = value.Elem()
+	}
+
+	return value
+}
+
+// ValuesFromStructs is the same as Values, but extracts the fields of the structs.
+func (b *InsertBuilder) ValuesFromStructs(slice any) *InsertBuilder {
+	values := reflect.ValueOf(slice)
+	switch {
+	case values.Kind() != reflect.Slice:
+		panic("sqlx.InsertBuilder.ValuesFromStructs: not a slice of structs")
+
+	case values.Len() == 0:
+		return b
+	}
+
+	value := values.Index(0)
+	vtype := value.Type()
+	if kind := value.Kind(); kind != reflect.Struct || vtype == _timetype {
+		panic("sqlx.InsertBuilder.ValuesFromStructs: not a struct slice")
+	}
+
+	extract := getFieldExtracter(vtype, func(t reflect.Type) fieldExtracter {
+		fields := make([]structfield, 0, 16)
+		fields = extractStructFields(fields, vtype)
+		fieldm := slicex.Map(fields, func(f structfield) (string, *structfield) { return f.Column, &f })
+
+		return func(value reflect.Value, data any) {
+			builder := data.(*InsertBuilder)
+			builder.GrowValues(value.Len())
+			clen := len(builder.columns)
+
+			for i, _len := 0, value.Len(); i < _len; i++ {
+				_value := value.Index(i)
+				values := make([]any, clen)
+				for j := 0; j < clen; j++ {
+					field := fieldm[builder.columns[j]]
+					values[j] = field.ForceInsertedValue(_value).Interface()
+				}
+				builder.Values(values...)
+			}
+		}
+	})
+
+	extract(values, b)
+	return b
 }

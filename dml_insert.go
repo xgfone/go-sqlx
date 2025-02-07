@@ -1,4 +1,4 @@
-// Copyright 2020~2023 xgfone
+// Copyright 2020~2025 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -89,6 +89,15 @@ func (b *InsertBuilder) Values(values ...any) *InsertBuilder {
 	}
 
 	b.values = append(b.values, values)
+	return b
+}
+
+// GrowValues grows the capacity of the values and returns itself.
+func (b *InsertBuilder) GrowValues(newcap int) *InsertBuilder {
+	if _cap := cap(b.values); _cap < newcap {
+		values := make([][]any, 0, newcap+len(b.values))
+		b.values = append(values, b.values...)
+	}
 	return b
 }
 
