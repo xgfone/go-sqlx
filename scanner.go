@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/xgfone/go-defaults"
+	"github.com/xgfone/go-toolkit/timex"
 )
 
 // GeneralScanner is a general sql.Scanner.
@@ -111,7 +111,7 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		}
 
 	case *time.Time:
-		*v, err = toTime(src, defaults.TimeLocation.Get())
+		*v, err = toTime(src, timex.Location)
 
 	case *bool:
 		switch s := src.(type) {
@@ -562,7 +562,7 @@ func (s GeneralScanner) Scan(src any) (err error) {
 			}
 
 		case time.Time:
-			*v = s.In(defaults.TimeLocation.Get()).Format("2006-01-02 15:04:05")
+			*v = s.In(timex.Location).Format("2006-01-02 15:04:05")
 
 		default:
 			err = fmt.Errorf("converting %T to string is unsupported", src)
