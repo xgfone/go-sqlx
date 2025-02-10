@@ -627,42 +627,44 @@ func (o Oper[T]) SoftGetWithId(id int64, conds ...op.Condition) (v T, ok bool, e
 
 /// ----------------------------------------------------------------------- ///
 
+// DeleteById is equal to o.DeleteWithId(id).
+func (o Oper[T]) DeleteById(id int64) error {
+	return o.DeleteWithId(id)
+}
+
+// ExistById is equal to o.ExistWithId(id).
+func (o Oper[T]) ExistById(id int64) (bool, error) {
+	return o.ExistWithId(id)
+}
+
+// GetById is equal to o.GetWithId(id).
+func (o Oper[T]) GetById(id int64) (v T, ok bool, err error) {
+	return o.GetWithId(id)
+}
+
+// SoftDeleteById is equal to o.SoftDeleteWithId(id).
+func (o Oper[T]) SoftDeleteById(id int64) error {
+	return o.SoftDeleteWithId(id)
+}
+
+// SoftExistById is equal to o.SoftExistWithId(id).
+func (o Oper[T]) SoftExistById(id int64) (bool, error) {
+	return o.SoftExistWithId(id)
+}
+
+// SoftGetById is equal to o.SoftGetWithId(id).
+func (o Oper[T]) SoftGetById(id int64) (v T, ok bool, err error) {
+	return o.SoftGetWithId(id)
+}
+
+/// ----------------------------------------------------------------------- ///
+
 // UpdateById is equal to o.Update(op.Batch(updaters...), op.KeyId.Eq(id)).
 func (o Oper[T]) UpdateById(id int64, updaters ...op.Updater) error {
 	return o.Update(op.Batch(updaters...), op.KeyId.Eq(id))
 }
 
-// DeleteById is equal to o.Delete(op.KeyId.Eq(id)).
-func (o Oper[T]) DeleteById(id int64) error {
-	return o.Delete(op.KeyId.Eq(id))
-}
-
-// ExistById is equal to o.Exist(op.KeyId.Eq(id)).
-func (o Oper[T]) ExistById(id int64) (bool, error) {
-	return o.Exist(op.KeyId.Eq(id))
-}
-
-// GetById is equal to o.Get(nil, op.KeyId.Eq(id)).
-func (o Oper[T]) GetById(id int64) (v T, ok bool, err error) {
-	return o.Get(nil, op.KeyId.Eq(id))
-}
-
 // SoftUpdateById is equal to o.SoftUpdate(op.Batch(updaters...), op.KeyId.Eq(id)).
 func (o Oper[T]) SoftUpdateById(id int64, updaters ...op.Updater) error {
 	return o.SoftUpdate(op.Batch(updaters...), op.KeyId.Eq(id))
-}
-
-// SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id)).
-func (o Oper[T]) SoftDeleteById(id int64) error {
-	return o.SoftDelete(op.KeyId.Eq(id))
-}
-
-// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id)).
-func (o Oper[T]) SoftExistById(id int64) (bool, error) {
-	return o.SoftExist(op.KeyId.Eq(id))
-}
-
-// SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id)).
-func (o Oper[T]) SoftGetById(id int64) (v T, ok bool, err error) {
-	return o.SoftGet(nil, op.KeyId.Eq(id))
 }
