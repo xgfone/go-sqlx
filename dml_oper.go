@@ -595,6 +595,38 @@ func (o Oper[T]) SoftGetAll(conds ...op.Condition) ([]T, error) {
 
 /// ----------------------------------------------------------------------- ///
 
+// DeleteWithId is equal to o.Delete(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) DeleteWithId(id int64, conds ...op.Condition) error {
+	return o.Delete(op.KeyId.Eq(id), op.And(conds...))
+}
+
+// ExistWithId is equal to o.Exist(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) ExistWithId(id int64, conds ...op.Condition) (bool, error) {
+	return o.Exist(op.KeyId.Eq(id), op.And(conds...))
+}
+
+// GetWithId is equal to o.Get(nil, op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) GetWithId(id int64, conds ...op.Condition) (v T, ok bool, err error) {
+	return o.Get(nil, op.KeyId.Eq(id), op.And(conds...))
+}
+
+// SoftDeleteWithId is equal to o.SoftDelete(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftDeleteWithId(id int64, conds ...op.Condition) error {
+	return o.SoftDelete(op.KeyId.Eq(id), op.And(conds...))
+}
+
+// SoftExistWithId is equal to o.SoftExist(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftExistWithId(id int64, conds ...op.Condition) (bool, error) {
+	return o.SoftExist(op.KeyId.Eq(id), op.And(conds...))
+}
+
+// SoftGetWithId is equal to o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftGetWithId(id int64, conds ...op.Condition) (v T, ok bool, err error) {
+	return o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...))
+}
+
+/// ----------------------------------------------------------------------- ///
+
 // UpdateById is equal to o.Update(op.Batch(updaters...), op.KeyId.Eq(id)).
 func (o Oper[T]) UpdateById(id int64, updaters ...op.Updater) error {
 	return o.Update(op.Batch(updaters...), op.KeyId.Eq(id))
