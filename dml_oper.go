@@ -605,6 +605,11 @@ func (o Oper[T]) DeleteById(id int64) error {
 	return o.Delete(op.KeyId.Eq(id))
 }
 
+// ExistById is equal to o.Exist(op.KeyId.Eq(id)).
+func (o Oper[T]) ExistById(id int64) (bool, error) {
+	return o.Exist(op.KeyId.Eq(id))
+}
+
 // GetById is equal to o.Get(nil, op.KeyId.Eq(id)).
 func (o Oper[T]) GetById(id int64) (v T, ok bool, err error) {
 	return o.Get(nil, op.KeyId.Eq(id))
@@ -618,6 +623,11 @@ func (o Oper[T]) SoftUpdateById(id int64, updaters ...op.Updater) error {
 // SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id)).
 func (o Oper[T]) SoftDeleteById(id int64) error {
 	return o.SoftDelete(op.KeyId.Eq(id))
+}
+
+// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id)).
+func (o Oper[T]) SoftExistById(id int64) (bool, error) {
+	return o.SoftExist(op.KeyId.Eq(id))
 }
 
 // SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id)).
