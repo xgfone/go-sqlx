@@ -260,6 +260,11 @@ func (b *SelectBuilder) Join(table, alias string, ons ...JoinOn) *SelectBuilder 
 	return b.joinTable("", table, alias, ons...)
 }
 
+// JoinInner appends the "INNER JOIN table ON on..." statement.
+func (b *SelectBuilder) JoinInner(table, alias string, ons ...JoinOn) *SelectBuilder {
+	return b.joinTable("INNER", table, alias, ons...)
+}
+
 // JoinLeft appends the "LEFT JOIN table ON on..." statement.
 func (b *SelectBuilder) JoinLeft(table, alias string, ons ...JoinOn) *SelectBuilder {
 	return b.joinTable("LEFT", table, alias, ons...)

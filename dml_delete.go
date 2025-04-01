@@ -65,6 +65,16 @@ func (b *DeleteBuilder) FromAlias(table string, alias string) *DeleteBuilder {
 	return b
 }
 
+// Join appends the "JOIN table ON on..." statement.
+func (b *DeleteBuilder) Join(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("", table, alias, ons...)
+}
+
+// JoinInner appends the "INNER JOIN table ON on..." statement.
+func (b *DeleteBuilder) JoinInner(table, alias string, ons ...JoinOn) *DeleteBuilder {
+	return b.joinTable("INNER", table, alias, ons...)
+}
+
 // JoinLeft appends the "LEFT JOIN table ON on..." statement.
 func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...JoinOn) *DeleteBuilder {
 	return b.joinTable("LEFT", table, alias, ons...)
