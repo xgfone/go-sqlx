@@ -59,6 +59,11 @@ type Base2 struct {
 // String is a string slice value type, which is encoded to a string or decoded from a []byte or string.
 type Strings []string
 
+// IsZero reports whether the string slice is ZERO.
+func (vs Strings) IsZero() bool {
+	return len(vs) == 0
+}
+
 // Value implements the interface driver.Valuer to encode the map to a sql value(string).
 func (vs Strings) Value() (driver.Value, error) {
 	if len(vs) == 0 || (len(vs) == 1 && vs[0] == "") {
@@ -74,6 +79,11 @@ func (vs *Strings) Scan(src any) error {
 
 // Map is a map value type, which is encoded to a string or decoded from a []byte or string.
 type Map[T any] map[string]T
+
+// IsZero reports whether the map is ZERO.
+func (m Map[T]) IsZero() bool {
+	return len(m) == 0
+}
 
 // Value implements the interface driver.Valuer to encode the map to a sql value(string).
 func (m Map[T]) Value() (driver.Value, error) {

@@ -77,8 +77,7 @@ func extractStructFields(fields []structfield, vtype reflect.Type) []structfield
 }
 
 func _extractStructFields(fields []structfield, vtype reflect.Type, prefix string, indexes []int) []structfield {
-	_len := vtype.NumField()
-	for i := 0; i < _len; i++ {
+	for i := range vtype.NumField() {
 		ftype := vtype.Field(i)
 
 		var targs []string
