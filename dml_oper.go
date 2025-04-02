@@ -52,7 +52,7 @@ func NewOper[T any](table string) Oper[T] {
 
 // NewOperWithTable returns a new Oper with the table.
 func NewOperWithTable[T any](table Table) Oper[T] {
-	binder := NewDegradedSliceRowsBinder[[]T](defaultbinder.binder)
+	binder := ComposeRowsBinders(NewSliceRowsBinder[[]T](), DefaultMixRowsBinder)
 	return Oper[T]{binder: defaultbinder}.
 		WithTable(table).
 		WithSorter(op.KeyId.OrderDesc()).
@@ -132,6 +132,17 @@ func (o Oper[T]) WithIgnoredColumns(columns []string) Oper[T] {
 // IgnoredColumns returned the ignored selected columns.
 func (o Oper[T]) IgnoredColumns() []string {
 	return o.ignoredcolumns
+}
+
+// AppendRowsBinders returns a new Oper, which appends the new rows binders by ComposeRowsBinders.
+func (o Oper[T]) AppendRowsBinders(binders ...RowsBinder) Oper[T] {
+	if len(binders) > 0 {
+		newbinders := make([]RowsBinder, len(binders)+1)
+		newbinders = append(newbinders, o.binder.binder)
+		newbinders = append(newbinders, binders...)
+		o = o.WithRowsBinder(ComposeRowsBinders(newbinders...))
+	}
+	return o
 }
 
 /// ----------------------------------------------------------------------- ///
