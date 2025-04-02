@@ -134,6 +134,11 @@ func (o Oper[T]) IgnoredColumns() []string {
 	return o.ignoredcolumns
 }
 
+// RowsBinder returns the inner rows binder.
+func (o Oper[T]) RowsBinder() RowsBinder {
+	return o.binder.binder
+}
+
 // AppendRowsBinders returns a new Oper, which appends the new rows binders by ComposeRowsBinders.
 func (o Oper[T]) AppendRowsBinders(binders ...RowsBinder) Oper[T] {
 	if len(binders) > 0 {
