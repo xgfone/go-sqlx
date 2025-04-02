@@ -102,3 +102,7 @@ func toslice[S ~[]E, E any](srcs S, to func(E) string) (dsts []string) {
 	}
 	return
 }
+
+func gettype(v any) string {
+	return reflect.TypeOf(v).String()
+}

@@ -235,7 +235,7 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 			m = *v
 
 		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKey", Type: fmt.Sprintf("%T", dst)}
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKey", Type: gettype(dst)}
 		}
 
 		for scanner.Next() {
@@ -269,7 +269,7 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 			m = *v
 
 		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForValue", Type: fmt.Sprintf("%T", dst)}
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForValue", Type: gettype(dst)}
 		}
 
 		for scanner.Next() {
@@ -304,7 +304,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 			m = *v
 
 		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKeyValue", Type: fmt.Sprintf("%T", dst)}
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKeyValue", Type: gettype(dst)}
 		}
 
 		for scanner.Next() {
@@ -327,7 +327,7 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
 		dstps, ok := dst.(*S)
 		if !ok {
-			return UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: fmt.Sprintf("%T", dst)}
+			return UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: gettype(dst)}
 		}
 
 		dsts := *dstps
