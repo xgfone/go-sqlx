@@ -52,7 +52,7 @@ func NewOper[T any](table string) Oper[T] {
 
 // NewOperWithTable returns a new Oper with the table.
 func NewOperWithTable[T any](table Table) Oper[T] {
-	binder := ComposeRowsBinders(NewSliceRowsBinder[[]T](), DefaultMixRowsBinder)
+	binder := ComposeRowsBinders(NewSliceRowsBinder[[]T](), defaultbinder.binder)
 	return Oper[T]{binder: defaultbinder}.
 		WithTable(table).
 		WithSorter(op.KeyId.OrderDesc()).
