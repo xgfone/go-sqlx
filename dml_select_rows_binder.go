@@ -15,10 +15,29 @@
 package sqlx
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 )
+
+// UnsupportedTypeError represents the error that the type is not supported.
+type UnsupportedTypeError struct {
+	Name string
+	Type string
+}
+
+func (e UnsupportedTypeError) Error() string {
+	return fmt.Sprintf("%s: unsupported type %s", e.Name, e.Type)
+}
+
+// IsUnsupportedTypeError checks if the error is a UnsupportedTypeError.
+func IsUnsupportedTypeError(err error) bool {
+	if _, ok := err.(UnsupportedTypeError); ok {
+		return true
+	}
+	return errors.As(err, new(UnsupportedTypeError))
+}
 
 // RowsBinder is an interface to bind the rows to dst that may be a map or slice.
 type RowsBinder interface {
@@ -82,7 +101,7 @@ func (b *MixRowsBinder) BindRows(scanner RowScanner, dst any) (err error) {
 		return CommonSliceRowsBinder.BindRows(scanner, dst)
 	}
 
-	return fmt.Errorf("sqlx.MixRowsBinder.BindRows: unsupport the type %s for rows binder", vtype)
+	return UnsupportedTypeError{Name: "sqlx.MixRowsBinder.BindRows", Type: vtype.String()}
 }
 
 func init() {
@@ -205,7 +224,7 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 		switch v := dst.(type) {
 		case M:
 			if v == nil {
-				panic("sqlx. NewMapRowsBinderForKey: map value must not be nil")
+				panic("sqlx.NewMapRowsBinderForKey: map value must not be nil")
 			}
 			m = v
 
@@ -216,7 +235,7 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 			m = *v
 
 		default:
-			panic(fmt.Errorf("sqlx. NewMapRowsBinderForKey: unsupport the type %T", dst))
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKey", Type: fmt.Sprintf("%T", dst)}
 		}
 
 		for scanner.Next() {
@@ -250,7 +269,7 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 			m = *v
 
 		default:
-			panic(fmt.Errorf("sqlx.NewMapRowsBinderForValue: unsupport the type %T", dst))
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForValue", Type: fmt.Sprintf("%T", dst)}
 		}
 
 		for scanner.Next() {
@@ -274,7 +293,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 		switch v := dst.(type) {
 		case M:
 			if v == nil {
-				panic("sqlx. NewMapRowsBinderForKeyValue: map value must not be nil")
+				panic("sqlx.NewMapRowsBinderForKeyValue: map value must not be nil")
 			}
 			m = v
 
@@ -285,7 +304,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 			m = *v
 
 		default:
-			panic(fmt.Errorf("sqlx. NewMapRowsBinderForKeyValue: unsupport the type %T", dst))
+			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKeyValue", Type: fmt.Sprintf("%T", dst)}
 		}
 
 		for scanner.Next() {
@@ -306,9 +325,9 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 // It does not use the reflect package.
 func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		dstps, ok := dst.(*[]T)
+		dstps, ok := dst.(*S)
 		if !ok {
-			panic(fmt.Errorf("sqlx. NewSliceRowsBinder: expect type %T, but got %T", (*S)(nil), dst))
+			return UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: fmt.Sprintf("%T", dst)}
 		}
 
 		dsts := *dstps
@@ -367,5 +386,20 @@ func NewDegradedSliceRowsBinder[S ~[]T, T any](degraded RowsBinder) RowsBinder {
 			return binder.BindRows(scanner, dstps)
 		}
 		return degraded.BindRows(scanner, dst)
+	})
+}
+
+// ComposeRowsBinders returns a composed rows binder which tries each binder in order.
+//
+// If the binder returns an UnsupportedTypeError, the next binder is tried.
+func ComposeRowsBinders(binders ...RowsBinder) RowsBinder {
+	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		for _, binder := range binders {
+			err = binder.BindRows(scanner, dst)
+			if err == nil || !IsUnsupportedTypeError(err) {
+				return err
+			}
+		}
+		return
 	})
 }
