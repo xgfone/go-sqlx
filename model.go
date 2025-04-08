@@ -17,12 +17,12 @@ package sqlx
 import (
 	"bytes"
 	"database/sql/driver"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/xgfone/go-toolkit/jsonx"
 	"github.com/xgfone/go-toolkit/unsafex"
 )
 
@@ -148,8 +148,8 @@ func encodemap[M ~map[string]T, T any](m M) (s string, err error) {
 
 	buf := bytes.NewBuffer(nil)
 	buf.Grow(64 * len(m))
-	err = json.NewEncoder(buf).Encode(m)
-	s = buf.String()
+	err = jsonx.Marshal(buf, m)
+	s = strings.TrimRight(buf.String(), "\n")
 	return
 }
 
@@ -160,13 +160,13 @@ func decodemap[M ~map[string]T, T any](m *M, src any) (err error) {
 		switch data = bytes.TrimSpace(data); {
 		case data == nil, bytes.Equal(data, _jsonbraces), bytes.Equal(data, _jsonnull):
 		default:
-			err = json.NewDecoder(bytes.NewReader(data)).Decode(m)
+			err = jsonx.Unmarshal(m, bytes.NewReader(data))
 		}
 	case string:
 		switch data = strings.TrimSpace(data); data {
 		case "", "{}", "null":
 		default:
-			err = json.NewDecoder(strings.NewReader(data)).Decode(m)
+			err = jsonx.Unmarshal(m, strings.NewReader(data))
 		}
 	default:
 		err = fmt.Errorf("converting %T to %T is unsupported", src, *m)
