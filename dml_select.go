@@ -93,8 +93,8 @@ const (
 
 // SelectBuilder is used to build the SELECT statement.
 type SelectBuilder struct {
-	db       *DB
-	distinct bool
+	db *DB
+
 	ftables  []sqlTable
 	jtables  []joinTable
 	columns  []selectedColumn
@@ -109,6 +109,9 @@ type SelectBuilder struct {
 	page     op.Pagination
 
 	binder binder
+
+	distinct     bool
+	forceOrderBy bool
 }
 
 // Count returns a COUNT(field).
@@ -333,6 +336,16 @@ func (b *SelectBuilder) Having(exprs ...string) *SelectBuilder {
 	return b
 }
 
+// ForceOrderBy builds the "ORDER BY" clause for the columns unconditionally.
+//
+// If false, the "ORDER BY" clause will be built only if the column is selected.
+//
+// Default: false
+func (b *SelectBuilder) ForceOrderBy(force bool) *SelectBuilder {
+	b.forceOrderBy = force
+	return b
+}
+
 // OrderBy appends the column used by ORDER BY.
 func (b *SelectBuilder) OrderBy(column string, order Order) *SelectBuilder {
 	b.orderbys = append(b.orderbys, orderby{Column: column, Order: order})
@@ -527,10 +540,19 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	// Order By
 	if len(b.orderbys) > 0 {
 		buf.WriteString(" ORDER BY ")
-		for i, ob := range b.orderbys {
-			if i > 0 {
-				buf.WriteString(", ")
+
+		var notfirst bool
+		for _, ob := range b.orderbys {
+			if !b.forceOrderBy && !containsColumn(b.columns, ob.Column) {
+				continue
 			}
+
+			if notfirst {
+				buf.WriteString(", ")
+			} else {
+				notfirst = true
+			}
+
 			buf.WriteString(dialect.Quote(ob.Column))
 			if ob.Order != "" {
 				buf.WriteByte(' ')
@@ -561,4 +583,19 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	sql = buf.String()
 	putBuffer(buf)
 	return
+}
+
+func containsColumn(columns []selectedColumn, column string) bool {
+	for i := range len(columns) {
+		switch columns[i].Column {
+		case "*", column:
+			return true
+		}
+
+		switch columns[i].Alias {
+		case "*", column:
+			return true
+		}
+	}
+	return false
 }
