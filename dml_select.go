@@ -539,8 +539,6 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 
 	// Order By
 	if len(b.orderbys) > 0 {
-		buf.WriteString(" ORDER BY ")
-
 		var notfirst bool
 		for _, ob := range b.orderbys {
 			if !b.forceOrderBy && !containsColumn(b.columns, ob.Column) {
@@ -550,6 +548,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 			if notfirst {
 				buf.WriteString(", ")
 			} else {
+				buf.WriteString(" ORDER BY ")
 				notfirst = true
 			}
 
