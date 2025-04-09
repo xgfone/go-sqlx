@@ -79,6 +79,21 @@ func NewMixRowsBinder() *MixRowsBinder {
 	return &MixRowsBinder{types: make(map[reflect.Type]RowsBinder, 64)}
 }
 
+// RegisterMapRowsBinder is a convenient function to register a rows binder,
+// which binds the row to the value and maps the value to the key,
+// for a specific map type, that's, map[K]V and *map[K]V.
+//
+// If b is nil, use DefaultMixRowsBinder instead.
+func RegisterMapRowsBinder[K comparable, V any](b *MixRowsBinder, keyf func(V) K) {
+	if b == nil {
+		b = DefaultMixRowsBinder
+	}
+
+	binder := NewMapRowsBinderForValue[map[K]V](keyf)
+	b.Register(reflect.TypeFor[map[K]V](), binder)
+	b.Register(reflect.TypeFor[*map[K]V](), binder)
+}
+
 // Register registers a rows binder for a specific type.
 func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old RowsBinder) {
 	if binder == nil {
