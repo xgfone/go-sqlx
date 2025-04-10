@@ -94,6 +94,13 @@ func RegisterMapRowsBinder[K comparable, V any](b *MixRowsBinder, keyf func(V) K
 	b.Register(reflect.TypeFor[*map[K]V](), binder)
 }
 
+// Get returns the rows binder for a specific type.
+//
+// Return nil if the type has been not registered.
+func (b *MixRowsBinder) Get(vtype reflect.Type) RowsBinder {
+	return b.types[vtype]
+}
+
 // Register registers a rows binder for a specific type.
 func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old RowsBinder) {
 	if binder == nil {
