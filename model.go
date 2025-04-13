@@ -148,7 +148,7 @@ func encodemap[M ~map[string]T, T any](m M) (s string, err error) {
 
 	buf := bytes.NewBuffer(nil)
 	buf.Grow(64 * len(m))
-	err = jsonx.Marshal(buf, m)
+	err = jsonx.MarshalWriter(buf, m)
 	s = strings.TrimRight(buf.String(), "\n")
 	return
 }
@@ -160,13 +160,13 @@ func decodemap[M ~map[string]T, T any](m *M, src any) (err error) {
 		switch data = bytes.TrimSpace(data); {
 		case data == nil, bytes.Equal(data, _jsonbraces), bytes.Equal(data, _jsonnull):
 		default:
-			err = jsonx.Unmarshal(m, bytes.NewReader(data))
+			err = jsonx.UnmarshalReader(m, bytes.NewReader(data))
 		}
 	case string:
 		switch data = strings.TrimSpace(data); data {
 		case "", "{}", "null":
 		default:
-			err = jsonx.Unmarshal(m, strings.NewReader(data))
+			err = jsonx.UnmarshalReader(m, strings.NewReader(data))
 		}
 	default:
 		err = fmt.Errorf("converting %T to %T is unsupported", src, *m)
