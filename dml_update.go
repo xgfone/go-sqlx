@@ -245,7 +245,7 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 
 	// Join
 	for _, join := range b.jtables {
-		join.Build(buf, dialect)
+		args = join.Build(buf, dialect, args)
 	}
 
 	// Where

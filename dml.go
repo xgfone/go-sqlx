@@ -20,10 +20,14 @@ import "bytes"
 type JoinOn struct {
 	Left  string
 	Right string
+	IsArg bool // Right is the argument or not.
 }
 
-// On returns a JoinOn instance.
+// On returns a JoinOn instance with IsArg=false.
 func On(left, right string) JoinOn { return JoinOn{Left: left, Right: right} }
+
+// OnArg returns a JoinOn instance with IsArg=true.
+func OnArg(left, right string) JoinOn { return JoinOn{Left: left, Right: right, IsArg: true} }
 
 type joinTable struct {
 	Type  string
@@ -32,7 +36,7 @@ type joinTable struct {
 	Ons   []JoinOn
 }
 
-func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
+func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect, args *ArgsBuilder) *ArgsBuilder {
 	if jt.Type != "" {
 		buf.WriteByte(' ')
 		buf.WriteString(jt.Type)
@@ -53,9 +57,18 @@ func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect) {
 			}
 			buf.WriteString(dialect.Quote(on.Left))
 			buf.WriteByte('=')
-			buf.WriteString(dialect.Quote(on.Right))
+			if on.IsArg {
+				if args == nil {
+					args = GetArgsBuilderFromPool(dialect)
+				}
+				buf.WriteString(args.Add(on.Right))
+			} else {
+				buf.WriteString(dialect.Quote(on.Right))
+			}
 		}
 	}
+
+	return args
 }
 
 type sqlTable struct {

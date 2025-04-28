@@ -510,7 +510,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 
 	// Join
 	for _, table := range b.jtables {
-		table.Build(buf, dialect)
+		args = table.Build(buf, dialect, args)
 	}
 
 	// Where
