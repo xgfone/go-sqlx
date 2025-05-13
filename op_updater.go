@@ -63,12 +63,19 @@ func newUpdaterBatch() OpBuilder {
 }
 
 func newUpdaterSet() OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
-		if opvalueisnil(op) {
+	return OpBuilderFunc(func(ab *ArgsBuilder, o op.Op) string {
+		if opvalueisnil(o) {
 			return ""
 		}
 
-		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(op)), ab.Add(op.Val))
+		var value string
+		if kv, ok := o.Val.(op.KV); ok {
+			value = ab.Quote(kv.Key)
+		} else {
+			value = ab.Add(o.Val)
+		}
+
+		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(o)), value)
 	})
 }
 
