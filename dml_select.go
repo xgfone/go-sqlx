@@ -431,11 +431,6 @@ func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 	return b
 }
 
-// Paginator is deprecated and reserved as the alias of Pagination for backward compatibility.
-func (b *SelectBuilder) Paginator(page op.Pagination) *SelectBuilder {
-	return b.Pagination(page)
-}
-
 // Pagination sets the Pagination, which is the same as b.Paginate.
 func (b *SelectBuilder) Pagination(page op.Pagination) *SelectBuilder {
 	b.page = page
