@@ -41,9 +41,11 @@ type GeneralScanner struct {
 //	    string:    time.ParseDuration(src)
 //	    []byte:    time.ParseDuration(string(src))
 //	    int64:     time.Duration(src) * time.Millisecond
+//	    uint64:    time.Duration(src) * time.Millisecond
 //	    float64:   time.Duration(src  * float64(time.Second))
 //	*time.Time:
 //	    int64:     time.Unix(src, 0).In(Location)
+//	    uint64:    time.Unix(src, 0).In(Location)
 //	    float64:   time.Unix(Integer, Fraction).In(Location)
 //	    string:    time.ParseInLocation(DatetimeLayout, src, Location))
 //	    []byte:    time.ParseInLocation(DatetimeLayout, string(src), Location))
@@ -51,6 +53,7 @@ type GeneralScanner struct {
 //	*bool:
 //	     bool:     src
 //	     int64:    src!=0
+//	     uint64:   src!=0
 //	     float64:  src!=0
 //	     string:   strconv.ParseBool(src)
 //	     []byte:
@@ -61,17 +64,20 @@ type GeneralScanner struct {
 //	    []byte:    string(src)
 //	    bool:      "true" or "false"
 //	    int64:     strconv.FormatInt(src, 10)
+//	    uint64:    strconv.FormatUint(src, 10)
 //	    float64:   strconv.FormatFloat(src, 'f', -1, 64)
 //	    time.Time: src.In(Location).Format(DatetimeLayout)
 //	*float32, *float64:
 //	    bool:      true=>1, false=>0
 //	    int64:     floatXX(src)
+//	    uint64:    floatXX(src)
 //	    float64:   floatXX(src)
 //	    string:    strconv.ParseFloat(src, 64)
 //	    []byte:    strconv.ParseFloat(string(src), 64)
 //	*int, *int8, *int16, *int32, *int64:
 //		bool:      true=>1, false=>0
 //	    int64:     intXX(src)
+//	    uint64:    intXX(src)
 //	    float64:   intXX(src)
 //	    string:    strconv.ParseInt(src, 10, 64)
 //	    []byte:    strconv.ParseInt(string(src), 10, 64)
@@ -79,6 +85,7 @@ type GeneralScanner struct {
 //	*uint, *uint8, *uint16, *uint32, *uint64:
 //		bool:      true=>1, false=>0
 //	    int64:     uintXX(src)
+//	    uint64:    uintXX(src)
 //	    float64:   uintXX(src)
 //	    string:    strconv.ParseUint(src, 10, 64)
 //	    []byte:    strconv.ParseUint(string(src), 10, 64)
@@ -100,6 +107,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = time.Duration(s) * time.Millisecond
 
+		case uint64:
+			*v = time.Duration(s) * time.Millisecond
+
 		case float32:
 			*v = time.Duration(float64(s) * float64(time.Second))
 
@@ -116,6 +126,8 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *bool:
 		switch s := src.(type) {
 		case int64:
+			*v = s != 0
+		case uint64:
 			*v = s != 0
 		case float32:
 			*v = s != 0
@@ -138,6 +150,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *int:
 		switch s := src.(type) {
 		case int64:
+			*v = int(s)
+
+		case uint64:
 			*v = int(s)
 
 		case float32:
@@ -177,6 +192,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = int8(s)
 
+		case uint64:
+			*v = int8(s)
+
 		case float32:
 			*v = int8(s)
 
@@ -209,6 +227,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *int16:
 		switch s := src.(type) {
 		case int64:
+			*v = int16(s)
+
+		case uint64:
 			*v = int16(s)
 
 		case float32:
@@ -245,6 +266,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = int32(s)
 
+		case uint64:
+			*v = int32(s)
+
 		case float32:
 			*v = int32(s)
 
@@ -279,6 +303,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = s
 
+		case uint64:
+			*v = int64(s)
+
 		case float32:
 			*v = int64(s)
 
@@ -308,6 +335,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *uint:
 		switch s := src.(type) {
 		case int64:
+			*v = uint(s)
+
+		case uint64:
 			*v = uint(s)
 
 		case float32:
@@ -347,6 +377,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = uint8(s)
 
+		case uint64:
+			*v = uint8(s)
+
 		case float32:
 			*v = uint8(s)
 
@@ -379,6 +412,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *uint16:
 		switch s := src.(type) {
 		case int64:
+			*v = uint16(s)
+
+		case uint64:
 			*v = uint16(s)
 
 		case float32:
@@ -415,6 +451,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = uint32(s)
 
+		case uint64:
+			*v = uint32(s)
+
 		case float32:
 			*v = uint32(s)
 
@@ -449,6 +488,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = uint64(s)
 
+		case uint64:
+			*v = uint64(s)
+
 		case float32:
 			*v = uint64(s)
 
@@ -478,6 +520,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 	case *float32:
 		switch s := src.(type) {
 		case int64:
+			*v = float32(s)
+
+		case uint64:
 			*v = float32(s)
 
 		case float32:
@@ -514,6 +559,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		case int64:
 			*v = float64(s)
 
+		case uint64:
+			*v = float64(s)
+
 		case float32:
 			*v = float64(s)
 
@@ -541,6 +589,9 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		switch s := src.(type) {
 		case int64:
 			*v = strconv.FormatInt(s, 10)
+
+		case uint64:
+			*v = strconv.FormatUint(s, 10)
 
 		case float32:
 			*v = strconv.FormatFloat(float64(s), 'f', -1, 64)
@@ -591,6 +642,9 @@ func toTime(src any, loc *time.Location) (time.Time, error) {
 
 	case int64:
 		return time.Unix(s, 0).In(loc), nil
+
+	case uint64:
+		return time.Unix(int64(s), 0).In(loc), nil
 
 	case float32:
 		int, frac := math.Modf(float64(s))
