@@ -295,14 +295,57 @@ func (o Oper[T]) MakeSlice(cap int) []T {
 	}
 }
 
-// Sum is equal to o.SumContext(context.Background(), field, conds...).
+// Sum is the alias of SumInt.
 func (o Oper[T]) Sum(field string, conds ...op.Condition) (int, error) {
-	return o.SumContext(context.Background(), field, conds...)
+	return o.SumInt(field, conds...)
 }
 
-// SumContext is used to sum the field values of the records by the condition.
+// SumContext is the alias of SumIntContext.
 func (o Oper[T]) SumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	// _, err = o.Table.Select(Sum(field)).Where(conds...).QueryRowContext(ctx).Bind(&total)
+	return o.SumIntContext(ctx, field, conds...)
+}
+
+// SumInt is equal to o.SumIntContext(context.Background(), field, conds...).
+func (o Oper[T]) SumInt(field string, conds ...op.Condition) (int, error) {
+	return o.SumIntContext(context.Background(), field, conds...)
+}
+
+// SumIntContext is used to sum the field values of the records as int by the condition.
+func (o Oper[T]) SumIntContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return sumContext[int](ctx, o, field, conds)
+}
+
+// SumInt64 is equal to o.SumInt64Context(context.Background(), field, conds...).
+func (o Oper[T]) SumInt64(field string, conds ...op.Condition) (int64, error) {
+	return o.SumInt64Context(context.Background(), field, conds...)
+}
+
+// SumInt64Context is used to sum the field values of the records as int64 by the condition.
+func (o Oper[T]) SumInt64Context(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
+	return sumContext[int64](ctx, o, field, conds)
+}
+
+// SumFloat is equal to o.SumFloatContext(context.Background(), field, conds...).
+func (o Oper[T]) SumFloat(field string, conds ...op.Condition) (float64, error) {
+	return o.SumFloatContext(context.Background(), field, conds...)
+}
+
+// SumFloatContext is used to sum the field values of the records as float64 by the condition.
+func (o Oper[T]) SumFloatContext(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
+	return sumContext[float64](ctx, o, field, conds)
+}
+
+// SumString is equal to o.SumStringContext(context.Background(), field, conds...).
+func (o Oper[T]) SumString(field string, conds ...op.Condition) (string, error) {
+	return o.SumStringContext(context.Background(), field, conds...)
+}
+
+// SumStringContext is used to sum the field values of the records as string by the condition.
+func (o Oper[T]) SumStringContext(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
+	return sumContext[string](ctx, o, field, conds)
+}
+
+func sumContext[R, T any](ctx context.Context, o Oper[T], field string, conds []op.Condition) (total R, err error) {
 	_, err = o.GetRowContext(ctx, Sum(field), conds...).Bind(&total)
 	return
 }
@@ -515,20 +558,67 @@ func (o Oper[T]) SoftCountQueryContext(ctx context.Context, page, pagesize int64
 	}
 }
 
-// SoftSum is equal to o.SoftSumContext(context.Background(), field, conds...).
+// SoftSum is the alias of SoftSumInt.
 func (o Oper[T]) SoftSum(field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftSumContext(context.Background(), field, conds...)
+	return o.SoftSumInt(field, conds...)
 }
 
-// SoftSumContext is the same as SumContext, but appending SoftCondition into the conditions.
+// SoftSumContext is the alias of SoftSumIntContext.
 func (o Oper[T]) SoftSumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return o.SoftSumIntContext(ctx, field, conds...)
+}
+
+// SoftSumInt is equal to o.SoftSumIntContext(context.Background(), field, conds...).
+func (o Oper[T]) SoftSumInt(field string, conds ...op.Condition) (total int, err error) {
+	return o.SoftSumIntContext(context.Background(), field, conds...)
+}
+
+// SoftSumIntContext is the same as SumIntContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumIntContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return softSumContext(ctx, o.SumIntContext, field, o.SoftCondition, conds)
+}
+
+// SoftSumInt64 is equal to o.SoftSumInt64Context(context.Background(), field, conds...).
+func (o Oper[T]) SoftSumInt64(field string, conds ...op.Condition) (total int64, err error) {
+	return o.SoftSumInt64Context(context.Background(), field, conds...)
+}
+
+// SoftSumInt64Context is the same as SumInt64Context, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumInt64Context(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
+	return softSumContext(ctx, o.SumInt64Context, field, o.SoftCondition, conds)
+}
+
+// SoftSumFloat is equal to o.SoftSumFloatContext(context.Background(), field, conds...).
+func (o Oper[T]) SoftSumFloat(field string, conds ...op.Condition) (total float64, err error) {
+	return o.SoftSumFloatContext(context.Background(), field, conds...)
+}
+
+// SoftSumFloatContext is the same as SumFloatContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumFloatContext(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
+	return softSumContext(ctx, o.SumFloatContext, field, o.SoftCondition, conds)
+}
+
+// SoftSumString is equal to o.SoftSumStringContext(context.Background(), field, conds...).
+func (o Oper[T]) SoftSumString(field string, conds ...op.Condition) (total string, err error) {
+	return o.SoftSumStringContext(context.Background(), field, conds...)
+}
+
+// SoftSumStringContext is the same as SumStringContext, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumStringContext(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
+	return softSumContext(ctx, o.SumStringContext, field, o.SoftCondition, conds)
+}
+
+type _SumFunc[R any] func(ctx context.Context, field string, conds ...op.Condition) (R, error)
+
+func softSumContext[R any](ctx context.Context, f _SumFunc[R], field string,
+	soft op.Condition, conds []op.Condition) (total R, err error) {
 	switch len(conds) {
 	case 0:
-		return o.SumContext(ctx, field, o.SoftCondition)
+		return f(ctx, field, soft)
 	case 1:
-		return o.SumContext(ctx, field, conds[0], o.SoftCondition)
+		return f(ctx, field, conds[0], soft)
 	default:
-		return o.SumContext(ctx, field, op.And(conds...), o.SoftCondition)
+		return f(ctx, field, op.And(conds...), soft)
 	}
 }
 
