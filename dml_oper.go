@@ -152,24 +152,14 @@ func (o Oper[T]) AppendRowsBinders(binders ...RowsBinder) Oper[T] {
 
 /// ----------------------------------------------------------------------- ///
 
-// Add is equal to o.AddContext(context.Background(), obj).
-func (o Oper[T]) Add(obj T) (err error) {
-	return o.AddContext(context.Background(), obj)
-}
-
-// AddWithId is equal to o.AddContextWithId(context.Background(), obj).
-func (o Oper[T]) AddWithId(obj T) (id int64, err error) {
-	return o.AddContextWithId(context.Background(), obj)
-}
-
-// AddContext inserts the struct as the record into the sql table.
-func (o Oper[T]) AddContext(ctx context.Context, obj T) (err error) {
+// Add inserts the struct as the record into the sql table.
+func (o Oper[T]) Add(ctx context.Context, obj T) (err error) {
 	_, err = o.Table.InsertInto().Struct(obj).ExecContext(ctx)
 	return
 }
 
-// AddContextWithId is the same as AddContext, but also returns the inserted id.
-func (o Oper[T]) AddContextWithId(ctx context.Context, obj T) (id int64, err error) {
+// AddWithId is the same as Add, but also returns the inserted id.
+func (o Oper[T]) AddWithId(ctx context.Context, obj T) (id int64, err error) {
 	result, err := o.Table.InsertInto().Struct(obj).ExecContext(ctx)
 	if err == nil {
 		id, err = result.LastInsertId()
@@ -177,15 +167,10 @@ func (o Oper[T]) AddContextWithId(ctx context.Context, obj T) (id int64, err err
 	return
 }
 
-// Update is equal to o.UpdateContext(context.Background(), updater, conds...).
-func (o Oper[T]) Update(updater op.Updater, conds ...op.Condition) error {
-	return o.UpdateContext(context.Background(), updater, conds...)
-}
-
-// UpdateContext updates the sql table records.
+// Update updates the sql table records.
 //
 // If updater is nil, do nothing.
-func (o Oper[T]) UpdateContext(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
+func (o Oper[T]) Update(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
 	if updater == nil {
 		return nil
 	}
@@ -194,87 +179,52 @@ func (o Oper[T]) UpdateContext(ctx context.Context, updater op.Updater, conds ..
 	return err
 }
 
-// Delete is equal to o.DeleteContext(context.Background(), conds...).
-func (o Oper[T]) Delete(conds ...op.Condition) (err error) {
-	return o.DeleteContext(context.Background(), conds...)
-}
-
-// DeleteContext executes a DELETE statement to delete the records from table.
-func (o Oper[T]) DeleteContext(ctx context.Context, conds ...op.Condition) error {
+// Delete executes a DELETE statement to delete the records from table.
+func (o Oper[T]) Delete(ctx context.Context, conds ...op.Condition) error {
 	_, err := o.Table.DeleteFrom(conds...).ExecContext(ctx)
 	return err
 }
 
-// Get is equal to o.GetContext(context.Background(), conds...).
-func (o Oper[T]) Get(conds ...op.Condition) (obj T, ok bool, err error) {
-	return o.GetContext(context.Background(), conds...)
-}
-
-// GetContext just queries a first record from table.
-func (o Oper[T]) GetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	ok, err = o.GetRowContext(ctx, obj, conds...).Bind(&obj)
+// Get just queries a first record from table.
+func (o Oper[T]) Get(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
+	ok, err = o.GetRow(ctx, obj, conds...).Bind(&obj)
 	return
 }
 
-// Gets is equal to o.GetsContext(context.Background(), page, conds...).
-func (o Oper[T]) Gets(page op.Pagination, conds ...op.Condition) (objs []T, err error) {
-	return o.GetsContext(context.Background(), page, conds...)
-}
-
-// GetsContext queries a set of results from table.
-func (o Oper[T]) GetsContext(ctx context.Context, page op.Pagination, conds ...op.Condition) (objs []T, err error) {
+// Gets queries a set of results from table.
+func (o Oper[T]) Gets(ctx context.Context, page op.Pagination, conds ...op.Condition) (objs []T, err error) {
 	if limit := op.GetLimitFromPagination(page); limit > 0 {
 		o = o.WithRowsCap(limit)
 	}
 
 	var obj T
-	err = o.GetRowsContext(ctx, obj, page, conds...).Bind(&objs)
+	err = o.GetRows(ctx, obj, page, conds...).Bind(&objs)
 	return
 }
 
-// GetRow is equal to o.GetRowContext(context.Background(), columns, conds...).
-func (o Oper[T]) GetRow(columns any, conds ...op.Condition) Row {
-	return o.GetRowContext(context.Background(), columns, conds...)
-}
-
-// GetRowContext builds a SELECT statement and returns a Row.
-func (o Oper[T]) GetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
+// GetRow builds a SELECT statement and returns a Row.
+func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
 	return o.Select(columns, conds...).QueryRowContext(ctx)
 }
 
-// GetRows is equal to o.GetRowsContext(context.Background(), columns, page, conds...).
-func (o Oper[T]) GetRows(columns any, page op.Pagination, conds ...op.Condition) Rows {
-	return o.GetRowsContext(context.Background(), columns, page, conds...)
-}
-
-// GetRowsContext builds a SELECT statement and returns a Rows.
-func (o Oper[T]) GetRowsContext(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
+// GetRows builds a SELECT statement and returns a Rows.
+func (o Oper[T]) GetRows(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
 	return o.Select(columns, conds...).Pagination(page).QueryRowsContext(ctx)
 }
 
-// Query is equal to o.QueryContext(context.Background(), page, pageSize, conds...).
-func (o Oper[T]) Query(page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.QueryContext(context.Background(), page, pageSize, conds...)
-}
-
-// QueryContext is a simplified GetsContext, which is equal to
+// Query is a simplified GetsContext, which is equal to
 //
-//	o.GetsContext(ctx, op.PageSize(page, pageSize), conds...)
+//	o.Gets(ctx, op.PageSize(page, pageSize), conds...)
 //
 // page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
-func (o Oper[T]) QueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.GetsContext(ctx, op.PageSize(page, pageSize), conds...)
+func (o Oper[T]) Query(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
+	return o.Gets(ctx, op.PageSize(page, pageSize), conds...)
 }
 
-// CountQuery is equal to o.CountQueryContext(context.Background(), page, pagesize, conds...).
-func (o Oper[T]) CountQuery(page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
-	return o.CountQueryContext(context.Background(), page, pagesize, conds...)
-}
-
-// CountQueryContext is the combination of CountContext and QueryContext.
-func (o Oper[T]) CountQueryContext(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
-	if total, err = o.CountContext(ctx, conds...); err == nil && total > 0 {
-		objs, err = o.QueryContext(ctx, page, min(pagesize, int64(total)), conds...)
+// CountQuery is the combination of CountContext and QueryContext.
+func (o Oper[T]) CountQuery(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+	if total, err = o.Count(ctx, conds...); err == nil && total > 0 {
+		objs, err = o.Query(ctx, page, min(pagesize, int64(total)), conds...)
 	}
 	return
 }
@@ -296,92 +246,50 @@ func (o Oper[T]) MakeSlice(cap int) []T {
 }
 
 // Sum is the alias of SumInt.
-func (o Oper[T]) Sum(field string, conds ...op.Condition) (int, error) {
-	return o.SumInt(field, conds...)
+func (o Oper[T]) Sum(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return o.SumInt(ctx, field, conds...)
 }
 
-// SumContext is the alias of SumIntContext.
-func (o Oper[T]) SumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return o.SumIntContext(ctx, field, conds...)
-}
-
-// SumInt is equal to o.SumIntContext(context.Background(), field, conds...).
-func (o Oper[T]) SumInt(field string, conds ...op.Condition) (int, error) {
-	return o.SumIntContext(context.Background(), field, conds...)
-}
-
-// SumIntContext is used to sum the field values of the records as int by the condition.
-func (o Oper[T]) SumIntContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+// SumInt is used to sum the field values of the records as int by the condition.
+func (o Oper[T]) SumInt(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
 	return sumContext[int](ctx, o, field, conds)
 }
 
-// SumInt64 is equal to o.SumInt64Context(context.Background(), field, conds...).
-func (o Oper[T]) SumInt64(field string, conds ...op.Condition) (int64, error) {
-	return o.SumInt64Context(context.Background(), field, conds...)
-}
-
-// SumInt64Context is used to sum the field values of the records as int64 by the condition.
-func (o Oper[T]) SumInt64Context(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
+// SumInt64 is used to sum the field values of the records as int64 by the condition.
+func (o Oper[T]) SumInt64(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
 	return sumContext[int64](ctx, o, field, conds)
 }
 
-// SumFloat is equal to o.SumFloatContext(context.Background(), field, conds...).
-func (o Oper[T]) SumFloat(field string, conds ...op.Condition) (float64, error) {
-	return o.SumFloatContext(context.Background(), field, conds...)
-}
-
-// SumFloatContext is used to sum the field values of the records as float64 by the condition.
-func (o Oper[T]) SumFloatContext(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
+// SumFloat is used to sum the field values of the records as float64 by the condition.
+func (o Oper[T]) SumFloat(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
 	return sumContext[float64](ctx, o, field, conds)
 }
 
-// SumString is equal to o.SumStringContext(context.Background(), field, conds...).
-func (o Oper[T]) SumString(field string, conds ...op.Condition) (string, error) {
-	return o.SumStringContext(context.Background(), field, conds...)
-}
-
-// SumStringContext is used to sum the field values of the records as string by the condition.
-func (o Oper[T]) SumStringContext(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
+// SumString is used to sum the field values of the records as string by the condition.
+func (o Oper[T]) SumString(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
 	return sumContext[string](ctx, o, field, conds)
 }
 
 func sumContext[R, T any](ctx context.Context, o Oper[T], field string, conds []op.Condition) (total R, err error) {
-	_, err = o.GetRowContext(ctx, Sum(field), conds...).Bind(&total)
+	_, err = o.GetRow(ctx, Sum(field), conds...).Bind(&total)
 	return
 }
 
-// Count is equal to o.CountContext(context.Background(), conds...).
-func (o Oper[T]) Count(conds ...op.Condition) (total int, err error) {
-	return o.CountContext(context.Background(), conds...)
-}
-
-// CountContext is used to count the number of records by the condition.
-func (o Oper[T]) CountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
-	// _, err = o.Table.Select(Count("*")).Where(conds...).QueryRowContext(ctx).Bind(&total)
-	_, err = o.GetRowContext(ctx, Count("*"), conds...).Bind(&total)
+// Count is used to count the number of records by the condition.
+func (o Oper[T]) Count(ctx context.Context, conds ...op.Condition) (total int, err error) {
+	_, err = o.GetRow(ctx, Count("*"), conds...).Bind(&total)
 	return
 }
 
-// CountDistinct is equal to o.CountDistinctContext(context.Background(), field, conds...).
-func (o Oper[T]) CountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	return o.CountDistinctContext(context.Background(), field, conds...)
-}
-
-// CountDistinctContext is the same as Count, but excluding the same field records.
-func (o Oper[T]) CountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	// _, err = o.Table.Select(CountDistinct(field)).Where(conds...).QueryRowContext(ctx).Bind(&total)
-	_, err = o.GetRowContext(ctx, CountDistinct(field), conds...).Bind(&total)
+// CountDistinct is the same as Count, but excluding the same field records.
+func (o Oper[T]) CountDistinct(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	_, err = o.GetRow(ctx, CountDistinct(field), conds...).Bind(&total)
 	return
 }
 
-// Exist is equal to o.ExistContext(context.Background(), conds...).
-func (o Oper[T]) Exist(conds ...op.Condition) (exist bool, err error) {
-	return o.ExistContext(context.Background(), conds...)
-}
-
-// ExistContext is used to check whether the records qualified by the conditions exist.
-func (o Oper[T]) ExistContext(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
-	total, err := o.CountContext(ctx, conds...)
+// Exist is used to check whether the records qualified by the conditions exist.
+func (o Oper[T]) Exist(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
+	total, err := o.Count(ctx, conds...)
 	exist = err == nil && total > 0
 	return
 }
@@ -425,192 +333,127 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 
 /// ----------------------------------------------------------------------- ///
 
-// SoftUpdate is equal to o.SoftUpdateContext(context.Background(), updater, conds...).
-func (o Oper[T]) SoftUpdate(updater op.Updater, conds ...op.Condition) (err error) {
-	return o.SoftUpdateContext(context.Background(), updater, conds...)
-}
-
-// SoftUpdateContext is the same as UpdateContext, but appending SoftCondition
+// SoftUpdate is the same as Update, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftUpdateContext(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
+func (o Oper[T]) SoftUpdate(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
 	switch len(conds) {
 	case 0:
-		return o.UpdateContext(ctx, updater, o.SoftCondition)
+		return o.Update(ctx, updater, o.SoftCondition)
 	case 1:
-		return o.UpdateContext(ctx, updater, conds[0], o.SoftCondition)
+		return o.Update(ctx, updater, conds[0], o.SoftCondition)
 	default:
-		return o.UpdateContext(ctx, updater, op.And(conds...), o.SoftCondition)
+		return o.Update(ctx, updater, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftDelete is equal to o.SoftDeleteContext(context.Background(), conds...).
-func (o Oper[T]) SoftDelete(conds ...op.Condition) error {
-	return o.SoftDeleteContext(context.Background(), conds...)
-}
-
-// SoftDeleteContext soft deletes the records from the table,
+// SoftDelete soft deletes the records from the table,
 // which only marks the records deleted.
-func (o Oper[T]) SoftDeleteContext(ctx context.Context, conds ...op.Condition) error {
-	return o.SoftUpdateContext(ctx, o.SoftDeleteUpdater(ctx), conds...)
+func (o Oper[T]) SoftDelete(ctx context.Context, conds ...op.Condition) error {
+	return o.SoftUpdate(ctx, o.SoftDeleteUpdater(ctx), conds...)
 }
 
-// SoftGet is equal to o.SoftGetContext(context.Background(), conds...).
-func (o Oper[T]) SoftGet(conds ...op.Condition) (obj T, ok bool, err error) {
-	return o.SoftGetContext(context.Background(), conds...)
-}
-
-// SoftGetContext is the same as GetContext, but appending SoftCondition
+// SoftGet is the same as Get, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftGetContext(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
+func (o Oper[T]) SoftGet(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
 	switch len(conds) {
 	case 0:
-		return o.GetContext(ctx, o.SoftCondition)
+		return o.Get(ctx, o.SoftCondition)
 	case 1:
-		return o.GetContext(ctx, conds[0], o.SoftCondition)
+		return o.Get(ctx, conds[0], o.SoftCondition)
 	default:
-		return o.GetContext(ctx, op.And(conds...), o.SoftCondition)
+		return o.Get(ctx, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftGets is equal to o.SoftGetsContext(context.Background(), page, conds...).
-func (o Oper[T]) SoftGets(page op.Pagination, conds ...op.Condition) ([]T, error) {
-	return o.SoftGetsContext(context.Background(), page, conds...)
-}
-
-// SoftGetsContext is the same as GetsContext, but appending SoftCondition
+// SoftGets is the same as Gets, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftGetsContext(ctx context.Context, page op.Pagination, conds ...op.Condition) ([]T, error) {
+func (o Oper[T]) SoftGets(ctx context.Context, page op.Pagination, conds ...op.Condition) ([]T, error) {
 	switch len(conds) {
 	case 0:
-		return o.GetsContext(ctx, page, o.SoftCondition)
+		return o.Gets(ctx, page, o.SoftCondition)
 	case 1:
-		return o.GetsContext(ctx, page, conds[0], o.SoftCondition)
+		return o.Gets(ctx, page, conds[0], o.SoftCondition)
 	default:
-		return o.GetsContext(ctx, page, op.And(conds...), o.SoftCondition)
+		return o.Gets(ctx, page, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftGetRow is equal to o.SoftGetRowContext(context.Background(), columns, conds...).
-func (o Oper[T]) SoftGetRow(columns any, conds ...op.Condition) Row {
-	return o.SoftGetRowContext(context.Background(), columns, conds...)
-}
-
-// SoftGetRowContext is the same as GetRowContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRowContext(ctx context.Context, columns any, conds ...op.Condition) Row {
+// SoftGetRow is the same as GetRow, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftGetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
 	switch len(conds) {
 	case 0:
-		return o.GetRowContext(ctx, columns, o.SoftCondition)
+		return o.GetRow(ctx, columns, o.SoftCondition)
 	case 1:
-		return o.GetRowContext(ctx, columns, conds[0], o.SoftCondition)
+		return o.GetRow(ctx, columns, conds[0], o.SoftCondition)
 	default:
-		return o.GetRowContext(ctx, columns, op.And(conds...), o.SoftCondition)
+		return o.GetRow(ctx, columns, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftGetRows is equal to o.SoftGetRowsContext(context.Background(), columns, page, conds...).
-func (o Oper[T]) SoftGetRows(columns any, page op.Pagination, conds ...op.Condition) Rows {
-	return o.SoftGetRowsContext(context.Background(), columns, page, conds...)
-}
-
-// SoftGetRowsContext is the same as GetRowsContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRowsContext(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
+// SoftGetRows is the same as GetRows, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftGetRows(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
 	switch len(conds) {
 	case 0:
-		return o.GetRowsContext(ctx, columns, page, o.SoftCondition)
+		return o.GetRows(ctx, columns, page, o.SoftCondition)
 	case 1:
-		return o.GetRowsContext(ctx, columns, page, conds[0], o.SoftCondition)
+		return o.GetRows(ctx, columns, page, conds[0], o.SoftCondition)
 	default:
-		return o.GetRowsContext(ctx, columns, page, op.And(conds...), o.SoftCondition)
+		return o.GetRows(ctx, columns, page, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftQuery is equal to o.SoftQueryContext(context.Background(), page, pageSize, conds...).
-func (o Oper[T]) SoftQuery(page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.SoftQueryContext(context.Background(), page, pageSize, conds...)
-}
-
-// SoftQueryContext is the same as QueryContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftQueryContext(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
+// SoftQuery is the same as Query, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftQuery(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
 	switch len(conds) {
 	case 0:
-		return o.QueryContext(ctx, page, pageSize, o.SoftCondition)
+		return o.Query(ctx, page, pageSize, o.SoftCondition)
 	case 1:
-		return o.QueryContext(ctx, page, pageSize, conds[0], o.SoftCondition)
+		return o.Query(ctx, page, pageSize, conds[0], o.SoftCondition)
 	default:
-		return o.QueryContext(ctx, page, pageSize, op.And(conds...), o.SoftCondition)
+		return o.Query(ctx, page, pageSize, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftCountQuery is equal to o.SoftCountQueryContext(context.Background(), page, pagesize, conds...).
-func (o Oper[T]) SoftCountQuery(page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
-	return o.SoftCountQueryContext(context.Background(), page, pagesize, conds...)
-}
-
-// SoftCountQueryContext is the same as CountQueryContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftCountQueryContext(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
+// SoftCountQuery is the same as CountQuery, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftCountQuery(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
 	switch len(conds) {
 	case 0:
-		return o.CountQueryContext(ctx, page, pagesize, o.SoftCondition)
+		return o.CountQuery(ctx, page, pagesize, o.SoftCondition)
 	case 1:
-		return o.CountQueryContext(ctx, page, pagesize, conds[0], o.SoftCondition)
+		return o.CountQuery(ctx, page, pagesize, conds[0], o.SoftCondition)
 	default:
-		return o.CountQueryContext(ctx, page, pagesize, op.And(conds...), o.SoftCondition)
+		return o.CountQuery(ctx, page, pagesize, op.And(conds...), o.SoftCondition)
 	}
 }
 
 // SoftSum is the alias of SoftSumInt.
-func (o Oper[T]) SoftSum(field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftSumInt(field, conds...)
+func (o Oper[T]) SoftSum(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return o.SoftSumInt(ctx, field, conds...)
 }
 
-// SoftSumContext is the alias of SoftSumIntContext.
-func (o Oper[T]) SoftSumContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftSumIntContext(ctx, field, conds...)
+// SoftSumInt is the same as SumInt, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumInt(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+	return softSum(ctx, o.SumInt, field, o.SoftCondition, conds)
 }
 
-// SoftSumInt is equal to o.SoftSumIntContext(context.Background(), field, conds...).
-func (o Oper[T]) SoftSumInt(field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftSumIntContext(context.Background(), field, conds...)
+// SoftSumInt64 is the same as SumInt64, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumInt64(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
+	return softSum(ctx, o.SumInt64, field, o.SoftCondition, conds)
 }
 
-// SoftSumIntContext is the same as SumIntContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumIntContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return softSumContext(ctx, o.SumIntContext, field, o.SoftCondition, conds)
+// SoftSumFloat is the same as SumFloat, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumFloat(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
+	return softSum(ctx, o.SumFloat, field, o.SoftCondition, conds)
 }
 
-// SoftSumInt64 is equal to o.SoftSumInt64Context(context.Background(), field, conds...).
-func (o Oper[T]) SoftSumInt64(field string, conds ...op.Condition) (total int64, err error) {
-	return o.SoftSumInt64Context(context.Background(), field, conds...)
-}
-
-// SoftSumInt64Context is the same as SumInt64Context, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumInt64Context(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
-	return softSumContext(ctx, o.SumInt64Context, field, o.SoftCondition, conds)
-}
-
-// SoftSumFloat is equal to o.SoftSumFloatContext(context.Background(), field, conds...).
-func (o Oper[T]) SoftSumFloat(field string, conds ...op.Condition) (total float64, err error) {
-	return o.SoftSumFloatContext(context.Background(), field, conds...)
-}
-
-// SoftSumFloatContext is the same as SumFloatContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumFloatContext(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
-	return softSumContext(ctx, o.SumFloatContext, field, o.SoftCondition, conds)
-}
-
-// SoftSumString is equal to o.SoftSumStringContext(context.Background(), field, conds...).
-func (o Oper[T]) SoftSumString(field string, conds ...op.Condition) (total string, err error) {
-	return o.SoftSumStringContext(context.Background(), field, conds...)
-}
-
-// SoftSumStringContext is the same as SumStringContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumStringContext(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
-	return softSumContext(ctx, o.SumStringContext, field, o.SoftCondition, conds)
+// SoftSumString is the same as SumString, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftSumString(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
+	return softSum(ctx, o.SumString, field, o.SoftCondition, conds)
 }
 
 type _SumFunc[R any] func(ctx context.Context, field string, conds ...op.Condition) (R, error)
 
-func softSumContext[R any](ctx context.Context, f _SumFunc[R], field string,
+func softSum[R any](ctx context.Context, f _SumFunc[R], field string,
 	soft op.Condition, conds []op.Condition) (total R, err error) {
 	switch len(conds) {
 	case 0:
@@ -622,56 +465,41 @@ func softSumContext[R any](ctx context.Context, f _SumFunc[R], field string,
 	}
 }
 
-// SoftCount is equal to o.SoftCountContext(context.Background(), conds...).
-func (o Oper[T]) SoftCount(conds ...op.Condition) (total int, err error) {
-	return o.SoftCountContext(context.Background(), conds...)
-}
-
-// SoftCountContext is the same as CountContext, but appending SoftCondition
+// SoftCount is the same as Count, but appending SoftCondition
 // into the conditions.
-func (o Oper[T]) SoftCountContext(ctx context.Context, conds ...op.Condition) (total int, err error) {
+func (o Oper[T]) SoftCount(ctx context.Context, conds ...op.Condition) (total int, err error) {
 	switch len(conds) {
 	case 0:
-		return o.CountContext(ctx, o.SoftCondition)
+		return o.Count(ctx, o.SoftCondition)
 	case 1:
-		return o.CountContext(ctx, conds[0], o.SoftCondition)
+		return o.Count(ctx, conds[0], o.SoftCondition)
 	default:
-		return o.CountContext(ctx, op.And(conds...), o.SoftCondition)
+		return o.Count(ctx, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftCountDistinct is equal to o.SoftCountDistinctContext(context.Background(), field, conds...).
-func (o Oper[T]) SoftCountDistinct(field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftCountDistinctContext(context.Background(), field, conds...)
-}
-
-// SoftCountDistinctContext is the same as CountDistinctContext,
+// SoftCountDistinct is the same as CountDistinct,
 // but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftCountDistinctContext(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
+func (o Oper[T]) SoftCountDistinct(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
 	switch len(conds) {
 	case 0:
-		return o.CountDistinctContext(ctx, field, o.SoftCondition)
+		return o.CountDistinct(ctx, field, o.SoftCondition)
 	case 1:
-		return o.CountDistinctContext(ctx, field, conds[0], o.SoftCondition)
+		return o.CountDistinct(ctx, field, conds[0], o.SoftCondition)
 	default:
-		return o.CountDistinctContext(ctx, field, op.And(conds...), o.SoftCondition)
+		return o.CountDistinct(ctx, field, op.And(conds...), o.SoftCondition)
 	}
 }
 
-// SoftExist is equal to o.SoftExistContext(context.Background(), conds... ).
-func (o Oper[T]) SoftExist(conds ...op.Condition) (exist bool, err error) {
-	return o.SoftExistContext(context.Background(), conds...)
-}
-
-// SoftExistContext is the same as ExistContext, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftExistContext(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
+// SoftExist is the same as Exist, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftExist(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
 	switch len(conds) {
 	case 0:
-		return o.ExistContext(ctx, o.SoftCondition)
+		return o.Exist(ctx, o.SoftCondition)
 	case 1:
-		return o.ExistContext(ctx, conds[0], o.SoftCondition)
+		return o.Exist(ctx, conds[0], o.SoftCondition)
 	default:
-		return o.ExistContext(ctx, op.And(conds...), o.SoftCondition)
+		return o.Exist(ctx, op.And(conds...), o.SoftCondition)
 	}
 }
 
@@ -689,88 +517,56 @@ func (o Oper[T]) SoftSelect(columns any, conds ...op.Condition) *SelectBuilder {
 
 /// ----------------------------------------------------------------------- ///
 
-// GetAll is equal to o.Gets(nil, conds...).
-func (o Oper[T]) GetAll(conds ...op.Condition) ([]T, error) {
-	return o.Gets(nil, conds...)
+// GetAll is equal to o.Gets(ctx, nil, conds...).
+func (o Oper[T]) GetAll(ctx context.Context, conds ...op.Condition) ([]T, error) {
+	return o.Gets(ctx, nil, conds...)
 }
 
-// SoftGetAll is equal to o.SoftGets(nil, conds...).
-func (o Oper[T]) SoftGetAll(conds ...op.Condition) ([]T, error) {
-	return o.SoftGets(nil, conds...)
-}
-
-/// ----------------------------------------------------------------------- ///
-
-// DeleteWithId is equal to o.Delete(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) DeleteWithId(id int64, conds ...op.Condition) error {
-	return o.Delete(op.KeyId.Eq(id), op.And(conds...))
-}
-
-// ExistWithId is equal to o.Exist(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) ExistWithId(id int64, conds ...op.Condition) (bool, error) {
-	return o.Exist(op.KeyId.Eq(id), op.And(conds...))
-}
-
-// GetWithId is equal to o.Get(nil, op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) GetWithId(id int64, conds ...op.Condition) (v T, ok bool, err error) {
-	return o.Get(nil, op.KeyId.Eq(id), op.And(conds...))
-}
-
-// SoftDeleteWithId is equal to o.SoftDelete(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftDeleteWithId(id int64, conds ...op.Condition) error {
-	return o.SoftDelete(op.KeyId.Eq(id), op.And(conds...))
-}
-
-// SoftExistWithId is equal to o.SoftExist(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftExistWithId(id int64, conds ...op.Condition) (bool, error) {
-	return o.SoftExist(op.KeyId.Eq(id), op.And(conds...))
-}
-
-// SoftGetWithId is equal to o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftGetWithId(id int64, conds ...op.Condition) (v T, ok bool, err error) {
-	return o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...))
+// SoftGetAll is equal to o.SoftGets(ctx, nil, conds...).
+func (o Oper[T]) SoftGetAll(ctx context.Context, conds ...op.Condition) ([]T, error) {
+	return o.SoftGets(ctx, nil, conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
 
-// DeleteById is equal to o.DeleteWithId(id).
-func (o Oper[T]) DeleteById(id int64) error {
-	return o.DeleteWithId(id)
+// DeleteById is equal to o.Delete(ctx, op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) DeleteById(ctx context.Context, id int64, conds ...op.Condition) error {
+	return o.Delete(ctx, op.KeyId.Eq(id), op.And(conds...))
 }
 
-// ExistById is equal to o.ExistWithId(id).
-func (o Oper[T]) ExistById(id int64) (bool, error) {
-	return o.ExistWithId(id)
+// ExistById is equal to o.Exist(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) ExistById(ctx context.Context, id int64, conds ...op.Condition) (bool, error) {
+	return o.Exist(ctx, op.KeyId.Eq(id), op.And(conds...))
 }
 
-// GetById is equal to o.GetWithId(id).
-func (o Oper[T]) GetById(id int64) (v T, ok bool, err error) {
-	return o.GetWithId(id)
+// GetById is equal to o.Get(nil, op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) GetById(ctx context.Context, id int64, conds ...op.Condition) (v T, ok bool, err error) {
+	return o.Get(ctx, nil, op.KeyId.Eq(id), op.And(conds...))
 }
 
-// SoftDeleteById is equal to o.SoftDeleteWithId(id).
-func (o Oper[T]) SoftDeleteById(id int64) error {
-	return o.SoftDeleteWithId(id)
+// SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftDeleteById(ctx context.Context, id int64, conds ...op.Condition) error {
+	return o.SoftDelete(ctx, op.KeyId.Eq(id), op.And(conds...))
 }
 
-// SoftExistById is equal to o.SoftExistWithId(id).
-func (o Oper[T]) SoftExistById(id int64) (bool, error) {
-	return o.SoftExistWithId(id)
+// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftExistById(ctx context.Context, id int64, conds ...op.Condition) (bool, error) {
+	return o.SoftExist(ctx, op.KeyId.Eq(id), op.And(conds...))
 }
 
-// SoftGetById is equal to o.SoftGetWithId(id).
-func (o Oper[T]) SoftGetById(id int64) (v T, ok bool, err error) {
-	return o.SoftGetWithId(id)
+// SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...)).
+func (o Oper[T]) SoftGetById(ctx context.Context, id int64, conds ...op.Condition) (v T, ok bool, err error) {
+	return o.SoftGet(ctx, nil, op.KeyId.Eq(id), op.And(conds...))
 }
 
 /// ----------------------------------------------------------------------- ///
 
-// UpdateById is equal to o.Update(op.Batch(updaters...), op.KeyId.Eq(id)).
-func (o Oper[T]) UpdateById(id int64, updaters ...op.Updater) error {
-	return o.Update(op.Batch(updaters...), op.KeyId.Eq(id))
+// UpdateById is equal to o.Update(ctx, op.Batch(updaters...), op.KeyId.Eq(id)).
+func (o Oper[T]) UpdateById(ctx context.Context, id int64, updaters ...op.Updater) error {
+	return o.Update(ctx, op.Batch(updaters...), op.KeyId.Eq(id))
 }
 
-// SoftUpdateById is equal to o.SoftUpdate(op.Batch(updaters...), op.KeyId.Eq(id)).
-func (o Oper[T]) SoftUpdateById(id int64, updaters ...op.Updater) error {
-	return o.SoftUpdate(op.Batch(updaters...), op.KeyId.Eq(id))
+// SoftUpdateById is equal to o.SoftUpdate(ctx, op.Batch(updaters...), op.KeyId.Eq(id)).
+func (o Oper[T]) SoftUpdateById(ctx context.Context, id int64, updaters ...op.Updater) error {
+	return o.SoftUpdate(ctx, op.Batch(updaters...), op.KeyId.Eq(id))
 }
