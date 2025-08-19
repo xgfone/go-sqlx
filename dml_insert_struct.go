@@ -121,10 +121,16 @@ func (b *InsertBuilder) ValuesFromStructs(slice any) *InsertBuilder {
 		fields := make([]structfield, 0, 16)
 		fields = extractStructFields(fields, vtype)
 		fieldm := slicex.Map(fields, func(f structfield) (string, *structfield) { return f.Column, &f })
+		columns := slicex.Filter(fields, func(f structfield) (string, bool) {
+			return f.Column, !f.IgnoreZero
+		})
 
 		return func(value reflect.Value, data any) {
 			builder := data.(*InsertBuilder)
 			builder.GrowValues(value.Len())
+			if len(builder.columns) == 0 {
+				builder.columns = columns
+			}
 			clen := len(builder.columns)
 
 			for i, _len := 0, value.Len(); i < _len; i++ {
