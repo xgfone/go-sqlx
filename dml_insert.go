@@ -170,6 +170,10 @@ func (b *InsertBuilder) Exec() (sql.Result, error) {
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	if len(b.values) == 0 {
+		return sqlResult{}, nil
+	}
+
 	query, args := b.Build()
 	defer args.Release()
 	return getDB(b.db).ExecContext(ctx, query, args.Args()...)

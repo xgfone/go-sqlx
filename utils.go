@@ -106,3 +106,8 @@ func toslice[S ~[]E, E any](srcs S, to func(E) string) (dsts []string) {
 func gettype(v any) string {
 	return reflect.TypeOf(v).String()
 }
+
+type sqlResult struct{}
+
+func (sqlResult) LastInsertId() (int64, error) { panic("sqlx: LastInsertId cannot be called") }
+func (sqlResult) RowsAffected() (int64, error) { return 0, nil }
