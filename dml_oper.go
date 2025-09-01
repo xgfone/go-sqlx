@@ -229,6 +229,13 @@ func (o Oper[T]) CountQuery(ctx context.Context, page, pagesize int64, conds ...
 	return
 }
 
+func (o Oper[T]) CountGets(ctx context.Context, page op.Pagination, conds ...op.Condition) (total int, objs []T, err error) {
+	if total, err = o.Count(ctx, conds...); err == nil && total > 0 {
+		objs, err = o.Gets(ctx, page, conds...)
+	}
+	return
+}
+
 // MakeSlice makes a slice with the cap.
 //
 // If cap is equal to 0, use RowsCap or DefaultRowsCap instead.
@@ -423,6 +430,18 @@ func (o Oper[T]) SoftCountQuery(ctx context.Context, page, pagesize int64, conds
 		return o.CountQuery(ctx, page, pagesize, conds[0], o.SoftCondition)
 	default:
 		return o.CountQuery(ctx, page, pagesize, op.And(conds...), o.SoftCondition)
+	}
+}
+
+// SoftCountGets is the same as CountGets, but appending SoftCondition into the conditions.
+func (o Oper[T]) SoftCountGets(ctx context.Context, page op.Pagination, conds ...op.Condition) (total int, objs []T, err error) {
+	switch len(conds) {
+	case 0:
+		return o.CountGets(ctx, page, o.SoftCondition)
+	case 1:
+		return o.CountGets(ctx, page, conds[0], o.SoftCondition)
+	default:
+		return o.CountGets(ctx, page, op.And(conds...), o.SoftCondition)
 	}
 }
 
