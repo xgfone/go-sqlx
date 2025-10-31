@@ -139,10 +139,10 @@ func (s GeneralScanner) Scan(src any) (err error) {
 			if len(s) == 1 {
 				*v = s[0] != '\x00'
 			} else {
-				*v, err = strconv.ParseBool(string(s))
+				*v, err = parseBool(string(s))
 			}
 		case string:
-			*v, err = strconv.ParseBool(s)
+			*v, err = parseBool(s)
 		default:
 			err = fmt.Errorf("converting %T to bool is unsupported", src)
 		}
@@ -163,13 +163,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i int64
-			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+			if i, err = parseInt(s, 10, 64); err == nil {
 				*v = int(i)
 			}
 
 		case []byte:
 			var i int64
-			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+			if i, err = parseInt(string(s), 10, 64); err == nil {
 				*v = int(i)
 			}
 
@@ -203,13 +203,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i int64
-			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+			if i, err = parseInt(s, 10, 64); err == nil {
 				*v = int8(i)
 			}
 
 		case []byte:
 			var i int64
-			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+			if i, err = parseInt(string(s), 10, 64); err == nil {
 				*v = int8(i)
 			}
 
@@ -240,13 +240,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i int64
-			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+			if i, err = parseInt(s, 10, 64); err == nil {
 				*v = int16(i)
 			}
 
 		case []byte:
 			var i int64
-			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+			if i, err = parseInt(string(s), 10, 64); err == nil {
 				*v = int16(i)
 			}
 
@@ -277,13 +277,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i int64
-			if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+			if i, err = parseInt(s, 10, 64); err == nil {
 				*v = int32(i)
 			}
 
 		case []byte:
 			var i int64
-			if i, err = strconv.ParseInt(string(s), 10, 64); err == nil {
+			if i, err = parseInt(string(s), 10, 64); err == nil {
 				*v = int32(i)
 			}
 
@@ -313,10 +313,10 @@ func (s GeneralScanner) Scan(src any) (err error) {
 			*v = int64(s)
 
 		case string:
-			*v, err = strconv.ParseInt(s, 10, 64)
+			*v, err = parseInt(s, 10, 64)
 
 		case []byte:
-			*v, err = strconv.ParseInt(string(s), 10, 64)
+			*v, err = parseInt(string(s), 10, 64)
 
 		case bool:
 			if s {
@@ -348,13 +348,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i uint64
-			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+			if i, err = parseUint(s, 10, 64); err == nil {
 				*v = uint(i)
 			}
 
 		case []byte:
 			var i uint64
-			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+			if i, err = parseUint(string(s), 10, 64); err == nil {
 				*v = uint(i)
 			}
 
@@ -388,13 +388,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i uint64
-			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+			if i, err = parseUint(s, 10, 64); err == nil {
 				*v = uint8(i)
 			}
 
 		case []byte:
 			var i uint64
-			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+			if i, err = parseUint(string(s), 10, 64); err == nil {
 				*v = uint8(i)
 			}
 
@@ -425,13 +425,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i uint64
-			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+			if i, err = parseUint(s, 10, 64); err == nil {
 				*v = uint16(i)
 			}
 
 		case []byte:
 			var i uint64
-			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+			if i, err = parseUint(string(s), 10, 64); err == nil {
 				*v = uint16(i)
 			}
 
@@ -462,13 +462,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var i uint64
-			if i, err = strconv.ParseUint(s, 10, 64); err == nil {
+			if i, err = parseUint(s, 10, 64); err == nil {
 				*v = uint32(i)
 			}
 
 		case []byte:
 			var i uint64
-			if i, err = strconv.ParseUint(string(s), 10, 64); err == nil {
+			if i, err = parseUint(string(s), 10, 64); err == nil {
 				*v = uint32(i)
 			}
 
@@ -498,10 +498,10 @@ func (s GeneralScanner) Scan(src any) (err error) {
 			*v = uint64(s)
 
 		case string:
-			*v, err = strconv.ParseUint(s, 10, 64)
+			*v, err = parseUint(s, 10, 64)
 
 		case []byte:
-			*v, err = strconv.ParseUint(string(s), 10, 64)
+			*v, err = parseUint(string(s), 10, 64)
 
 		case bool:
 			if s {
@@ -533,13 +533,13 @@ func (s GeneralScanner) Scan(src any) (err error) {
 
 		case string:
 			var f float64
-			if f, err = strconv.ParseFloat(s, 64); err == nil {
+			if f, err = parseFloat(s, 64); err == nil {
 				*v = float32(f)
 			}
 
 		case []byte:
 			var f float64
-			if f, err = strconv.ParseFloat(string(s), 64); err == nil {
+			if f, err = parseFloat(string(s), 64); err == nil {
 				*v = float32(f)
 			}
 
@@ -569,10 +569,10 @@ func (s GeneralScanner) Scan(src any) (err error) {
 			*v = s
 
 		case string:
-			*v, err = strconv.ParseFloat(s, 64)
+			*v, err = parseFloat(s, 64)
 
 		case []byte:
-			*v, err = strconv.ParseFloat(string(s), 64)
+			*v, err = parseFloat(string(s), 64)
 
 		case bool:
 			if s {
@@ -629,6 +629,34 @@ func (s GeneralScanner) Scan(src any) (err error) {
 		panic(fmt.Errorf("sqlx.GeneralScanner.Scan: unsupported type '%T'", s.Value))
 	}
 
+	return
+}
+
+func parseInt(s string, base int, bitSize int) (v int64, err error) {
+	if s != "" {
+		v, err = strconv.ParseInt(s, base, bitSize)
+	}
+	return
+}
+
+func parseUint(s string, base int, bitSize int) (v uint64, err error) {
+	if s != "" {
+		v, err = strconv.ParseUint(s, base, bitSize)
+	}
+	return
+}
+
+func parseBool(s string) (v bool, err error) {
+	if s != "" {
+		v, err = strconv.ParseBool(s)
+	}
+	return
+}
+
+func parseFloat(s string, bitSize int) (v float64, err error) {
+	if s != "" {
+		v, err = strconv.ParseFloat(s, bitSize)
+	}
 	return
 }
 
