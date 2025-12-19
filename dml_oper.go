@@ -41,6 +41,7 @@ type Oper[T any] struct {
 	SoftDeleteUpdater func(context.Context) op.Updater
 
 	ignoredcolumns []string
+	forceOrder     bool
 
 	binder binder
 }
@@ -58,11 +59,17 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 		WithSorter(op.KeyId.OrderDesc()).
 		WithSoftCondition(op.IsNotDeletedCond).
 		WithSoftDeleteUpdater(softDeleteUpdater).
-		WithRowsBinder(binder)
+		WithRowsBinder(binder).
+		withForceOrder(false)
 }
 
 func softDeleteUpdater(context.Context) op.Updater {
 	return op.KeyDeletedAt.Set(time.Now())
+}
+
+func (o Oper[T]) withForceOrder(force bool) Oper[T] {
+	o.forceOrder = force
+	return o
 }
 
 // WithDB returns a new Oper with the new db.
@@ -80,7 +87,7 @@ func (o Oper[T]) WithTable(table Table) Oper[T] {
 // WithSorter returns a new Oper with the new sorter.
 func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
 	o.Sorter = sorter
-	return o
+	return o.withForceOrder(true)
 }
 
 // WithRowsCap returns a new Oper with the default cap of the container,
@@ -335,7 +342,7 @@ func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	}
 
 	q.binder = o.binder
-	return q.IgnoreColumns(o.ignoredcolumns).Sort(o.Sorter).Where(conds...)
+	return q.ForceOrderBy(o.forceOrder).IgnoreColumns(o.ignoredcolumns).Sort(o.Sorter).Where(conds...)
 }
 
 /// ----------------------------------------------------------------------- ///
