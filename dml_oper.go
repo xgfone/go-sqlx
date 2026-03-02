@@ -555,34 +555,34 @@ func (o Oper[T]) SoftGetAll(ctx context.Context, conds ...op.Condition) ([]T, er
 
 /// ----------------------------------------------------------------------- ///
 
-// DeleteById is equal to o.Delete(ctx, op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) DeleteById(ctx context.Context, id int64, conds ...op.Condition) error {
-	return o.Delete(ctx, op.KeyId.Eq(id), op.And(conds...))
+// DeleteById is equal to o.Delete(ctx, op.KeyId.Eq(id)).
+func (o Oper[T]) DeleteById(ctx context.Context, id int64) error {
+	return o.Delete(ctx, op.KeyId.Eq(id))
 }
 
-// ExistById is equal to o.Exist(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) ExistById(ctx context.Context, id int64, conds ...op.Condition) (bool, error) {
-	return o.Exist(ctx, op.KeyId.Eq(id), op.And(conds...))
+// ExistById is equal to o.Exist(op.KeyId.Eq(id)).
+func (o Oper[T]) ExistById(ctx context.Context, id int64) (bool, error) {
+	return o.Exist(ctx, op.KeyId.Eq(id))
 }
 
-// GetById is equal to o.Get(nil, op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) GetById(ctx context.Context, id int64, conds ...op.Condition) (v T, ok bool, err error) {
-	return o.Get(ctx, nil, op.KeyId.Eq(id), op.And(conds...))
+// GetById is equal to o.Get(nil, op.KeyId.Eq(id)).
+func (o Oper[T]) GetById(ctx context.Context, id int64) (v T, ok bool, err error) {
+	return o.Get(ctx, nil, op.KeyId.Eq(id))
 }
 
-// SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftDeleteById(ctx context.Context, id int64, conds ...op.Condition) error {
-	return o.SoftDelete(ctx, op.KeyId.Eq(id), op.And(conds...))
+// SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id)).
+func (o Oper[T]) SoftDeleteById(ctx context.Context, id int64) error {
+	return o.SoftDelete(ctx, op.KeyId.Eq(id))
 }
 
-// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftExistById(ctx context.Context, id int64, conds ...op.Condition) (bool, error) {
-	return o.SoftExist(ctx, op.KeyId.Eq(id), op.And(conds...))
+// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id)).
+func (o Oper[T]) SoftExistById(ctx context.Context, id int64) (bool, error) {
+	return o.SoftExist(ctx, op.KeyId.Eq(id))
 }
 
-// SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id), op.And(conds...)).
-func (o Oper[T]) SoftGetById(ctx context.Context, id int64, conds ...op.Condition) (v T, ok bool, err error) {
-	return o.SoftGet(ctx, nil, op.KeyId.Eq(id), op.And(conds...))
+// SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id)).
+func (o Oper[T]) SoftGetById(ctx context.Context, id int64) (v T, ok bool, err error) {
+	return o.SoftGet(ctx, nil, op.KeyId.Eq(id))
 }
 
 /// ----------------------------------------------------------------------- ///
