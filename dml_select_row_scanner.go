@@ -42,6 +42,7 @@ type RowScanner interface {
 	Columns() ([]string, error)
 	Scan(dst ...any) error
 	Next() bool
+	Err() error
 }
 
 type rowscanner struct {

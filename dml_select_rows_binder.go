@@ -268,7 +268,7 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 			m[key] = valuef(key)
 		}
 
-		return
+		return scanner.Err()
 	})
 }
 
@@ -302,7 +302,7 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 			m[keyf(value)] = value
 		}
 
-		return
+		return scanner.Err()
 	})
 }
 
@@ -338,7 +338,7 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 			m[key] = value
 		}
 
-		return
+		return scanner.Err()
 	})
 }
 
@@ -363,6 +363,10 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 				return err
 			}
 			dsts = append(dsts, value)
+		}
+
+		if err = scanner.Err(); err != nil {
+			return
 		}
 
 		*dstps = dsts
@@ -393,6 +397,10 @@ func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
 			return err
 		}
 		vf = reflect.Append(vf, e.Elem())
+	}
+
+	if err = scanner.Err(); err != nil {
+		return
 	}
 
 	oldvf.Elem().Set(vf)

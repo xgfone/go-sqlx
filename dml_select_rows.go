@@ -81,15 +81,15 @@ type binder struct {
 
 func (b *binder) Rows(rows *sql.Rows, columns []string, err error) Rows {
 	if b.rowscap == 0 && b.wrapper == nil && b.binder == nil {
-		return Rows{Rows: rows, Err: err, columns: columns, binder: defaultbinder}
+		return Rows{Rows: rows, err: err, columns: columns, binder: defaultbinder}
 	}
-	return Rows{Rows: rows, Err: err, columns: columns, binder: *b}
+	return Rows{Rows: rows, err: err, columns: columns, binder: *b}
 }
 
 // Rows is the same as sql.Rows to scan the rows to a map or slice.
 type Rows struct {
 	*sql.Rows
-	Err error
+	err error
 
 	columns []string
 	binder  binder
@@ -137,14 +137,25 @@ func (r Rows) WithBinder(binder RowsBinder) Rows {
 	return r
 }
 
+// Err returns the error.
+func (r Rows) Err() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.Rows.Err()
+}
+
 // Bind binds the rows to dst that may be a map or slice
 func (r Rows) Bind(dst any) error {
-	if r.Err != nil {
-		return r.Err
+	if err := r.Err(); err != nil {
+		return err
 	}
 
 	defer r.Rows.Close()
-	return r.binder.binder.BindRows(r, dst)
+	if err := r.binder.binder.BindRows(r, dst); err != nil {
+		return err
+	}
+	return r.Err()
 }
 
 // Scan implements the interface sql.Scanner, which is the same as sql.Rows.Scan

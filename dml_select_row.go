@@ -114,3 +114,10 @@ func (r Row) Scan(dsts ...any) (err error) {
 
 	return r.wrapper(newrowscanner(r, r.rows.Scan), dsts...)
 }
+
+func (r Row) Err() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.rows.Err()
+}

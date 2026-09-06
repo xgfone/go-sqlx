@@ -100,6 +100,7 @@ func newTestRowsScanner(columns []string, values [][]any, scan func(dsts, srcs [
 	}
 }
 
+func (s *testRowsScanner) Err() error                 { return nil }
 func (s *testRowsScanner) Columns() ([]string, error) { return s.columns, nil }
 func (s *testRowsScanner) Scan(dst ...any) error      { return s.scan(dst, s.values[s.index]) }
 func (s *testRowsScanner) Next() bool {

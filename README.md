@@ -57,7 +57,7 @@ rows := db.QueryRows(sql, args.Args()...)
 // Or
 // rows := builder.QueryRows()
 
-if rows.Err != nil {
+if err := rows.Err(); err != nil {
 	// TODO: ...
 	return
 }
@@ -97,7 +97,7 @@ func main() {
 	builder := db.Select("*").From("table")
 	builder.Where(op.Equal("id", 123))
 	rows := builder.QueryRows()
-	if rows.Err != nil {
+	if err := rows.Err(); err != nil {
 		fmt.Println(err)
 		return
 	}
