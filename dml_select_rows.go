@@ -30,11 +30,6 @@ func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) R
 }
 
 func (db *DB) queryRowsContext(ctx context.Context, columns []string, query string, args ...any) (*sql.Rows, []string, error) {
-	query, args, err := db.Intercept(query, args)
-	if err != nil {
-		return nil, nil, err
-	}
-
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, nil, err

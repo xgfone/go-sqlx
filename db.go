@@ -92,7 +92,6 @@ func ConnMaxIdleTime(d time.Duration) Config {
 type DB struct {
 	Dialect
 	Executor
-	Interceptor
 }
 
 // Open opens a database specified by its database driver name
@@ -132,11 +131,9 @@ func (db *DB) Reset(other *DB) {
 	if other == nil {
 		db.Dialect = nil
 		db.Executor = nil
-		db.Interceptor = nil
 	} else {
 		db.Dialect = other.Dialect
 		db.Executor = other.Executor
-		db.Interceptor = other.Interceptor
 	}
 }
 
@@ -148,16 +145,6 @@ func (db *DB) GetDialect() Dialect {
 		return db.Dialect
 	}
 	return DefaultDialect
-}
-
-func (db *DB) Intercept(sql string, args []any) (string, []any, error) {
-	if db != nil && db.Interceptor != nil {
-		var err error
-		if sql, args, err = db.Interceptor.Intercept(sql, args); err != nil {
-			return "", nil, err
-		}
-	}
-	return sql, args, nil
 }
 
 // Exec is equal to db.ExecContext(context.Background(), query, args...).
@@ -173,29 +160,4 @@ func (db *DB) Query(query string, args ...any) (rows *sql.Rows, err error) {
 // QueryRow is equal to db.QueryRowContext(context.Background(), query, args...)
 func (db *DB) QueryRow(query string, args ...any) *sql.Row {
 	return db.QueryRowContext(context.Background(), query, args...)
-}
-
-// ExecContext executes the sql statement.
-func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (r sql.Result, err error) {
-	if query, args, err = db.Intercept(query, args); err == nil {
-		r, err = db.Executor.ExecContext(ctx, query, args...)
-	}
-	return
-}
-
-// QueryContext executes the query sql statement.
-func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (rows *sql.Rows, err error) {
-	if query, args, err = db.Intercept(query, args); err == nil {
-		rows, err = db.Executor.QueryContext(ctx, query, args...)
-	}
-	return
-}
-
-// QueryRowContext executes the row query sql statement.
-func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	query, args, err := db.Intercept(query, args)
-	if err != nil {
-		panic(err)
-	}
-	return db.Executor.QueryRowContext(ctx, query, args...)
 }
