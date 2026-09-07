@@ -16,6 +16,7 @@ package sqltype
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func EncodeInt64s[S ~[]int64](s S) string {
 
 func DecodeInt64s[S ~[]int64](dst *S, src any) error {
 	if dst == nil {
-		return fmt.Errorf("sqltype: nil integer-slice destination")
+		return errors.New("sqltype: nil integer-slice destination")
 	}
 
 	if src == nil {

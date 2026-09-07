@@ -31,7 +31,7 @@ func TestAnd(t *testing.T) {
 	args := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(args, op.And(appendWheres(nil, cond4)...))
 
-	expectsql := "(`k1`=? AND `k2`>? AND `k3`<? AND (`k4` IN (?, ?) OR `k5` BETWEEN ? AND ?))"
+	expectsql := "(`k1`=? AND `k2`>? AND `k3`<? AND `noop1` IS NULL AND (`k4` IN (?, ?) OR `k5` BETWEEN ? AND ?) AND `noop2` IS NOT NULL)"
 	expectargs := []any{"v1", 111, 222, "v41", "v42", 333, 444}
 
 	if expectsql != sql {
@@ -54,7 +54,7 @@ func TestAnd(t *testing.T) {
 
 	expectsql = "SELECT `c1`, `c2` FROM `table` WHERE `id`=?"
 	expectargs = []any{1}
-	query, values := Selects("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).Build()
+	query, values := Select("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).MustBuild()
 	if expectsql != query {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, query)
 	}

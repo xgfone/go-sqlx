@@ -15,85 +15,93 @@
 package sqlx
 
 import (
-	"bytes"
 	"strings"
 
+	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
-
-// JoinOn is the join on statement.
-type JoinOn struct {
-	Left  string
-	Right string
-	IsArg bool // Right is the argument or not.
-}
-
-// On returns a JoinOn instance with IsArg=false.
-func On(left, right string) JoinOn { return JoinOn{Left: left, Right: right} }
-
-// OnArg returns a JoinOn instance with IsArg=true.
-func OnArg(left, right string) JoinOn { return JoinOn{Left: left, Right: right, IsArg: true} }
-
-type joinTable struct {
-	Type  string
-	Table string
-	Alias string
-	Ons   []JoinOn
-}
-
-func (jt joinTable) build(buf *bytes.Buffer, d Dialect, args *BuildContext) *BuildContext {
-	if strings.HasPrefix(jt.Type, "FULL") && !dialect.Supports(d, dialect.FullJoin) {
-		panic("sqlx: dialect does not support FULL JOIN")
-	}
-
-	if jt.Type != "" {
-		buf.WriteByte(' ')
-		buf.WriteString(jt.Type)
-	}
-
-	buf.WriteString(" JOIN ")
-	buf.WriteString(quotePath(d, jt.Table))
-	if jt.Alias != "" {
-		buf.WriteString(" AS ")
-		buf.WriteString(d.QuoteIdent(jt.Alias))
-	}
-
-	if len(jt.Ons) > 0 {
-		buf.WriteString(" ON ")
-		for i, on := range jt.Ons {
-			if i > 0 {
-				buf.WriteString(" AND ")
-			}
-			buf.WriteString(quotePath(d, on.Left))
-			buf.WriteByte('=')
-			if on.IsArg {
-				if args == nil {
-					args = acquireBuildContext(d)
-				}
-				buf.WriteString(args.Add(on.Right))
-			} else {
-				buf.WriteString(quotePath(d, on.Right))
-			}
-		}
-	}
-	return args
-}
 
 type sqlTable struct {
 	Table string
 	Alias string
+	Query *SelectBuilder
 }
 
-func appendTable(tables []sqlTable, table, alias string) []sqlTable {
-	if tables == nil {
-		tables = make([]sqlTable, 0, 2)
+func (t sqlTable) render(c *BuildContext) string {
+	var s string
+	if t.Query != nil {
+		if t.Alias == "" {
+			panic("subquery requires alias")
+		}
+		s = "(" + t.Query.render(c) + ")"
+	} else {
+		s = c.Quote(t.Table)
 	}
 
-	for i, t := range tables {
-		if t.Table == table {
-			tables[i].Alias = alias
-			return tables
-		}
+	if t.Alias != "" {
+		s += " AS " + c.Dialect().QuoteIdent(t.Alias)
 	}
-	return append(tables, sqlTable{Table: table, Alias: alias})
+
+	return s
+}
+
+func renderTables(c *BuildContext, ts []sqlTable) string {
+	ss := make([]string, len(ts))
+	for i, t := range ts {
+		ss[i] = t.render(c)
+	}
+	return strings.Join(ss, ", ")
+}
+
+type joinTable struct {
+	Type  string
+	Table sqlTable
+	Using []string
+	Ons   []op.Condition
+}
+
+func (j joinTable) render(c *BuildContext) string {
+	if j.Type == "FULL" {
+		requireFeature(c, dialect.FullJoin, "FULL JOIN")
+	}
+
+	s := " " + j.Type + " JOIN " + j.Table.render(c)
+	if j.Type == "CROSS" {
+		return s
+	}
+
+	if len(j.Using) > 0 {
+		if len(j.Ons) > 0 {
+			panic("JOIN cannot combine ON and USING")
+		}
+
+		ss := make([]string, len(j.Using))
+		for i, v := range j.Using {
+			ss[i] = c.Dialect().QuoteIdent(v)
+		}
+
+		return s + " USING (" + strings.Join(ss, ", ") + ")"
+	}
+
+	if len(j.Ons) == 0 {
+		panic("JOIN requires ON or USING")
+	}
+	return s + " ON " + BuildOper(c, op.And(j.Ons...))
+}
+
+// On compares identifier paths. Other comparisons can use op conditions or Expr.
+func On(left, right string) op.Condition        { return op.EqualKey(left, right) }
+func OnArg(left string, right any) op.Condition { return op.Equal(left, right) }
+
+func clause(c *BuildContext, name string, conds []op.Condition) string {
+	if len(conds) == 0 {
+		return ""
+	}
+
+	s := BuildOper(c, op.And(conds...))
+	if s == "" {
+		panic(name + " contains no effective conditions")
+	}
+
+	return " " + name + " " + s
 }

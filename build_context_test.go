@@ -67,14 +67,14 @@ func TestBuildContextNamedBindings(t *testing.T) {
 }
 
 func TestBuildResultsOwnArguments(t *testing.T) {
-	builders := []interface{ Build() (string, []any) }{
+	builders := []interface{ MustBuild() (string, []any) }{
 		Select("id").From("t").Where(op.Eq("id", 7)),
 		Insert().Into("t").Columns("id").Values(7),
 		Update().Table("t").Set(op.Set("id", 7)),
 		Delete().From("t").Where(op.Eq("id", 7)),
 	}
 	for _, b := range builders {
-		q, args := b.Build()
+		q, args := b.MustBuild()
 		if q == "" || !reflect.DeepEqual(args, []any{7}) {
 			t.Fatalf("%q %#v", q, args)
 		}
@@ -87,12 +87,12 @@ func TestBuildResultsOwnArguments(t *testing.T) {
 			t.Fatal("pooled reuse modified public arguments")
 		}
 		args[0] = 99
-		_, again := b.Build()
+		_, again := b.MustBuild()
 		if !reflect.DeepEqual(again, []any{7}) {
 			t.Fatal("caller modified the builder")
 		}
 	}
-	if _, args := Select("*").From("t").Build(); args != nil {
+	if _, args := Select("*").From("t").MustBuild(); args != nil {
 		t.Fatalf("expected nil, got %#v", args)
 	}
 }
@@ -116,7 +116,7 @@ func TestBuildContextPoolCleanup(t *testing.T) {
 }
 
 type recordingExecutor struct {
-	Database
+	Executor
 	call func(string, []any)
 }
 
@@ -127,7 +127,7 @@ func (e recordingExecutor) ExecContext(_ context.Context, q string, args ...any)
 
 func TestExecBorrowsAndReleasesArguments(t *testing.T) {
 	var borrowed []any
-	db := &DB{Dialect: dialect.MySQL, Database: recordingExecutor{call: func(q string, args []any) {
+	db := &DB{Dialect: dialect.MySQL, Executor: recordingExecutor{call: func(q string, args []any) {
 		if q != "INSERT INTO `t` (`id`) VALUES (?)" || !reflect.DeepEqual(args, []any{7}) {
 			t.Fatalf("%q %#v", q, args)
 		}
@@ -166,14 +166,17 @@ func BenchmarkSelectBuild(b *testing.B) {
 	b.Run("internal", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			_, ctx := builder.build()
+			_, ctx, err := buildBorrowed(builder, &builder.builderBase)
+			if err != nil {
+				b.Fatal(err)
+			}
 			releaseBuildContext(ctx)
 		}
 	})
 	b.Run("public", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			builder.Build()
+			builder.MustBuild()
 		}
 	})
 }

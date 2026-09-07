@@ -17,215 +17,212 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"slices"
+	"strings"
 
 	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// DeleteBuilder returns a new empty DeleteBuilder.
-func (db *DB) DeleteBuilder() *DeleteBuilder {
-	return NewDeleteBuilder().SetDB(db)
-}
-
-// Delete returns a DELETE SQL builder, which is short for DeleteBuilder.
-func (db *DB) Delete() *DeleteBuilder {
-	return Delete().SetDB(db)
-}
-
-// Delete is short for NewDeleteBuilder.
-func Delete() *DeleteBuilder {
-	return NewDeleteBuilder()
-}
-
-// NewDeleteBuilder returns a new DELETE builder.
-func NewDeleteBuilder() *DeleteBuilder {
-	return new(DeleteBuilder)
-}
-
-// DeleteBuilder is used to build the DELETE statement.
 type DeleteBuilder struct {
-	db      *DB
-	comment string
-	ftables []sqlTable
-	jtables []joinTable
-	wheres  []op.Condition
+	builderBase
+
+	ftables   []sqlTable
+	using     []sqlTable
+	jtables   []joinTable
+	wheres    []op.Condition
+	returning []selectedColumn
 }
 
-// From is equal to b.FromAlias(table, "").
-func (b *DeleteBuilder) From(table string) *DeleteBuilder {
-	return b.FromAlias(table, "")
-}
+func Delete() *DeleteBuilder { return new(DeleteBuilder) }
 
-// From appends the "FROM table AS alias" statement.
-//
-// If alias is empty, use "FROM table" instead.
-func (b *DeleteBuilder) FromAlias(table string, alias string) *DeleteBuilder {
-	if table != "" {
-		b.ftables = appendTable(b.ftables, table, alias)
+func (db *DB) Delete() *DeleteBuilder { return Delete().SetDB(db) }
+
+func (b *DeleteBuilder) From(tables ...string) *DeleteBuilder {
+	for _, t := range tables {
+		b.FromAlias(t, "")
 	}
 	return b
 }
 
-// Join appends the "JOIN table ON on..." statement.
-func (b *DeleteBuilder) Join(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("", table, alias, ons...)
+func (b *DeleteBuilder) FromAlias(table, alias string) *DeleteBuilder {
+	b.ftables = append(b.ftables, sqlTable{Table: table, Alias: alias})
+	return b
 }
 
-// JoinInner appends the "INNER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinInner(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("INNER", table, alias, ons...)
+func (b *DeleteBuilder) Using(table, alias string) *DeleteBuilder {
+	b.using = append(b.using, sqlTable{Table: table, Alias: alias})
+	return b
 }
 
-// JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("LEFT", table, alias, ons...)
+func (b *DeleteBuilder) ClearFrom() *DeleteBuilder      { b.ftables = nil; return b }
+func (b *DeleteBuilder) ClearUsing() *DeleteBuilder     { b.using = nil; return b }
+func (b *DeleteBuilder) ClearJoins() *DeleteBuilder     { b.jtables = nil; return b }
+func (b *DeleteBuilder) ClearWhere() *DeleteBuilder     { b.wheres = nil; return b }
+func (b *DeleteBuilder) ClearReturning() *DeleteBuilder { b.returning = nil; return b }
+
+func (b *DeleteBuilder) Clone() *DeleteBuilder {
+	v := *b
+	v.ftables = slices.Clone(b.ftables)
+	v.using = slices.Clone(b.using)
+	v.jtables = slices.Clone(b.jtables)
+	v.wheres = slices.Clone(b.wheres)
+	v.returning = cloneColumns(b.returning)
+	return &v
 }
 
-// JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("LEFT OUTER", table, alias, ons...)
+func (b *DeleteBuilder) Reset() *DeleteBuilder {
+	base := b.builderBase
+	base.err = nil
+	base.comment = ""
+	*b = DeleteBuilder{builderBase: base}
+	return b
 }
 
-// JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinRight(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("RIGHT", table, alias, ons...)
-}
-
-// JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("RIGHT OUTER", table, alias, ons...)
-}
-
-// JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinFull(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("FULL", table, alias, ons...)
-}
-
-// JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *DeleteBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *DeleteBuilder {
-	return b.joinTable("FULL OUTER", table, alias, ons...)
-}
-
-func (b *DeleteBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *DeleteBuilder {
-	if b.jtables == nil {
-		b.jtables = make([]joinTable, 0, 2)
+func (b *DeleteBuilder) render(c *BuildContext) string {
+	if b.err != nil {
+		panic(b.err)
 	}
 
-	b.jtables = append(b.jtables, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
-	return b
-}
-
-// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *DeleteBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *DeleteBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andArgs))
-	}
-
-	for _, arg := range andArgs {
-		b.Where(op.Equal(arg.Name, arg.Value))
-	}
-	return b
-}
-
-// Comment set the comment, which will be appended to the end of the built SQL statement.
-func (b *DeleteBuilder) Comment(comment string) *DeleteBuilder {
-	b.comment = comment
-	return b
-}
-
-// Where sets the "WHERE" conditions.
-func (b *DeleteBuilder) Where(andConditions ...op.Condition) *DeleteBuilder {
-	b.wheres = appendWheres(b.wheres, andConditions...)
-	return b
-}
-
-// Exec builds the sql and executes it by *sql.DB.
-func (b *DeleteBuilder) Exec() (sql.Result, error) {
-	return b.ExecContext(context.Background())
-}
-
-// ExecContext builds the sql and executes it by *sql.DB.
-func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
-	query, args := b.build()
-	defer releaseBuildContext(args)
-	return getDB(b.db).ExecContext(ctx, query, args.argsView()...)
-}
-
-// SetDB sets the db.
-func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder {
-	b.db = db
-	return b
-}
-
-// String returns the SQL from Build without copying the arguments.
-func (b *DeleteBuilder) String() string {
-	sql, args := b.build()
-	releaseBuildContext(args)
-	return sql
-}
-
-// Build builds the DELETE FROM TABLE sql statement.
-func (b *DeleteBuilder) Build() (string, []any) {
-	query, ctx := b.build()
-	defer releaseBuildContext(ctx)
-	return query, ctx.Args()
-}
-
-func (b *DeleteBuilder) build() (sql string, args *BuildContext) {
 	if len(b.ftables) == 0 {
-		panic("sqlx.DeleteBuilder: no FROM table name")
+		panic("DELETE requires target")
 	}
 
-	d := getDialect(b.db)
-	multi := len(b.ftables) > 1 || len(b.jtables) > 0
-	if multi && !dialect.Supports(d, dialect.MultiTableDelete) {
-		panic("sqlx: dialect does not support DELETE targets with joins")
-	}
+	var s strings.Builder
+	s.Grow(128)
 
-	buf := getBuffer()
-	defer putBuffer(buf)
-	buf.WriteString("DELETE ")
-	if multi {
-		for i, target := range b.ftables {
+	_, _ = s.WriteString("DELETE ")
+	if len(b.using) > 0 {
+		requireFeature(c, dialect.DeleteUsing, "DELETE USING")
+		if len(b.ftables) != 1 {
+			panic("DELETE USING requires one target")
+		}
+	} else if len(b.ftables) > 1 || len(b.jtables) > 0 {
+		requireFeature(c, dialect.MultiTableDelete, "multi-table DELETE")
+		for i, t := range b.ftables {
 			if i > 0 {
-				buf.WriteString(", ")
+				s.WriteString(", ")
 			}
-			if target.Alias != "" {
-				buf.WriteString(d.QuoteIdent(target.Alias))
+
+			if t.Alias != "" {
+				s.WriteString(c.Dialect().QuoteIdent(t.Alias))
 			} else {
-				buf.WriteString(quotePath(d, target.Table))
+				s.WriteString(c.Quote(t.Table))
 			}
 		}
-		buf.WriteByte(' ')
+		s.WriteByte(' ')
 	}
 
-	buf.WriteString("FROM ")
-	for i, t := range b.ftables {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(quotePath(d, t.Table))
-		if t.Alias != "" {
-			buf.WriteString(" AS ")
-			buf.WriteString(d.QuoteIdent(t.Alias))
-		}
+	_, _ = s.WriteString("FROM " + renderTables(c, b.ftables))
+	if len(b.using) > 0 {
+		_, _ = s.WriteString(" USING " + renderTables(c, b.using))
 	}
 
-	// Join
-	for _, join := range b.jtables {
-		args = join.build(buf, d, args)
+	for _, j := range b.jtables {
+		_, _ = s.WriteString(j.render(c))
 	}
 
-	// Where
-	args = buildWheres(buf, args, d, b.wheres)
+	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
+	_, _ = s.WriteString(renderReturning(c, b.returning))
+	_, _ = s.WriteString(commentSQL(b.comment))
 
-	// Comment
-	if b.comment != "" {
-		buf.WriteString(" /* ")
-		buf.WriteString(b.comment)
-		buf.WriteString(" */")
+	return s.String()
+}
+
+func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder { b.db = db; return b }
+func (b *DeleteBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+// SetExecutor overrides execution without changing the SQL dialect.
+func (b *DeleteBuilder) SetExecutor(e Executor) *DeleteBuilder { b.executor = e; return b }
+
+// SetDialect overrides SQL rendering independently of the executor.
+func (b *DeleteBuilder) SetDialect(d Dialect) *DeleteBuilder { b.dialect = d; return b }
+
+func (b *DeleteBuilder) Comment(s string) *DeleteBuilder { b.comment = s; return b }
+
+func (b *DeleteBuilder) String() string                { return stringStatement(b) }
+func (b *DeleteBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
+func (b *DeleteBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	if len(b.returning) > 0 {
+		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
+	return execStatement(ctx, b, &b.builderBase)
+}
 
-	sql = buf.String()
-	return
+func (b *DeleteBuilder) Returning(columns ...string) *DeleteBuilder {
+	for _, v := range columns {
+		b.returning = append(b.returning, selectedColumn{Column: v})
+	}
+	return b
+}
+
+func (b *DeleteBuilder) ReturningExpr(e Expression, alias string) *DeleteBuilder {
+	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
+	return b
+}
+
+func (b *DeleteBuilder) QueryRowsContext(ctx context.Context) Rows {
+	if len(b.returning) == 0 {
+		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
+	}
+	return NewRows(queryStatement(ctx, b, &b.builderBase))
+}
+
+func (b *DeleteBuilder) QueryRowContext(ctx context.Context) Row {
+	if len(b.returning) == 0 {
+		return NewRow(nil, nil, errors.New("sqlx: RETURNING required"))
+	}
+	return NewRow(queryStatement(ctx, b, &b.builderBase))
+}
+
+func (b *DeleteBuilder) Where(conds ...op.Condition) *DeleteBuilder {
+	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
+	return b
+}
+
+func (b *DeleteBuilder) Join(table, alias string, ons ...op.Condition) *DeleteBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "INNER",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...op.Condition) *DeleteBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "LEFT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *DeleteBuilder) JoinRight(table, alias string, ons ...op.Condition) *DeleteBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "RIGHT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *DeleteBuilder) JoinFull(table, alias string, ons ...op.Condition) *DeleteBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "FULL",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *DeleteBuilder) CrossJoin(table, alias string) *DeleteBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "CROSS",
+		Table: sqlTable{Table: table, Alias: alias},
+	})
+	return b
 }

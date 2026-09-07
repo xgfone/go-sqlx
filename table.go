@@ -14,85 +14,30 @@
 
 package sqlx
 
-import "github.com/xgfone/go-op"
-
-/// ---------------------------------------------------------------------- ///
-
-// Table represents a SQL table.
+// Table binds a table name to an optional database. It does not embed DB methods.
 type Table struct {
 	Name string
-	*DB
+	db   *DB
 }
 
-// NewTable returns a new Table with the name.
 func NewTable(name string) Table { return Table{Name: name} }
 
-// NewTable returns a new Table with the db.
 func (db *DB) NewTable(name string) Table { return NewTable(name).WithDB(db) }
 
-// String returns the table name.
-func (t Table) String() string { return t.Name }
+func (t Table) String() string      { return t.Name }
+func (t Table) WithDB(db *DB) Table { t.db = db; return t }
 
-// WithDB returns a new Table with the given db.
-func (t Table) WithDB(db *DB) Table { t.DB = db; return t }
+func (t *Table) SetDB(db *DB) { t.db = db }
+func (t Table) GetDB() *DB    { return getDB(t.db) }
 
-// SetDB reset the db.
-func (t *Table) SetDB(db *DB) { t.DB = db }
+func (t Table) Insert() *InsertBuilder { return t.GetDB().Insert().Into(t.Name) }
+func (t Table) Update() *UpdateBuilder { return t.GetDB().Update().Table(t.Name) }
+func (t Table) Delete() *DeleteBuilder { return t.GetDB().Delete().From(t.Name) }
 
-// GetDB returns the set DB. Or returns DefaultDB instead if not set.
-func (t Table) GetDB() *DB {
-	if t.DB != nil {
-		return t.DB
-	}
-	return DefaultDB
+func (t Table) Select(columns ...string) *SelectBuilder {
+	return t.GetDB().Select(columns...).From(t.Name)
 }
 
-// DeleteFrom returns a DELETE FROM builder.
-func (t Table) DeleteFrom(conds ...op.Condition) *DeleteBuilder {
-	return t.GetDB().Delete().From(t.Name).Where(conds...)
-}
-
-// InsertInto returns a INSERT INTO builder.
-func (t Table) InsertInto() *InsertBuilder {
-	return t.GetDB().Insert().Into(t.Name)
-}
-
-// Update returns a UPDATE builder.
-func (t Table) Update(updaters ...op.Updater) *UpdateBuilder {
-	return t.GetDB().Update().Table(t.Name).Set(updaters...)
-}
-
-// SelectAlias is equal to t.GetDB().SelectAlias(column, alias).
-func (t Table) SelectAlias(column, alias string) *SelectBuilder {
-	return t.GetDB().SelectAlias(column, alias).From(t.Name)
-}
-
-// Select is equal to t.GetDB().Select(column).
-func (t Table) Select(column string) *SelectBuilder {
-	return t.GetDB().Select(column).From(t.Name)
-}
-
-// SelectExprAlias selects an expression and alias from this table.
-func (t Table) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
-	return t.GetDB().SelectExprAlias(expr, alias).From(t.Name)
-}
-
-// SelectExpr selects an expression from this table.
-func (t Table) SelectExpr(expr Expression) *SelectBuilder {
-	return t.GetDB().SelectExpr(expr).From(t.Name)
-}
-
-// Selects is equal to t.GetDB().Selects(columns...).
-func (t Table) Selects(columns ...string) *SelectBuilder {
-	return t.GetDB().Selects(columns...).From(t.Name)
-}
-
-// SelectStruct is equal to t.GetDB().SelectStructWithTable(s, "").
 func (t Table) SelectStruct(s any) *SelectBuilder {
-	return t.GetDB().SelectStructWithTable(s, "").From(t.Name)
-}
-
-// SelectStructWithTable is equal to t.GetDB().SelectStructWithTable(s, table).
-func (t Table) SelectStructWithTable(s any, table string) *SelectBuilder {
-	return t.GetDB().SelectStructWithTable(s, table).From(t.Name)
+	return t.Select().SelectStruct(s)
 }

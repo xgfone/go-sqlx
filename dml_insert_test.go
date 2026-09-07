@@ -15,7 +15,6 @@
 package sqlx
 
 import (
-	"database/sql"
 	"fmt"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -32,18 +31,18 @@ func ExampleInsertBuilder() {
 		Values("v4", "v5", "v6").
 		Values("v7", "v8", "v9")
 
-	// No Value, which will build a single value placeholder.
-	insert3 := Insert().Into("table").Columns("c1", "c2", "c3")
+	// Explicit default row.
+	insert3 := Insert().Into("table").DefaultValues()
 
 	// No Column
 	insert4 := Insert().Into("table").Values("v1", "v2", "v3")
 	insert5 := Insert().Into("table").Values("v11", "v12").Values("v21", "v22")
 
-	sql1, args1 := insert1.SetDB(&DB{Dialect: dialect.Postgres}).Build() // Use the PostgreSQL dialect.
-	sql2, args2 := insert2.SetDB(&DB{Dialect: dialect.Postgres}).Build() // Use the PostgreSQL dialect.
-	sql3, args3 := insert3.Build()                                       // Use the default dialect.
-	sql4, args4 := insert4.Build()                                       // Use the default dialect.
-	sql5, args5 := insert5.Build()                                       // Use the default dialect.
+	sql1, args1 := insert1.SetDB(&DB{Dialect: dialect.Postgres}).MustBuild() // Use the PostgreSQL dialect.
+	sql2, args2 := insert2.SetDB(&DB{Dialect: dialect.Postgres}).MustBuild() // Use the PostgreSQL dialect.
+	sql3, args3 := insert3.MustBuild()                                       // Use the default dialect.
+	sql4, args4 := insert4.MustBuild()                                       // Use the default dialect.
+	sql5, args5 := insert5.MustBuild()                                       // Use the default dialect.
 
 	fmt.Println(sql1)
 	fmt.Println(args1)
@@ -65,7 +64,7 @@ func ExampleInsertBuilder() {
 	// [v1 v2 v3]
 	// INSERT INTO "table" ("c1", "c2", "c3") VALUES ($1, $2, $3), ($4, $5, $6), ($7, $8, $9)
 	// [v1 v2 v3 v4 v5 v6 v7 v8 v9]
-	// INSERT INTO `table` (`c1`, `c2`, `c3`) VALUES (?, ?, ?)
+	// INSERT INTO `table` () VALUES ()
 	// []
 	// INSERT INTO `table` VALUES (?, ?, ?)
 	// [v1 v2 v3]
@@ -73,13 +72,13 @@ func ExampleInsertBuilder() {
 	// [v11 v12 v21 v22]
 }
 
-func ExampleInsertBuilder_NamedValues() {
-	v1 := sql.Named("column1", "value1")
-	v2 := sql.Named("column2", "value2")
-	v3 := sql.Named("column3", "value3")
+func ExampleInsertBuilder_Row() {
+	v1 := ColValue("column1", "value1")
+	v2 := ColValue("column2", "value2")
+	v3 := ColValue("column3", "value3")
 
-	insert := Insert().Into("table").NamedValues(v1, v2, v3)
-	sql, args := insert.Build()
+	insert := Insert().Into("table").Row(v1, v2, v3)
+	sql, args := insert.MustBuild()
 
 	fmt.Println(sql)
 	fmt.Println(args)

@@ -64,15 +64,12 @@ func newUpdaterBatch() OpBuilder {
 
 func newUpdaterSet() OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, o op.Op) string {
-		if opvalueisnil(o) {
-			return ""
-		}
 
 		var value string
 		if kv, ok := o.Val.(op.KV); ok {
 			value = ab.Quote(kv.Key)
 		} else {
-			value = ab.Add(o.Val)
+			value = renderValue(ab, o.Val)
 		}
 
 		return fmt.Sprintf("%s=%s", ab.Quote(getOpKey(o)), value)
@@ -98,14 +95,14 @@ func newUpdaterThree(format string) OpBuilder {
 			if s, ok := v.Val.(string); ok {
 				value = ab.Quote(s)
 			} else {
-				value = ab.Add(v.Val)
+				value = renderValue(ab, v.Val)
 			}
 
 		case string:
 			value = ab.Quote(v)
 
 		default:
-			value = ab.Add(v)
+			value = renderValue(ab, v)
 		}
 
 		return fmt.Sprintf(format, left, right, value)

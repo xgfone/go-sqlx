@@ -15,136 +15,100 @@
 package sqlx
 
 import (
-	"database/sql"
+	"fmt"
 	"reflect"
-	"sync"
-
-	"github.com/xgfone/go-toolkit/slicex"
 )
 
-// Struct is the same as NamedValues, but extracts the fields of the struct
-// as the named values to be inserted, which supports the tag named "sql"
-// to modify the column name.
-//
-//  1. If the value of the tag is "-", however, the field will be ignored.
-//  2. If the tag value contains "omitempty" or "omitzero", the ZERO field will be ignored.
+// Struct appends one row. Explicit Columns select fields and include zero values.
+// Otherwise omission tags are honored and every row must have the same column set.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
-	value := reflect.ValueOf(s)
-	extract := getFieldExtracter("insertvaluesfromstruct", value.Type(), getInsertedFieldsFromStruct)
-	extract(value, b)
+	b.mutate(func() {
+		v, e := structValue(s)
+		if e != nil {
+			panic(e)
+		}
+
+		fields, e := fieldsFor(v.Type())
+		if e != nil {
+			panic(e)
+		}
+
+		var row []ColumnValue
+		if b.explicitColumns {
+			byName, _ := fieldMapFor(v.Type())
+			for _, col := range b.columns {
+				f, ok := byName[col]
+				if !ok {
+					panic(fmt.Sprintf("unknown struct column %q", col))
+				}
+
+				fv, e := fieldValue(v, f.Indexes, false)
+				if e != nil {
+					panic(e)
+				}
+
+				row = append(row, ColValue(col, insertField(fv)))
+			}
+		} else {
+			for _, f := range fields {
+				fv, e := fieldValue(v, f.Indexes, false)
+				if e != nil {
+					panic(e)
+				}
+
+				if f.IgnoreZero && (!fv.IsValid() || isZero(fv)) {
+					continue
+				}
+
+				row = append(row, ColValue(f.Column, insertField(fv)))
+			}
+		}
+		b.Row(row...)
+	})
 	return b
 }
 
-func getInsertedFieldsFromStruct(vtype reflect.Type) fieldExtracter {
-	kind := vtype.Kind()
-	if kind == reflect.Pointer {
-		vtype = vtype.Elem()
-		kind = vtype.Kind()
-	}
-	if kind != reflect.Struct || vtype == _timetype {
-		panic("sqlx.InsertBuilder.Struct: not a struct or pointer to struct")
+func insertField(v reflect.Value) any {
+	if !v.IsValid() {
+		return nil
 	}
 
-	fields := make([]structfield, 0, 16)
-	fields = extractStructFields(fields, vtype)
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		return nil
+	}
 
-	return func(value reflect.Value, data any) {
-		if value.Kind() == reflect.Pointer {
-			value = value.Elem()
+	if !v.CanInterface() {
+		panic("cannot read unexported field")
+	}
+
+	if v.Type().Implements(_valuertype) {
+		return v.Interface()
+	}
+
+	if reflect.PointerTo(v.Type()).Implements(_valuertype) {
+		copy := reflect.New(v.Type())
+		copy.Elem().Set(v)
+		return copy.Interface()
+	}
+
+	return v.Interface()
+}
+
+// Structs appends a slice of structs or pointers using exactly the Struct rules.
+// Empty slices append no rows; an otherwise empty insert still fails Build.
+func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
+	b.mutate(func() {
+		v := reflect.ValueOf(slice)
+		if !v.IsValid() || v.Kind() != reflect.Slice {
+			panic("Structs requires a slice")
 		}
 
-		namedvalue := namedvaluespool.Get().(*namedValue)
-		namedvalues := namedvalue.Args
-
-		for i, _len := 0, len(fields); i < _len; i++ {
-			field := &fields[i]
-			if fv, ok := field.InsertedValue(value); ok {
-				namedvalues = append(namedvalues, sql.NamedArg{Name: field.Column, Value: fv.Interface()})
-			}
-		}
-		data.(*InsertBuilder).NamedValues(namedvalues...)
-
-		namedvalue.Args = namedvalues[:0]
-		namedvaluespool.Put(namedvalue)
-	}
-}
-
-type namedValue struct{ Args []sql.NamedArg }
-
-var namedvaluespool = sync.Pool{New: func() any {
-	return &namedValue{make([]sql.NamedArg, 0, 32)}
-}}
-
-func (f *structfield) InsertedValue(value reflect.Value) (reflect.Value, bool) {
-	for _, index := range f.Indexes {
-		value = value.Field(index)
-	}
-
-	ignored := !value.IsValid() || (f.IgnoreZero && isZero(value))
-	if !ignored && value.Kind() == reflect.Pointer {
-		value = value.Elem()
-	}
-
-	return value, !ignored
-}
-
-func (f *structfield) ForceInsertedValue(value reflect.Value) reflect.Value {
-	for _, index := range f.Indexes {
-		value = value.Field(index)
-	}
-
-	if value.Kind() == reflect.Pointer {
-		value = value.Elem()
-	}
-
-	return value
-}
-
-// ValuesFromStructs is the same as Values, but extracts the fields of the structs.
-func (b *InsertBuilder) ValuesFromStructs(slice any) *InsertBuilder {
-	values := reflect.ValueOf(slice)
-	switch {
-	case values.Kind() != reflect.Slice:
-		panic("sqlx.InsertBuilder.ValuesFromStructs: not a slice of structs")
-
-	case values.Len() == 0:
-		return b
-	}
-
-	value := values.Index(0)
-	vtype := value.Type()
-	if kind := value.Kind(); kind != reflect.Struct || vtype == _timetype {
-		panic("sqlx.InsertBuilder.ValuesFromStructs: not a struct slice")
-	}
-
-	extract := getFieldExtracter("insertvaluesfromstructs", vtype, func(t reflect.Type) fieldExtracter {
-		fields := make([]structfield, 0, 16)
-		fields = extractStructFields(fields, vtype)
-		fieldm := slicex.Map(fields, func(f structfield) (string, *structfield) { return f.Column, &f })
-		columns := slicex.Filter(fields, func(f structfield) (string, bool) {
-			return f.Column, !f.IgnoreZero
-		})
-
-		return func(value reflect.Value, data any) {
-			builder := data.(*InsertBuilder)
-			builder.GrowValues(value.Len())
-			if len(builder.columns) == 0 {
-				builder.columns = columns
-			}
-			clen := len(builder.columns)
-
-			for i, _len := 0, value.Len(); i < _len; i++ {
-				_value := value.Index(i)
-				values := make([]any, clen)
-				for j := 0; j < clen; j++ {
-					field := fieldm[builder.columns[j]]
-					values[j] = field.ForceInsertedValue(_value).Interface()
-				}
-				builder.Values(values...)
+		for i := 0; i < v.Len(); i++ {
+			b.Struct(v.Index(i).Interface())
+			if b.err != nil {
+				return
 			}
 		}
 	})
-
-	extract(values, b)
 	return b
 }

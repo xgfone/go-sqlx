@@ -34,8 +34,8 @@ func ExampleUpdateBuilder() {
 		Where(op.Like("c6", "v6"), op.NotLike("c7", "v7%")).
 		Where(op.Between("c8", 11, 22))
 
-	sql1, args1 := update1.Build()
-	sql2, args2 := update2.SetDB(&DB{Dialect: dialect.Postgres}).Build()
+	sql1, args1 := update1.MustBuild()
+	sql2, args2 := update2.SetDB(&DB{Dialect: dialect.Postgres}).MustBuild()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)

@@ -17,6 +17,7 @@ package sqltype
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 )
@@ -33,7 +34,7 @@ func EncodeJSON(v any) (string, error) {
 func DecodeJSON(dst any, src any) error {
 	v := reflect.ValueOf(dst)
 	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
-		return fmt.Errorf("sqltype.DecodeJSON: destination must be a non-nil pointer")
+		return errors.New("sqltype.DecodeJSON: destination must be a non-nil pointer")
 	}
 
 	value := reflect.New(v.Elem().Type())
@@ -67,7 +68,7 @@ type JSON[T any] struct{ V T }
 func (v JSON[T]) Value() (driver.Value, error) { return EncodeJSON(v.V) }
 func (v *JSON[T]) Scan(src any) error {
 	if v == nil {
-		return fmt.Errorf("sqltype.JSON.Scan: nil destination")
+		return errors.New("sqltype.JSON.Scan: nil destination")
 	}
 	return DecodeJSON(&v.V, src)
 }

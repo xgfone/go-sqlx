@@ -32,8 +32,8 @@ func TestBatch(t *testing.T) {
 	sql := BuildOper(ab, updater4)
 	args := ab.Args()
 
-	expectsql := "`k1`=?, `k2`=`k2`+1, `k3`=`k3`-1, `k4`=`k4`+?, `k5`=`k5`-?"
-	expectargs := []any{"v1", 123, 456}
+	expectsql := "`k1`=?, `k2`=`k2`+1, `k3`=`k3`-1, `noop1`=?, `k4`=`k4`+?, `k5`=`k5`-?, `noop2`=?"
+	expectargs := []any{"v1", nil, 123, 456, (*int)(nil)}
 
 	if expectsql != sql {
 		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)

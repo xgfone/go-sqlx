@@ -15,7 +15,9 @@
 package sqlx
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -30,7 +32,7 @@ func ExampleSelectBuilder_SelectStruct() {
 	}
 
 	s := S{}
-	sb := SelectStructWithTable(s, "A")
+	sb := Select().SelectStruct(s, "A")
 	columns := sb.SelectedColumns()
 	fmt.Println(columns)
 
@@ -85,16 +87,16 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 	}
 
 	var s S
-	b := SelectStruct(s)
+	b := Select().SelectStruct(s)
 	expects := "SELECT `s1`, `s2_embeded_field`, `s3` FROM `t`"
-	if q, _ := b.From("t").Build(); q != expects {
+	if q, _ := b.From("t").MustBuild(); q != expects {
 		t.Errorf(`expect sql "%s", but got "%s"`, expects, q)
 	}
 
 	expectv := S{S1: "a", S2: S2{"b"}, S3: "c"}
 	err := ScanColumnsToStruct(func(vs ...any) error {
 		if len(vs) != 3 {
-			return fmt.Errorf("the number of the values are not equal to 3")
+			return errors.New("the number of the values are not equal to 3")
 		}
 
 		for i, v := range vs {
@@ -122,7 +124,7 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 	}
 }
 
-func TestSelectBuilderSelectStructWithTable(t *testing.T) {
+func TestSelectStructMetadataCache(t *testing.T) {
 	type SS1 struct {
 		F1 int32
 		F2 int32
@@ -133,25 +135,18 @@ func TestSelectBuilderSelectStructWithTable(t *testing.T) {
 		F2 int32
 	}
 
-	SelectStructWithTable(SS1{}, "")
-	SelectStructWithTable(SS1{}, "A")
-	SelectStructWithTable(SS2{}, "")
-	SelectStructWithTable(SS2{}, "A")
+	Select().SelectStruct(SS1{}, "")
+	Select().SelectStruct(SS1{}, "A")
+	Select().SelectStruct(SS2{}, "")
+	Select().SelectStruct(SS2{}, "A")
 
-	SelectStructWithTable(SS1{}, "")
-	SelectStructWithTable(SS1{}, "A")
-	SelectStructWithTable(SS2{}, "")
-	SelectStructWithTable(SS2{}, "A")
+	Select().SelectStruct(SS1{}, "")
+	Select().SelectStruct(SS1{}, "A")
+	Select().SelectStruct(SS2{}, "")
+	Select().SelectStruct(SS2{}, "A")
 
-	var num int
-	for key := range typetables.Load().(map[typetable][]Namer) {
-		switch fmt.Sprint(key.RType) {
-		case "sqlx.SS1", "sqlx.SS2":
-			num++
-		}
-	}
-
-	if num != 4 {
-		t.Errorf("expect the length of typetables is 4, but got %d", num)
+	fields, err := fieldsFor(reflect.TypeFor[SS1]())
+	if err != nil || len(fields) != 2 {
+		t.Fatalf("%v %v", fields, err)
 	}
 }

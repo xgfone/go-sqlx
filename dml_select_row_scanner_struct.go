@@ -15,62 +15,57 @@
 package sqlx
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
-
-	"github.com/xgfone/go-toolkit/slicex"
 )
 
-// ScanColumnsToStruct scans the columns into the fields of the struct s,
-// which supports the tag named "sql" to modify the field name.
-//
-// If the value of the tag is "-", however, the field will be ignored.
-func ScanColumnsToStruct(scan func(...any) error, columns []string, s any) (err error) {
-	if len(columns) == 0 {
-		panic("sqlx.ScanColumnsToStruct: no selected columns")
+// ScanColumnsToStruct maps result labels to exported struct fields. Unknown result
+// columns are ignored. Duplicate mapped fields and nil destinations return errors.
+func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
+	if scan == nil {
+		return errors.New("sqlx: nil scan function")
 	}
 
-	value := reflect.ValueOf(s)
-	extract := getFieldExtracter("selectscancolumns", value.Type(), getScannedFieldsFromStruct)
+	v := reflect.ValueOf(dst)
+	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
+		return errors.New("sqlx: expected non-nil pointer to struct")
+	}
+
+	v = v.Elem()
+	if v.Kind() != reflect.Struct {
+		return errors.New("sqlx: expected pointer to struct")
+	}
+
+	m, e := fieldMapFor(v.Type())
+	if e != nil {
+		return e
+	}
+
 	values := make([]any, len(columns))
-	extract(value, scannerData{Values: values, Columns: columns})
-	return scan(values...)
-}
-
-type scannerData struct {
-	Columns []string
-	Values  []any
-}
-
-func getScannedFieldsFromStruct(vtype reflect.Type) fieldExtracter {
-	if vtype.Kind() != reflect.Pointer {
-		panic("sqlx.ScanColumnsToStruct: not a pointer to struct")
-	} else if vtype = vtype.Elem(); vtype.Kind() != reflect.Struct {
-		panic("sqlx.ScanColumnsToStruct: not a pointer to struct")
-	}
-
-	fields := make([]structfield, 0, 16)
-	fields = extractStructFields(fields, vtype)
-	fieldm := slicex.Map(fields, func(f structfield) (string, structfield) { return f.Column, f })
-
-	return func(value reflect.Value, data any) {
-		d := data.(scannerData)
-		columns := d.Columns
-		values := d.Values
-
-		value = value.Elem()
-		for i, column := range columns {
-			if field, ok := fieldm[column]; ok {
-				values[i] = field.ScannerValue(value)
-			} else {
-				values[i] = GeneralScanner{}
-			}
+	seen := map[string]bool{}
+	for i, col := range columns {
+		f, ok := m[col]
+		if !ok {
+			values[i] = GeneralScanner{}
+			continue
 		}
-	}
-}
 
-func (f *structfield) ScannerValue(value reflect.Value) any {
-	for _, index := range f.Indexes {
-		value = value.Field(index)
+		if seen[col] {
+			return fmt.Errorf("sqlx: duplicate result column %q; use aliases", col)
+		}
+		seen[col] = true
+
+		fv, e := fieldValue(v, f.Indexes, true)
+		if e != nil {
+			return e
+		}
+
+		if !fv.CanAddr() || !fv.CanSet() {
+			return fmt.Errorf("sqlx: field %q is not writable", col)
+		}
+
+		values[i] = fv.Addr().Interface()
 	}
-	return value.Addr().Interface()
+	return scan(values...)
 }

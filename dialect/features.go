@@ -18,13 +18,25 @@ package dialect
 type Feature uint8
 
 const (
-	UpdateFrom Feature = iota
+	UpdateFrom Feature = iota + 1
 	UpdateJoinBeforeSet
 	MultiTableUpdate
 	MultiTableDelete
 	InsertIgnore
 	ReplaceInto
 	FullJoin
+	Returning
+	RowLock
+	LockOf
+	LockWait
+	CTE
+	OnConflict
+	DuplicateKeyUpdate
+	DeleteUsing
+	DefaultValues
+	EmptyInsert
+	DefaultInValues
+	DefaultValuesConflict
 )
 
 // FeatureDialect opts in to grammar extensions beyond single-table DML.
@@ -40,6 +52,21 @@ func Supports(d Dialect, feature Feature) bool {
 
 func (d builtin) Supports(feature Feature) bool {
 	switch feature {
+	case Returning, OnConflict, DefaultValues:
+		return d == "postgres" || d == "sqlite3"
+
+	case RowLock, LockOf, LockWait, DefaultInValues:
+		return d == "mysql" || d == "postgres"
+
+	case DeleteUsing, DefaultValuesConflict:
+		return d == "postgres"
+
+	case CTE:
+		return true
+
+	case DuplicateKeyUpdate, EmptyInsert:
+		return d == "mysql"
+
 	case UpdateFrom, FullJoin:
 		return d == "postgres" || d == "sqlite3"
 

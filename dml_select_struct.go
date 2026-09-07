@@ -15,162 +15,48 @@
 package sqlx
 
 import (
-	"fmt"
-	"maps"
 	"reflect"
 	"strings"
-	"sync"
-	"sync/atomic"
 )
 
-// Sep is the separator by the select struct.
-var Sep = "_"
+// Namer identifies a selected column and optional result alias.
+type Namer struct{ Name, Alias string }
 
-// SelectStruct is equal to db.SelectStructWithTable(s, "").
-func (db *DB) SelectStruct(s any) *SelectBuilder {
-	return db.SelectStructWithTable(s, "")
+// ColumnProvider can supply per-instance columns. Its result is never cached.
+type ColumnProvider interface {
+	Columns(qualifier string) []Namer
 }
 
-// SelectStructWithTable is equal to SelectStructWithTable(s, table...).
-func (db *DB) SelectStructWithTable(s any, table string) *SelectBuilder {
-	return SelectStructWithTable(s, table).SetDB(db)
-}
-
-// SelectStruct is equal to SelectStructWithTable(s, "").
-func SelectStruct(s any) *SelectBuilder {
-	return SelectStructWithTable(s, "")
-}
-
-// SelectStruct is equal to NewSelectBuilder().SelectStructWithTable(s, table).
-func SelectStructWithTable(s any, table string) *SelectBuilder {
-	return new(SelectBuilder).SelectStructWithTable(s, table)
-}
-
-// SelectStruct is equal to b.SelectStructWithTable(s, "").
-func (b *SelectBuilder) SelectStruct(s any) *SelectBuilder {
-	return b.SelectStructWithTable(s, "")
-}
-
-// SelectStructWithTable reflects and extracts the fields of the struct
-// as the selected columns, which supports the tag named "sql"
-// to modify the column name.
-//
-// If the value of the tag is "-", however, the field will be ignored.
-func (b *SelectBuilder) SelectStructWithTable(s any, table string) *SelectBuilder {
-	columns := defaultGetColumnsFromStruct(s, table)
-	b.growcolumns(len(columns))
-	for _, c := range columns {
-		b.SelectAlias(c.Name, c.Alias)
-	}
-	return b
-}
-
-func defaultGetColumnsFromStruct(s any, table string) []Namer {
-	if s == nil {
-		return nil
-	}
-
-	key := typetable{RType: reflect.TypeOf(s), Table: table}
-	columntables := typetables.Load().(map[typetable][]Namer)
-	columns, ok := columntables[key]
-	if !ok {
-		ttlock.Lock()
-		defer ttlock.Unlock()
-
-		columntables = typetables.Load().(map[typetable][]Namer)
-		if columns, ok = columntables[key]; !ok {
-			columns = getColumnsFromStruct(s, table)
-
-			_columntables := make(map[typetable][]Namer, len(columntables)+1)
-			maps.Copy(_columntables, columntables)
-			_columntables[key] = columns
-
-			typetables.Store(_columntables)
-		}
-	}
-
-	return columns
-}
-
-func init() {
-	typetables.Store(map[typetable][]Namer(nil))
-}
-
-var (
-	ttlock     = new(sync.Mutex)
-	typetables = new(atomic.Value) //  map[typetable][]string
-)
-
-type typetable struct {
-	RType reflect.Type
-	Table string
-}
-
-// Namer represents the name and alias of a column.
-type Namer struct {
-	Name  string
-	Alias string
-}
-
-type columner interface {
-	Columns(talbe string) []Namer
-}
-
-func getColumnsFromStruct(s any, table string) (columns []Namer) {
-	if c, ok := s.(columner); ok {
-		return c.Columns(table)
-	}
-
-	vtype := reflect.TypeOf(s)
-	switch vtype.Kind() {
-	case reflect.Struct:
-	case reflect.Pointer:
-		vtype = vtype.Elem()
-		if vtype.Kind() != reflect.Struct {
-			panic("sqlx.SelectBuilder: not a pointer to struct")
-		}
-	default:
-		panic("sqlx.SelectBuilder: not a struct or pointer to struct")
-	}
-
-	columns = make([]Namer, 0, vtype.NumField())
-	return selectStruct(columns, vtype, table, "")
-}
-
-func selectStruct(columns []Namer, vtype reflect.Type, ftable, prefix string) []Namer {
-	_len := vtype.NumField()
-	for i := 0; i < _len; i++ {
-		ftype := vtype.Field(i)
-
-		// var targs []string
-		tname := ftype.Tag.Get("sql")
-		if index := strings.IndexByte(tname, ','); index > -1 {
-			// if args := tname[index+1:]; args != "" {
-			// 	targs = strings.Split(args, ",")
-			// }
-			tname = strings.TrimSpace(tname[:index])
+// SelectStruct appends mapped columns. qualifier is optional and qualifies columns;
+// it never sets FROM. sql:"-" excludes fields; omission tags do not affect SELECT.
+func (b *SelectBuilder) SelectStruct(s any, qualifier ...string) *SelectBuilder {
+	b.mutate(func() {
+		if len(qualifier) > 1 {
+			panic("SelectStruct accepts at most one qualifier")
 		}
 
-		if tname == "-" {
-			continue
+		q := ""
+		if len(qualifier) > 0 {
+			q = qualifier[0]
 		}
 
-		name := ftype.Name
-		if tname != "" {
-			name = tname
+		if provider, ok := s.(ColumnProvider); ok {
+			b.SelectNamers(provider.Columns(q)...)
+			return
 		}
 
-		isvaluer := ftype.Type.Implements(_valuertype)
-		if !isvaluer && ftype.Type.Kind() == reflect.Struct && ftype.Type != _timetype {
-			columns = selectStruct(columns, ftype.Type, ftable, formatFieldName(prefix, tname))
-		} else {
-			name = formatFieldName(prefix, name)
-			if ftable != "" {
-				name = fmt.Sprintf("%s.%s", ftable, name)
+		fields, e := fieldsFor(reflect.TypeOf(s))
+		if e != nil {
+			panic(e)
+		}
+
+		for _, f := range fields {
+			parts := []string{f.Column}
+			if q != "" {
+				parts = append(strings.Split(q, "."), f.Column)
 			}
-			columns = append(columns, Namer{Name: name})
+			b.SelectExpr(Ident(parts...))
 		}
-	}
-
-	return columns
+	})
+	return b
 }

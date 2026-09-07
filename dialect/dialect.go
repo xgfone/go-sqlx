@@ -16,6 +16,7 @@
 package dialect
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -88,14 +89,14 @@ func Register(name string, d Dialect) error {
 	}
 
 	if d == nil {
-		return fmt.Errorf("dialect: nil dialect")
+		return errors.New("dialect: nil dialect")
 	}
 
 	switch v := reflect.ValueOf(d); v.Kind() {
 	case reflect.Pointer, reflect.Interface, reflect.Map,
 		reflect.Slice, reflect.Func, reflect.Chan:
 		if v.IsNil() {
-			return fmt.Errorf("dialect: nil dialect")
+			return errors.New("dialect: nil dialect")
 		}
 	}
 

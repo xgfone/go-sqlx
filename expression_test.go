@@ -65,14 +65,14 @@ func TestTypedSelectExpressions(t *testing.T) {
 		builder *SelectBuilder
 		alias   bool
 	}{
-		{"package", SelectExpr(Count("id")).From("users").SetDB(db), false},
-		{"package_alias", SelectExprAlias(Count("id"), "total.count").From("users").SetDB(db), true},
-		{"db", db.SelectExpr(Count("id")).From("users"), false},
-		{"db_alias", db.SelectExprAlias(Count("id"), "total.count").From("users"), true},
-		{"table", table.SelectExpr(Count("id")), false},
-		{"table_alias", table.SelectExprAlias(Count("id"), "total.count"), true},
-		{"builder", db.SelectBuilder().From("users").SelectExpr(Count("id")), false},
-		{"builder_alias", db.SelectBuilder().From("users").SelectExprAlias(Count("id"), "total.count"), true},
+		{"package", Select().SelectExpr(Count("id")).From("users").SetDB(db), false},
+		{"package_alias", Select().SelectExprAlias(Count("id"), "total.count").From("users").SetDB(db), true},
+		{"db", db.Select().SelectExpr(Count("id")).From("users"), false},
+		{"db_alias", db.Select().SelectExprAlias(Count("id"), "total.count").From("users"), true},
+		{"table", table.Select().SelectExpr(Count("id")), false},
+		{"table_alias", table.Select().SelectExprAlias(Count("id"), "total.count"), true},
+		{"builder", db.Select().From("users").SelectExpr(Count("id")), false},
+		{"builder_alias", db.Select().From("users").SelectExprAlias(Count("id"), "total.count"), true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			want := `SELECT COUNT("id")`
@@ -80,7 +80,7 @@ func TestTypedSelectExpressions(t *testing.T) {
 				want += ` AS "total.count"`
 			}
 			want += ` FROM "users"`
-			if got, args := test.builder.Build(); got != want || len(args) != 0 {
+			if got, args := test.builder.MustBuild(); got != want || len(args) != 0 {
 				t.Fatalf("got %q %#v, want %q", got, args, want)
 			}
 		})

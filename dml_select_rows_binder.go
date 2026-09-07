@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 )
 
@@ -71,6 +72,7 @@ var (
 
 // MixRowsBinder is a mixed rows binder based on the reflected type.
 type MixRowsBinder struct {
+	mu    sync.RWMutex
 	types map[reflect.Type]RowsBinder
 }
 
@@ -98,6 +100,8 @@ func RegisterMapRowsBinder[K comparable, V any](b *MixRowsBinder, keyf func(V) K
 //
 // Return nil if the type has been not registered.
 func (b *MixRowsBinder) Get(vtype reflect.Type) RowsBinder {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.types[vtype]
 }
 
@@ -107,6 +111,8 @@ func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old Row
 		panic("sqlx.MixRowsBinder: binder-typed must not be nil")
 	}
 
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	old = b.types[vtype]
 	b.types[vtype] = binder
 	return
@@ -114,16 +120,17 @@ func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old Row
 
 // BindRows implements the interface RowsBinder.
 func (b *MixRowsBinder) BindRows(scanner RowScanner, dst any) (err error) {
+	defer recoverBinding(&err)
 	vtype := reflect.TypeOf(dst)
-	if binder, ok := b.types[vtype]; ok {
+	if binder := b.Get(vtype); binder != nil {
 		return binder.BindRows(scanner, dst)
 	}
 
-	if vtype.Kind() == reflect.Pointer && vtype.Elem().Kind() == reflect.Slice {
+	if vtype != nil && vtype.Kind() == reflect.Pointer && vtype.Elem().Kind() == reflect.Slice {
 		return CommonSliceRowsBinder.BindRows(scanner, dst)
 	}
 
-	return UnsupportedTypeError{Name: "sqlx.MixRowsBinder.BindRows", Type: vtype.String()}
+	return UnsupportedTypeError{Name: "sqlx.MixRowsBinder.BindRows", Type: gettype(dst)}
 }
 
 func init() {
@@ -242,6 +249,8 @@ func NewMapRowsBinderForKeyAndFixedValue[M ~map[K]V, K comparable, V any](value 
 // and extracts the map values from the keys.
 func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		defer recoverBinding(&err)
+
 		var m M
 		switch v := dst.(type) {
 		case M:
@@ -276,6 +285,8 @@ func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) R
 // and extracts the map keys from the values.
 func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		defer recoverBinding(&err)
+
 		var m M
 		switch v := dst.(type) {
 		case M:
@@ -311,6 +322,8 @@ func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) R
 // Notice: each row must have two columns as key and value from front to back.
 func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		defer recoverBinding(&err)
+
 		var m M
 		switch v := dst.(type) {
 		case M:
@@ -347,6 +360,8 @@ func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
 // It does not use the reflect package.
 func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		defer recoverBinding(&err)
+
 		dstps, ok := dst.(*S)
 		if !ok {
 			return UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: gettype(dst)}
@@ -375,6 +390,8 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
 }
 
 func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
+	defer recoverBinding(&err)
+
 	oldvf := reflect.ValueOf(dst)
 	if oldvf.Kind() != reflect.Pointer {
 		panic("sqlx.CommonSliceRowsBinder: the value must be a pointer to a slice")
@@ -423,8 +440,15 @@ func NewDegradedSliceRowsBinder[S ~[]T, T any](degraded RowsBinder) RowsBinder {
 //
 // If the binder returns an UnsupportedTypeError, the next binder is tried.
 func ComposeRowsBinders(binders ...RowsBinder) RowsBinder {
+	binders = append([]RowsBinder(nil), binders...)
 	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
+		defer recoverBinding(&err)
+
 		for _, binder := range binders {
+			if binder == nil {
+				continue
+			}
+
 			err = binder.BindRows(scanner, dst)
 			if err == nil || !IsUnsupportedTypeError(err) {
 				return err

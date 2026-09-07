@@ -15,8 +15,11 @@
 package sqlx
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"runtime"
 	"strings"
@@ -91,7 +94,7 @@ func ConnMaxIdleTime(d time.Duration) Config {
 // DB is the wrapper of the sql.DB.
 type DB struct {
 	Dialect
-	Database
+	Executor
 }
 
 // Open opens a database specified by its database driver name
@@ -115,7 +118,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		c(db)
 	}
 
-	xdb := &DB{Dialect: d, Database: db}
+	xdb := &DB{Dialect: d, Executor: db}
 	return xdb, nil
 }
 
@@ -131,4 +134,28 @@ func getDialect(db *DB) Dialect {
 		return resolveDialect(db.Dialect)
 	}
 	return resolveDialect(nil)
+}
+
+// WithExecutor creates a DB with the same dialect and a new executor,
+// e.g. a transaction.
+func (db *DB) WithExecutor(e Executor) *DB {
+	v := *db
+	v.Executor = e
+	return &v
+}
+
+// BeginTx starts a transaction when the executor supports it.
+func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	if b, ok := db.Executor.(TxBeginner); ok {
+		return b.BeginTx(ctx, opts)
+	}
+	return nil, errors.New("sqlx: executor cannot begin transactions")
+}
+
+// Close closes an owning database/connection. Transactions must use Commit/Rollback.
+func (db *DB) Close() error {
+	if c, ok := db.Executor.(io.Closer); ok {
+		return c.Close()
+	}
+	return errors.New("sqlx: executor cannot be closed")
 }

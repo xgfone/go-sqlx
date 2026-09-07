@@ -23,13 +23,13 @@ import (
 func ExampleSelectBuilder() {
 	sel1 := Select("*").From("table").Where(op.Equal("id", 123)).Comment("abc")
 	sel2 := Select("*").FromAlias("table", "alias").Where(op.Equal("id", 123))
-	sel3 := SelectAlias("id", "c1").SelectAlias("name", "c2").FromAlias("table", "alias").Where(op.Equal("id", 123))
+	sel3 := Select().SelectAlias("id", "c1").SelectAlias("name", "c2").FromAlias("table", "alias").Where(op.Equal("id", 123))
 	sel4 := Select("A.id").Select("B.name").FromAlias("table1", "A").FromAlias("table2", "B").Where(op.EqualKey("A.id", "B.id"))
 
-	sql1, args1 := sel1.Build()
-	sql2, args2 := sel2.Build()
-	sql3, args3 := sel3.Build()
-	sql4, args4 := sel4.Build()
+	sql1, args1 := sel1.MustBuild()
+	sql2, args2 := sel2.MustBuild()
+	sql3, args3 := sel3.MustBuild()
+	sql4, args4 := sel4.MustBuild()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)
@@ -56,7 +56,7 @@ func ExampleSelectBuilder() {
 
 func ExampleSelectBuilder_GroupBy() {
 	s := Select("*").From("table").Where(op.Equal("id", 123)).GroupBy("area")
-	sql, args := s.Build()
+	sql, args := s.MustBuild()
 
 	fmt.Println(sql)
 	fmt.Println(args)
@@ -70,8 +70,8 @@ func ExampleSelectBuilder_OrderBy() {
 	s1 := Select("*").From("table").Where(op.Equal("id", 123)).OrderBy("time", Asc)
 	s2 := Select("*").From("table").Where(op.Equal("id", 123)).OrderBy("time", Desc)
 
-	sql1, args1 := s1.Build()
-	sql2, args2 := s2.Build()
+	sql1, args1 := s1.MustBuild()
+	sql2, args2 := s2.MustBuild()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)
@@ -89,7 +89,7 @@ func ExampleSelectBuilder_OrderBy() {
 func ExampleSelectBuilder_Limit() {
 	s := Select("*").From("table").Where(op.Equal("id", 123)).
 		OrderByAsc("time").Limit(10).Offset(100)
-	sql, args := s.Build()
+	sql, args := s.MustBuild()
 
 	fmt.Println(sql)
 	fmt.Println(args)
@@ -102,13 +102,13 @@ func ExampleSelectBuilder_Limit() {
 func ExampleSelectBuilder_Join() {
 	s := Select("*").From("table1").Join("table2", "", On("table1.id", "table2.id")).
 		Where(op.Equal("table1.id", 123)).OrderByAsc("table1.time").Limit(10).Offset(100)
-	sql, args := s.Build()
+	sql, args := s.MustBuild()
 
 	fmt.Println(sql)
 	fmt.Println(args)
 
 	// Output:
-	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` ASC LIMIT 10 OFFSET 100
+	// SELECT * FROM `table1` INNER JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` ASC LIMIT 10 OFFSET 100
 	// [123]
 }
 
@@ -130,11 +130,11 @@ func ExampleSelectBuilder_SelectedFullColumns() {
 	// [A.C1 B.C2]
 }
 
-func ExampleSelectBuilder_IgnoreColumns() {
-	b := Selects("id", "name", "age", "updated_at").From("table").
-		Where(op.Equal("id", 123)).IgnoreColumns([]string{"updated_at"})
+func ExampleSelectBuilder_ClearSelect() {
+	b := Select("id", "name", "age", "updated_at").From("table").
+		Where(op.Equal("id", 123)).ClearSelect().Select("id", "name", "age")
 
-	sql, args := b.Build()
+	sql, args := b.MustBuild()
 
 	fmt.Println(b.SelectedColumns())
 	fmt.Println(sql)

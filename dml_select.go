@@ -15,8 +15,7 @@
 package sqlx
 
 import (
-	"database/sql"
-	"fmt"
+	"errors"
 	"math"
 	"slices"
 	"strings"
@@ -25,80 +24,12 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// SelectBuilder returns a new empty SelectBuilder.
-func (db *DB) SelectBuilder() *SelectBuilder {
-	return NewSelectBuilder().SetDB(db)
-}
+type Order string
 
-// SelectAlias is equal to SelectAlias(column, alias).
-func (db *DB) SelectAlias(column, alias string) *SelectBuilder {
-	return SelectAlias(column, alias).SetDB(db)
-}
-
-// Select is equal to db.SelectAlias(column, "").
-func (db *DB) Select(column string) *SelectBuilder {
-	return db.SelectAlias(column, "")
-}
-
-// SelectExprAlias is equal to SelectExprAlias(expr, alias) with this DB.
-func (db *DB) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
-	return SelectExprAlias(expr, alias).SetDB(db)
-}
-
-// SelectExpr is equal to db.SelectExprAlias(expr, "").
-func (db *DB) SelectExpr(expr Expression) *SelectBuilder {
-	return db.SelectExprAlias(expr, "")
-}
-
-// Selects is equal to db.Select(columns[0]).Select(columns[1])...
-func (db *DB) Selects(columns ...string) *SelectBuilder {
-	return Selects(columns...).SetDB(db)
-}
-
-// SelectAlias is equal to NewSelectBuilder().SelectAlias(column, alias).
-func SelectAlias(column, alias string) *SelectBuilder {
-	return new(SelectBuilder).SelectAlias(column, alias)
-}
-
-// Select is equal to SelectAlias(column, "").
-func Select(column string) *SelectBuilder {
-	return SelectAlias(column, "")
-}
-
-// SelectExprAlias starts a SELECT with an explicit expression and optional alias.
-func SelectExprAlias(expr Expression, alias string) *SelectBuilder {
-	return new(SelectBuilder).SelectExprAlias(expr, alias)
-}
-
-// SelectExpr is equal to SelectExprAlias(expr, "").
-func SelectExpr(expr Expression) *SelectBuilder {
-	return SelectExprAlias(expr, "")
-}
-
-// Selects is equal to Select(columns[0]).Select(columns[1])...
-func Selects(columns ...string) *SelectBuilder {
-	return new(SelectBuilder).Selects(columns...)
-}
-
-// NewSelectBuilder returns a new SELECT builder.
-func NewSelectBuilder() *SelectBuilder {
-	return new(SelectBuilder)
-}
-
-func extractName(name string) string {
-	if strings.IndexByte(name, '(') > -1 {
-		return name
-	} else if index := strings.LastIndexByte(name, '.'); index > -1 {
-		return name[index+1:]
-	}
-	return name
-}
-
-type selectedColumn struct {
-	Column string
-	Alias  string
-	Expr   *Expression
-}
+const (
+	Asc  Order = "ASC"
+	Desc Order = "DESC"
+)
 
 type orderby struct {
 	Column string
@@ -106,573 +37,555 @@ type orderby struct {
 	Expr   *Expression
 }
 
-// Order represents the order used by ORDER BY.
-type Order string
+type commonTable struct {
+	Name      string
+	Query     *SelectBuilder
+	Recursive bool
+}
 
-// Predefine some orders used by ORDER BY.
-const (
-	Asc  Order = "ASC"
-	Desc Order = "DESC"
-)
+type unionQuery struct {
+	Query *SelectBuilder
+	All   bool
+}
 
-// SelectBuilder is used to build the SELECT statement.
+// SelectBuilder is mutable. Clone before deriving an independent query; builders
+// are not safe for concurrent mutation. Build itself does not mutate the builder.
 type SelectBuilder struct {
-	db *DB
+	builderBase
 
-	ftables    []sqlTable
-	jtables    []joinTable
-	columns    []selectedColumn
-	wheres     []op.Condition
-	ignores    []string // Ignored the columns
-	havings    []string
-	groupbys   []string
-	groupExprs []Expression
-	orderbys   []orderby
-	comment    string
-	offset     int64
-	limit      int64
-	page       op.Pagination
+	ftables  []sqlTable
+	jtables  []joinTable
+	columns  []selectedColumn
+	wheres   []op.Condition
+	havings  []op.Condition
+	groups   []Expression
+	orderbys []orderby
+	ctes     []commonTable
+	unions   []unionQuery
+
+	lockTables []string
+	lockWait   string
+	lock       string
 
 	binder binder
+	offset int64
+	limit  int64
 
-	hasLimit     bool
-	distinct     bool
-	forceOrderBy bool
+	hasLimit bool
+	distinct bool
 }
 
-// Count builds COUNT(field), quoting the field when the query is built.
-func Count(field string) Expression {
-	return Expression{sql: field, function: "COUNT"}
-}
+func Select(columns ...string) *SelectBuilder { return new(SelectBuilder).Select(columns...) }
 
-// CountDistinct builds COUNT(DISTINCT field).
-func CountDistinct(field string) Expression {
-	return Expression{sql: field, function: "COUNT", distinct: true}
-}
+func (db *DB) Select(columns ...string) *SelectBuilder { return Select(columns...).SetDB(db) }
 
-// Sum builds SUM(field).
-func Sum(field string) Expression {
-	return Expression{sql: field, function: "SUM"}
-}
-
-// Sum appends SUM(field) to the selection.
-func (b *SelectBuilder) Sum(field string) *SelectBuilder {
-	return b.SelectExpr(Sum(field))
-}
-
-// SelectCount appends COUNT(field) to the selection.
-func (b *SelectBuilder) SelectCount(field string) *SelectBuilder {
-	return b.SelectExpr(Count(field))
-}
-
-// SelectCountDistinct appends COUNT(DISTINCT field) to the selection.
-func (b *SelectBuilder) SelectCountDistinct(field string) *SelectBuilder {
-	return b.SelectExpr(CountDistinct(field))
-}
-
-// Distinct marks SELECT as DISTINCT.
-func (b *SelectBuilder) Distinct() *SelectBuilder {
-	b.distinct = true
+func (b *SelectBuilder) Select(columns ...string) *SelectBuilder {
+	for _, s := range columns {
+		b.columns = append(b.columns, selectedColumn{Column: s})
+	}
 	return b
 }
 
-func (b *SelectBuilder) growcolumns(n int) {
-	if cap(b.columns)-len(b.columns) < n {
-		columns := make([]selectedColumn, len(b.columns), len(b.columns)+n)
-		copy(columns, b.columns)
-		b.columns = columns
-	}
-}
-
-// Select appends an identifier path to SELECT. Use SelectExpr for expressions.
-func (b *SelectBuilder) Select(column string) *SelectBuilder {
-	return b.SelectAlias(column, "")
-}
-
-// SelectAlias appends an identifier path to SELECT with the alias.
-//
-// If alias is empty, it will be ignored.
 func (b *SelectBuilder) SelectAlias(column, alias string) *SelectBuilder {
-	if column != "" {
-		b.columns = append(b.columns, selectedColumn{Column: column, Alias: alias})
+	b.columns = append(b.columns, selectedColumn{Column: column, Alias: alias})
+	return b
+}
+
+func (b *SelectBuilder) SelectExpr(exprs ...Expression) *SelectBuilder {
+	for _, e := range exprs {
+		e := e
+		b.columns = append(b.columns, selectedColumn{Column: e.String(), Expr: &e})
 	}
 	return b
 }
 
-// SelectExpr appends an explicit expression to SELECT.
-func (b *SelectBuilder) SelectExpr(expr Expression) *SelectBuilder {
-	return b.SelectExprAlias(expr, "")
-}
-
-// SelectExprAlias appends an explicit expression with an optional alias.
-func (b *SelectBuilder) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
-	b.columns = append(b.columns, selectedColumn{Column: expr.String(), Alias: alias, Expr: &expr})
+func (b *SelectBuilder) SelectExprAlias(e Expression, alias string) *SelectBuilder {
+	b.columns = append(b.columns, selectedColumn{Column: e.String(), Alias: alias, Expr: &e})
 	return b
 }
 
-// GroupByExpr appends explicit expressions to GROUP BY.
-func (b *SelectBuilder) GroupByExpr(exprs ...Expression) *SelectBuilder {
-	b.groupExprs = append(b.groupExprs, exprs...)
-	return b
-}
-
-// OrderByExpr appends an explicit expression to ORDER BY.
-func (b *SelectBuilder) OrderByExpr(expr Expression, order Order) *SelectBuilder {
-	b.orderbys = append(b.orderbys, orderby{Column: expr.String(), Order: order, Expr: &expr})
-	return b
-}
-
-// Selects appends a group of columns in SELECT from the column names.
-func (b *SelectBuilder) Selects(columns ...string) *SelectBuilder {
-	if _len := len(columns); _len > 0 {
-		b.growcolumns(_len)
-		for _, c := range columns {
-			b.Select(c)
-		}
+func (b *SelectBuilder) SelectNamers(cols ...Namer) *SelectBuilder {
+	for _, c := range cols {
+		b.SelectAlias(c.Name, c.Alias)
 	}
 	return b
 }
 
-// SelectNamers appends the selected column in SELECT from the column names and aliases.
-func (b *SelectBuilder) SelectNamers(columns ...Namer) *SelectBuilder {
-	if _len := len(columns); _len > 0 {
-		b.growcolumns(_len)
-		for _, c := range columns {
-			b.SelectAlias(c.Name, c.Alias)
-		}
+func (b *SelectBuilder) Distinct() *SelectBuilder { b.distinct = true; return b }
+
+func (b *SelectBuilder) ClearSelect() *SelectBuilder  { b.columns = nil; b.distinct = false; return b }
+func (b *SelectBuilder) ClearFrom() *SelectBuilder    { b.ftables = nil; return b }
+func (b *SelectBuilder) ClearGroupBy() *SelectBuilder { b.groups = nil; return b }
+func (b *SelectBuilder) ClearHaving() *SelectBuilder  { b.havings = nil; return b }
+func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return b }
+func (b *SelectBuilder) ClearUnion() *SelectBuilder   { b.unions = nil; return b }
+func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b }
+func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
+func (b *SelectBuilder) ClearPagination() *SelectBuilder {
+	b.hasLimit = false
+	b.limit = 0
+	b.offset = 0
+	return b
+}
+func (b *SelectBuilder) ClearLock() *SelectBuilder {
+	b.lock = ""
+	b.lockTables = nil
+	b.lockWait = ""
+	return b
+}
+func (b *SelectBuilder) ClearWith() *SelectBuilder { b.ctes = nil; return b }
+
+func (b *SelectBuilder) From(tables ...string) *SelectBuilder {
+	for _, t := range tables {
+		b.FromAlias(t, "")
 	}
 	return b
 }
 
-// SelectedFullColumns returns the full names of the selected columns.
-//
-// Notice: if the column has the alias, the alias will be returned instead.
-func (b *SelectBuilder) SelectedFullColumns() []string {
-	return b.selected(make([]string, 0, len(b.columns)), nil)
-}
-
-// SelectedColumns is the same as SelectedFullColumns, but returns the short names instead.
-func (b *SelectBuilder) SelectedColumns() []string {
-	return b.selected(make([]string, 0, len(b.columns)), fmtshortcolumns)
-}
-
-func fmtshortcolumns(c selectedColumn) string {
-	if c.Alias != "" {
-		return c.Alias
-	}
-	return extractName(c.Column)
-}
-
-func (b *SelectBuilder) selected(columns []string, fmt func(selectedColumn) string) []string {
-	for _, c := range b.columns {
-		if fmt != nil {
-			c.Column = fmt(c)
-		}
-
-		if !b.columnIsIgnored(c.Column) {
-			columns = append(columns, c.Column)
-		}
-	}
-	return columns
-}
-
-func (b *SelectBuilder) columnIsIgnored(column string) bool {
-	return len(column) > 0 && len(b.ignores) > 0 && slices.Contains(b.ignores, column)
-}
-
-// IgnoredColumns sets the ignored columns and returns itself.
-func (b *SelectBuilder) IgnoreColumns(columns []string) *SelectBuilder {
-	b.ignores = columns
-	return b
-}
-
-// FromAlias appends the FROM table name in SELECT with the alias.
-//
-// If alias is empty, ignore it.
 func (b *SelectBuilder) FromAlias(table, alias string) *SelectBuilder {
-	b.ftables = appendTable(b.ftables, table, alias)
+	b.ftables = append(b.ftables, sqlTable{Table: table, Alias: alias})
 	return b
 }
 
-// From is equal to b.FromAlias(table, "").
-func (b *SelectBuilder) From(table string) *SelectBuilder {
-	return b.FromAlias(table, "")
-}
-
-// Froms is the same as b.From(table0).From(table1)...
-func (b *SelectBuilder) Froms(tables ...string) *SelectBuilder {
-	for _, table := range tables {
-		b.From(table)
+func (b *SelectBuilder) FromSelect(q *SelectBuilder, alias string) *SelectBuilder {
+	if q == nil {
+		b.fail(errors.New("sqlx: nil FROM query"))
+	} else {
+		b.ftables = append(b.ftables, sqlTable{Query: q.Clone(), Alias: alias})
 	}
 	return b
 }
 
-// Join appends the "JOIN table ON on..." statement.
-func (b *SelectBuilder) Join(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("", table, alias, ons...)
-}
-
-// JoinInner appends the "INNER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinInner(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("INNER", table, alias, ons...)
-}
-
-// JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeft(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("LEFT", table, alias, ons...)
-}
-
-// JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("LEFT OUTER", table, alias, ons...)
-}
-
-// JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRight(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("RIGHT", table, alias, ons...)
-}
-
-// JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("RIGHT OUTER", table, alias, ons...)
-}
-
-// JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFull(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("FULL", table, alias, ons...)
-}
-
-// JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *SelectBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *SelectBuilder {
-	return b.joinTable("FULL OUTER", table, alias, ons...)
-}
-
-func (b *SelectBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *SelectBuilder {
-	if b.jtables == nil {
-		b.jtables = make([]joinTable, 0, 2)
-	}
-	b.jtables = append(b.jtables, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
-	return b
-}
-
-// Where sets the WHERE conditions.
-func (b *SelectBuilder) Where(andConditions ...op.Condition) *SelectBuilder {
-	b.wheres = appendWheres(b.wheres, andConditions...)
-	return b
-}
-
-// WhereNamedArgs is the same as Where, but uses the NamedArg as the condition.
-func (b *SelectBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *SelectBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andArgs))
-	}
-
-	for _, arg := range andArgs {
-		b.Where(op.Equal(arg.Name, arg.Value))
+func (b *SelectBuilder) JoinSelect(q *SelectBuilder, alias string, ons ...op.Condition) *SelectBuilder {
+	if q == nil {
+		b.fail(errors.New("sqlx: nil JOIN query"))
+	} else {
+		b.jtables = append(b.jtables, joinTable{Type: "INNER", Table: sqlTable{Query: q.Clone(), Alias: alias}, Ons: slices.Clone(ons)})
 	}
 	return b
 }
 
-// GroupBy resets the GROUP BY columns.
+func (b *SelectBuilder) JoinUsing(table, alias string, columns ...string) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{Type: "INNER", Table: sqlTable{Table: table, Alias: alias}, Using: slices.Clone(columns)})
+	return b
+}
+
 func (b *SelectBuilder) GroupBy(columns ...string) *SelectBuilder {
-	b.groupbys = columns
+	for _, s := range columns {
+		b.groups = append(b.groups, Expression{custom: func(c *BuildContext) string { return c.Quote(s) }})
+	}
 	return b
 }
 
-// Having appends the HAVING expression.
-func (b *SelectBuilder) Having(exprs ...string) *SelectBuilder {
-	b.havings = append(b.havings, exprs...)
+func (b *SelectBuilder) GroupByExpr(exprs ...Expression) *SelectBuilder {
+	b.groups = append(b.groups, exprs...)
 	return b
 }
 
-// ForceOrderBy builds the "ORDER BY" clause for the columns unconditionally.
-//
-// If false, the "ORDER BY" clause will be built only if the column is selected.
-//
-// Default: false
-func (b *SelectBuilder) ForceOrderBy(force bool) *SelectBuilder {
-	b.forceOrderBy = force
+func (b *SelectBuilder) Having(conds ...op.Condition) *SelectBuilder {
+	b.mutate(func() { b.havings = appendWheres(b.havings, conds...) })
 	return b
 }
 
-// OrderBy appends the column used by ORDER BY.
 func (b *SelectBuilder) OrderBy(column string, order Order) *SelectBuilder {
 	b.orderbys = append(b.orderbys, orderby{Column: column, Order: order})
 	return b
 }
-
-// OrderByDesc appends the column used by ORDER BY DESC.
-func (b *SelectBuilder) OrderByDesc(column string) *SelectBuilder {
-	return b.OrderBy(column, Desc)
-}
-
-// OrderByAsc appends the column used by ORDER BY ASC.
-func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder {
-	return b.OrderBy(column, Asc)
-}
-
-// Sort appends a sort.
-func (b *SelectBuilder) Sort(sorter op.Sorter) *SelectBuilder {
-	b.sort(sorter)
+func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder  { return b.OrderBy(column, Asc) }
+func (b *SelectBuilder) OrderByDesc(column string) *SelectBuilder { return b.OrderBy(column, Desc) }
+func (b *SelectBuilder) OrderByExpr(e Expression, order Order) *SelectBuilder {
+	b.orderbys = append(b.orderbys, orderby{Expr: &e, Order: order})
 	return b
 }
 
-// Sorts appends a set of sorts.
-func (b *SelectBuilder) Sorts(sorters ...op.Sorter) *SelectBuilder {
-	switch _len := len(sorters); {
-	case _len == 0, _len == 1 && sorters[0] == nil:
-		return b
-	}
-
-	if b.orderbys == nil {
-		b.orderbys = make([]orderby, 0, len(sorters))
-	}
-
-	for _, sorter := range sorters {
-		b.sort(sorter)
-	}
-	return b
-}
-
-func (b *SelectBuilder) sort(sorter op.Sorter) {
-	if sorter == nil {
-		return
-	}
-
-	switch _op := sorter.Op(); _op.Op {
-	case op.SortOpOrder:
-		switch v := _op.Val.(string); v {
-		case op.SortAsc, string(Asc):
-			b.OrderByAsc(getOpKey(_op))
-		case op.SortDesc, string(Desc):
-			b.OrderByDesc(getOpKey(_op))
-		default:
-			panic(fmt.Errorf("sqlx.SelectBuilder.Sort: unsupported sort value '%s'", v))
-		}
-
-	case op.SortOpOrders:
-		b.Sorts(_op.Val.([]op.Sorter)...)
-
-	default:
-		panic(fmt.Errorf("sqlx.SelectBuilder.Sort: unsupported sort op '%s'", _op.Op))
-	}
-}
-
-// Limit sets the LIMIT to limit.
-func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
-	if limit < 0 {
-		panic("sqlx: limit must be nonnegative")
-	}
-	b.hasLimit = true
-	b.limit = limit
-	return b
-}
-
-// Offset sets the OFFSET to offset.
-func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
-	if offset < 0 {
-		panic("sqlx: offset must be nonnegative")
-	}
-	b.offset = offset
-	return b
-}
-
-// Paginate is equal to b.Limit(pageSize).Offset((pageNum-1) * pageSize).
-//
-// pageNum starts with 1. If pageNum or pageSize is less than 1, do nothing.
-func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
-	if pageNum > 0 && pageSize > 0 {
-		if pageNum-1 > math.MaxInt64/pageSize {
-			panic("sqlx: pagination offset overflows")
-		}
-		b.Limit(pageSize).Offset((pageNum - 1) * pageSize)
-	}
-	return b
-}
-
-// Pagination sets the Pagination, which is the same as b.Paginate.
-func (b *SelectBuilder) Pagination(page op.Pagination) *SelectBuilder {
-	b.page = page
-	return b
-}
-
-// Comment set the comment, which will be appended to the end of the built SQL statement.
-func (b *SelectBuilder) Comment(comment string) *SelectBuilder {
-	b.comment = comment
-	return b
-}
-
-// SetDB sets the db.
-func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
-	b.db = db
-	return b
-}
-
-// String returns the SQL from Build without copying the arguments.
-func (b *SelectBuilder) String() string {
-	sql, args := b.build()
-	releaseBuildContext(args)
-	return sql
-}
-
-// Build builds the SELECT sql statement.
-func (b *SelectBuilder) Build() (string, []any) {
-	query, ctx := b.build()
-	defer releaseBuildContext(ctx)
-	return query, ctx.Args()
-}
-
-func (b *SelectBuilder) build() (sql string, args *BuildContext) {
-	if len(b.ftables) == 0 {
-		panic("sqlx.SelectBuilder: no from table names")
-	} else if len(b.columns) == 0 {
-		panic("sqlx.SelectBuilder: no selected columns")
-	}
-
-	buf := getBuffer()
-	defer putBuffer(buf)
-	buf.WriteString("SELECT ")
-
-	if b.distinct {
-		buf.WriteString("DISTINCT ")
-	}
-
-	d := getDialect(b.db)
-
-	// Selected Columns
-	var i int
-	for _, column := range b.columns {
-		if b.columnIsIgnored(column.Alias) || b.columnIsIgnored(extractName(column.Column)) {
-			continue
-		}
-
-		if i++; i > 1 {
-			buf.WriteString(", ")
-		}
-		if column.Expr != nil {
-			buf.WriteString(column.Expr.build(d))
-		} else {
-			buf.WriteString(quotePath(d, column.Column))
-		}
-		if column.Alias != "" {
-			buf.WriteString(" AS ")
-			buf.WriteString(d.QuoteIdent(column.Alias))
-		}
-	}
-
-	// Tables
-	buf.WriteString(" FROM ")
-	for i, table := range b.ftables {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(quotePath(d, table.Table))
-		if table.Alias != "" {
-			buf.WriteString(" AS ")
-			buf.WriteString(d.QuoteIdent(table.Alias))
-		}
-	}
-
-	// Join
-	for _, table := range b.jtables {
-		args = table.build(buf, d, args)
-	}
-
-	// Where
-	args = buildWheres(buf, args, d, b.wheres)
-
-	// Group By & Having By
-	if len(b.groupbys) > 0 || len(b.groupExprs) > 0 {
-		buf.WriteString(" GROUP BY ")
-		for i, s := range b.groupbys {
-			if i > 0 {
-				buf.WriteString(", ")
-			}
-			buf.WriteString(quotePath(d, s))
-		}
-		for i, expr := range b.groupExprs {
-			if i > 0 || len(b.groupbys) > 0 {
-				buf.WriteString(", ")
-			}
-			buf.WriteString(expr.build(d))
-		}
-
-		if len(b.havings) > 0 {
-			buf.WriteString(" HAVING ")
-			for i, s := range b.havings {
-				if i > 0 {
-					buf.WriteString(" AND ")
-				}
-				buf.WriteString(s)
-			}
-		}
-	}
-
-	// Order By
-	if len(b.orderbys) > 0 {
-		var notfirst bool
-		for _, ob := range b.orderbys {
-			if !b.forceOrderBy && !containsColumn(b.columns, ob.Column) {
+func (b *SelectBuilder) Sort(sorters ...op.Sorter) *SelectBuilder {
+	b.mutate(func() {
+		for _, sorter := range sorters {
+			if sorter == nil {
 				continue
 			}
 
-			if notfirst {
-				buf.WriteString(", ")
-			} else {
-				buf.WriteString(" ORDER BY ")
-				notfirst = true
+			switch o := sorter.Op(); o.Op {
+			case op.SortOpOrders:
+				b.Sort(o.Val.([]op.Sorter)...)
+
+			case op.SortOpOrder:
+				v := strings.ToUpper(o.Val.(string))
+				if v != "ASC" && v != "DESC" {
+					panic("invalid sort direction")
+				}
+				b.OrderBy(getOpKey(o), Order(v))
+
+			default:
+				panic("unsupported sort operation")
+			}
+		}
+	})
+	return b
+}
+func (b *SelectBuilder) Limit(n int64) *SelectBuilder {
+	if n < 0 {
+		b.fail(errors.New("sqlx: negative limit"))
+	}
+
+	b.limit = n
+	b.hasLimit = true
+	return b
+}
+
+func (b *SelectBuilder) Offset(n int64) *SelectBuilder {
+	if n < 0 {
+		b.fail(errors.New("sqlx: negative offset"))
+	}
+
+	b.offset = n
+	return b
+}
+
+func (b *SelectBuilder) Paginate(page, size int64) *SelectBuilder {
+	if page < 1 || size < 1 {
+		b.fail(errors.New("sqlx: page and size must be positive"))
+		return b
+	}
+
+	if page-1 > math.MaxInt64/size {
+		b.fail(errors.New("sqlx: pagination overflow"))
+		return b
+	}
+
+	return b.Limit(size).Offset((page - 1) * size)
+}
+
+func (b *SelectBuilder) Pagination(p op.Pagination) *SelectBuilder {
+	if p == nil {
+		return b
+	}
+
+	b.mutate(func() {
+		o := p.Op()
+		if o.Op != op.PaginationOpPageSize {
+			panic("unsupported pagination operation")
+		}
+
+		ps := o.Val.(op.PageSizer)
+		b.Paginate(ps.Page, ps.Size)
+	})
+	return b
+}
+
+// ForUpdate locks selected rows. Table aliases may be specified on MySQL/PostgreSQL.
+func (b *SelectBuilder) ForUpdate(tables ...string) *SelectBuilder {
+	b.lock = "UPDATE"
+	b.lockTables = append(b.lockTables, tables...)
+	return b
+}
+
+func (b *SelectBuilder) ForShare(tables ...string) *SelectBuilder {
+	b.lock = "SHARE"
+	b.lockTables = append(b.lockTables, tables...)
+	return b
+}
+
+func (b *SelectBuilder) NoWait() *SelectBuilder     { b.lockWait = "NOWAIT"; return b }
+func (b *SelectBuilder) SkipLocked() *SelectBuilder { b.lockWait = "SKIP LOCKED"; return b }
+
+func (b *SelectBuilder) With(name string, q *SelectBuilder) *SelectBuilder {
+	return b.with(name, q, false)
+}
+
+func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder) *SelectBuilder {
+	return b.with(name, q, true)
+}
+
+func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool) *SelectBuilder {
+	if q == nil {
+		b.fail(errors.New("sqlx: nil CTE"))
+	} else {
+		b.ctes = append(b.ctes, commonTable{name, q.Clone(), recursive})
+	}
+	return b
+}
+
+func (b *SelectBuilder) Union(q *SelectBuilder) *SelectBuilder    { return b.union(q, false) }
+func (b *SelectBuilder) UnionAll(q *SelectBuilder) *SelectBuilder { return b.union(q, true) }
+func (b *SelectBuilder) union(q *SelectBuilder, all bool) *SelectBuilder {
+	if q == nil {
+		b.fail(errors.New("sqlx: nil UNION"))
+	} else {
+		b.unions = append(b.unions, unionQuery{q.Clone(), all})
+	}
+	return b
+}
+
+func (b *SelectBuilder) Clone() *SelectBuilder {
+	v := *b
+	v.ftables = slices.Clone(b.ftables)
+	v.jtables = slices.Clone(b.jtables)
+	v.columns = cloneColumns(b.columns)
+	v.wheres = slices.Clone(b.wheres)
+	v.havings = slices.Clone(b.havings)
+	v.groups = slices.Clone(b.groups)
+	v.orderbys = slices.Clone(b.orderbys)
+	v.ctes = slices.Clone(b.ctes)
+	v.unions = slices.Clone(b.unions)
+	v.lockTables = slices.Clone(b.lockTables)
+	return &v
+}
+
+func (b *SelectBuilder) Reset() *SelectBuilder {
+	base := b.builderBase
+	base.err = nil
+	base.comment = ""
+	*b = SelectBuilder{builderBase: base, binder: b.binder}
+	return b
+}
+
+// SelectedColumns reports declared output names. Actual query binding uses the
+// driver's column metadata, including wildcard expansion and computed names.
+func (b *SelectBuilder) SelectedColumns() []string {
+	out := make([]string, len(b.columns))
+	for i, c := range b.columns {
+		if c.Alias != "" {
+			out[i] = c.Alias
+		} else {
+			out[i] = extractName(c.Column)
+		}
+	}
+	return out
+}
+
+func (b *SelectBuilder) SelectedFullColumns() []string {
+	out := make([]string, len(b.columns))
+	for i, c := range b.columns {
+		out[i] = c.Column
+	}
+	return out
+}
+
+func extractName(s string) string {
+	if strings.Contains(s, "(") {
+		return s
+	}
+
+	if i := strings.LastIndexByte(s, '.'); i >= 0 {
+		return s[i+1:]
+	}
+
+	return s
+}
+
+func (b *SelectBuilder) render(c *BuildContext) string {
+	if b.err != nil {
+		panic(b.err)
+	}
+
+	var s strings.Builder
+	if len(b.ctes) > 0 {
+		requireFeature(c, dialect.CTE, "CTE")
+		_, _ = s.WriteString("WITH ")
+		for _, t := range b.ctes {
+			if t.Recursive {
+				_, _ = s.WriteString("RECURSIVE ")
+				break
+			}
+		}
+
+		seen := map[string]bool{}
+		for i, t := range b.ctes {
+			if seen[t.Name] {
+				panic("duplicate CTE name")
 			}
 
-			if ob.Expr != nil {
-				buf.WriteString(ob.Expr.build(d))
-			} else {
-				buf.WriteString(quotePath(d, ob.Column))
+			seen[t.Name] = true
+			if i > 0 {
+				_, _ = s.WriteString(", ")
 			}
-			if ob.Order != "" {
-				buf.WriteByte(' ')
-				buf.WriteString(string(ob.Order))
+
+			_, _ = s.WriteString(c.Dialect().QuoteIdent(t.Name))
+			_, _ = s.WriteString(" AS (")
+			_, _ = s.WriteString(t.Query.render(c))
+			_ = s.WriteByte(')')
+		}
+
+		_ = s.WriteByte(' ')
+	}
+
+	_, _ = s.WriteString("SELECT ")
+	if b.distinct {
+		_, _ = s.WriteString("DISTINCT ")
+	}
+
+	_, _ = s.WriteString(renderColumns(c, b.columns))
+	if len(b.ftables) > 0 {
+		_, _ = s.WriteString(" FROM ")
+		_, _ = s.WriteString(renderTables(c, b.ftables))
+	} else if len(b.jtables) > 0 {
+		panic("JOIN requires FROM")
+	}
+
+	for _, j := range b.jtables {
+		_, _ = s.WriteString(j.render(c))
+	}
+
+	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
+	if len(b.groups) > 0 {
+		_, _ = s.WriteString(" GROUP BY ")
+		for i, e := range b.groups {
+			if i > 0 {
+				_, _ = s.WriteString(", ")
+			}
+			_, _ = s.WriteString(e.render(c))
+		}
+	}
+
+	_, _ = s.WriteString(clause(c, "HAVING", b.havings))
+	for _, u := range b.unions {
+		q := u.Query
+		if len(q.ctes) > 0 || len(q.orderbys) > 0 || q.hasLimit ||
+			q.offset > 0 || q.lock != "" || len(q.unions) > 0 {
+			panic("complex UNION operand must be wrapped with FromSelect")
+		}
+
+		_, _ = s.WriteString(" UNION ")
+		if u.All {
+			_, _ = s.WriteString("ALL ")
+		}
+		_, _ = s.WriteString(q.render(c))
+	}
+
+	if len(b.orderbys) > 0 {
+		_, _ = s.WriteString(" ORDER BY ")
+		for i, o := range b.orderbys {
+			if o.Order != "" && o.Order != Asc && o.Order != Desc {
+				panic("invalid ORDER BY direction")
+			}
+
+			if i > 0 {
+				_, _ = s.WriteString(", ")
+			}
+
+			if o.Expr != nil {
+				_, _ = s.WriteString(o.Expr.render(c))
+			} else {
+				_, _ = s.WriteString(c.Quote(o.Column))
+			}
+
+			if o.Order != "" {
+				_ = s.WriteByte(' ')
+				_, _ = s.WriteString(string(o.Order))
 			}
 		}
 	}
 
-	// Limit & Offset
 	if b.hasLimit || b.offset > 0 {
-		buf.WriteByte(' ')
-		buf.WriteString(d.LimitOffset(dialect.Pagination{
+		_ = s.WriteByte(' ')
+		_, _ = s.WriteString(c.Dialect().LimitOffset(dialect.Pagination{
 			Limit:    b.limit,
 			Offset:   b.offset,
 			HasLimit: b.hasLimit,
 		}))
-	} else if b.page != nil {
-		if args == nil {
-			args = acquireBuildContext(d)
+	}
+
+	if b.lock != "" {
+		if len(b.ftables) == 0 {
+			panic("row locking requires FROM")
 		}
-		buf.WriteByte(' ')
-		buf.WriteString(BuildOper(args, b.page))
+
+		for _, col := range b.columns {
+			if col.Expr != nil && col.Expr.function != "" {
+				panic("row locking aggregate queries is unsupported")
+			}
+		}
+
+		requireFeature(c, dialect.RowLock, "row locking")
+		if b.distinct || len(b.groups) > 0 || len(b.havings) > 0 || len(b.unions) > 0 {
+			panic("locking DISTINCT, grouped or compound queries is unsupported")
+		}
+
+		_, _ = s.WriteString(" FOR " + b.lock)
+		if len(b.lockTables) > 0 {
+			requireFeature(c, dialect.LockOf, "locking OF")
+			_, _ = s.WriteString(" OF ")
+			for i, t := range b.lockTables {
+				if i > 0 {
+					_, _ = s.WriteString(", ")
+				}
+				_, _ = s.WriteString(c.Dialect().QuoteIdent(t))
+			}
+		}
+
+		if b.lockWait != "" {
+			requireFeature(c, dialect.LockWait, "lock wait options")
+			_, _ = s.WriteString(" " + b.lockWait)
+		}
+	} else if b.lockWait != "" {
+		panic("lock wait option requires ForUpdate or ForShare")
 	}
 
-	// Comment
-	if b.comment != "" {
-		buf.WriteString(" /* ")
-		buf.WriteString(b.comment)
-		buf.WriteString(" */")
-	}
-
-	sql = buf.String()
-	return
+	_, _ = s.WriteString(commentSQL(b.comment))
+	return s.String()
 }
 
-func containsColumn(columns []selectedColumn, column string) bool {
-	for i := range len(columns) {
-		switch columns[i].Column {
-		case "*", column:
-			return true
-		}
+func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }
+func (b *SelectBuilder) GetDB() *DB                  { return getDB(b.db) }
 
-		switch columns[i].Alias {
-		case "*", column:
-			return true
-		}
-	}
-	return false
+// SetExecutor overrides execution without changing the SQL dialect.
+func (b *SelectBuilder) SetExecutor(e Executor) *SelectBuilder { b.executor = e; return b }
+
+// SetDialect overrides SQL rendering independently of the executor.
+func (b *SelectBuilder) SetDialect(d Dialect) *SelectBuilder { b.dialect = d; return b }
+
+func (b *SelectBuilder) Comment(s string) *SelectBuilder { b.comment = s; return b }
+
+func (b *SelectBuilder) String() string                { return stringStatement(b) }
+func (b *SelectBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
+func (b *SelectBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *SelectBuilder) Where(conds ...op.Condition) *SelectBuilder {
+	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
+	return b
+}
+
+func (b *SelectBuilder) Join(table, alias string, ons ...op.Condition) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "INNER",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *SelectBuilder) JoinLeft(table, alias string, ons ...op.Condition) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "LEFT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *SelectBuilder) JoinRight(table, alias string, ons ...op.Condition) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "RIGHT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *SelectBuilder) JoinFull(table, alias string, ons ...op.Condition) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "FULL",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *SelectBuilder) CrossJoin(table, alias string) *SelectBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "CROSS",
+		Table: sqlTable{Table: table, Alias: alias},
+	})
+	return b
 }

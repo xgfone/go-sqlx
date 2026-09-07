@@ -15,30 +15,21 @@
 package sqlx
 
 import (
-	"bytes"
 	"database/sql"
 	"database/sql/driver"
 	"reflect"
-	"sync"
 	"time"
 )
 
-// DefaultBufferCap is the default capacity to be allocated for buffer from pool.
-var DefaultBufferCap = 512
-
-var bufpool = sync.Pool{New: func() any {
-	b := new(bytes.Buffer)
-	b.Grow(DefaultBufferCap)
-	return b
-}}
-
-func getBuffer() *bytes.Buffer    { return bufpool.Get().(*bytes.Buffer) }
-func putBuffer(buf *bytes.Buffer) { buf.Reset(); bufpool.Put(buf) }
-
 var (
-	_timetype   = reflect.TypeFor[time.Time]()
-	_valuertype = reflect.TypeFor[driver.Valuer]()
+	_timetype    = reflect.TypeFor[time.Time]()
+	_valuertype  = reflect.TypeFor[driver.Valuer]()
+	_scannertype = reflect.TypeFor[sql.Scanner]()
 )
+
+func implementValuerOrScanner(t reflect.Type) bool {
+	return t.Implements(_valuertype) || t.Implements(_scannertype)
+}
 
 // IsPointerToStruct returns true if v is a pointer to struct, else false.
 //
@@ -104,10 +95,8 @@ func toslice[S ~[]E, E any](srcs S, to func(E) string) (dsts []string) {
 }
 
 func gettype(v any) string {
+	if v == nil {
+		return "<nil>"
+	}
 	return reflect.TypeOf(v).String()
 }
-
-type sqlResult struct{}
-
-func (sqlResult) LastInsertId() (int64, error) { panic("sqlx: LastInsertId cannot be called") }
-func (sqlResult) RowsAffected() (int64, error) { return 0, nil }

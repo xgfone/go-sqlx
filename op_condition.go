@@ -15,7 +15,6 @@
 package sqlx
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
@@ -53,17 +52,6 @@ func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
 	}
 
 	return wheres
-}
-
-func buildWheres(buf *bytes.Buffer, args *BuildContext, d Dialect, conds []op.Condition) *BuildContext {
-	if len(conds) > 0 {
-		if args == nil {
-			args = acquireBuildContext(d)
-		}
-		buf.WriteString(" WHERE ")
-		buf.WriteString(BuildOper(args, op.And(conds...)))
-	}
-	return args
 }
 
 func init() {
@@ -106,32 +94,56 @@ func newCondOne(format string) OpBuilder {
 func newCondTwo(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		if opvalueisnil(op) {
-			return ""
+			switch op.Op {
+			case "Equal":
+				return ab.Quote(getOpKey(op)) + " IS NULL"
+
+			case "NotEqual":
+				return ab.Quote(getOpKey(op)) + " IS NOT NULL"
+
+			default:
+				panic("NULL requires an explicit IS NULL/IS NOT NULL predicate")
+			}
 		}
 
-		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(op.Val))
+		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), renderValue(ab, op.Val))
 	})
 }
 
 func newCondLike(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		if opvalueisnil(op) {
-			return ""
+			switch op.Op {
+			case "Equal":
+				return ab.Quote(getOpKey(op)) + " IS NULL"
+
+			case "NotEqual":
+				return ab.Quote(getOpKey(op)) + " IS NOT NULL"
+
+			default:
+				panic("NULL requires an explicit IS NULL/IS NOT NULL predicate")
+			}
 		}
 
 		value := op.Val.(string)
 		if strings.IndexByte(value, '%') < 0 {
 			value = strings.Join([]string{"%", "%"}, value)
 		}
-		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(value))
+		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), renderValue(ab, value))
 	})
 }
 
 func newCondIn(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		switch vs := op.Val.(type) {
+		case Expression:
+			return fmt.Sprintf(format, ab.Quote(getOpKey(op)), vs.render(ab))
+
+		case *SelectBuilder:
+			return fmt.Sprintf(format, ab.Quote(getOpKey(op)), vs.render(ab))
+
 		case nil:
-			return "1=0"
+			return emptyIn(format)
 
 		case []any:
 			return fmtcondin_slice(format, ab, op, vs)
@@ -205,23 +217,23 @@ func newCondIn(format string) OpBuilder {
 			case reflect.Array, reflect.Slice:
 				_len := vf.Len()
 				if _len == 0 {
-					return "1=0"
+					return emptyIn(format)
 				}
 
 				ss = make([]string, _len)
-				for i := 0; i < _len; i++ {
-					ss[i] = ab.Add(vf.Index(i).Interface())
+				for i := range _len {
+					ss[i] = renderValue(ab, vf.Index(i).Interface())
 				}
 
 			case reflect.Map:
 				_len := vf.Len()
 				if _len == 0 {
-					return "1=0"
+					return emptyIn(format)
 				}
 
 				ss = make([]string, 0, _len)
 				for _, key := range vf.MapKeys() {
-					ss = append(ss, ab.Add(vf.MapIndex(key).Interface()))
+					ss = append(ss, renderValue(ab, vf.MapIndex(key).Interface()))
 				}
 
 			default:
@@ -236,12 +248,12 @@ func newCondIn(format string) OpBuilder {
 func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, ab *BuildContext, op op.Op, vs M) string {
 	switch _len := len(vs); _len {
 	case 0:
-		return "1=0"
+		return emptyIn(format)
 
 	default:
 		ss := make([]string, 0, _len)
 		for k := range vs {
-			ss = append(ss, ab.Add(k))
+			ss = append(ss, renderValue(ab, k))
 		}
 		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), strings.Join(ss, ", "))
 	}
@@ -250,15 +262,15 @@ func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, a
 func fmtcondin_slice[T any](format string, ab *BuildContext, op op.Op, vs []T) string {
 	switch _len := len(vs); _len {
 	case 0:
-		return "1=0"
+		return emptyIn(format)
 
 	case 1:
-		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), ab.Add(vs[0]))
+		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), renderValue(ab, vs[0]))
 
 	default:
 		ss := make([]string, _len)
-		for i := 0; i < _len; i++ {
-			ss[i] = ab.Add(vs[i])
+		for i := range _len {
+			ss[i] = renderValue(ab, vs[i])
 		}
 		return fmt.Sprintf(format, ab.Quote(getOpKey(op)), strings.Join(ss, ", "))
 	}
@@ -267,7 +279,7 @@ func fmtcondin_slice[T any](format string, ab *BuildContext, op op.Op, vs []T) s
 func newCondBetween(format string) OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		v := _op.Val.(op.Boundary)
-		return fmt.Sprintf(format, ab.Quote(getOpKey(_op)), ab.Add(v.Lower), ab.Add(v.Upper))
+		return fmt.Sprintf(format, ab.Quote(getOpKey(_op)), renderValue(ab, v.Lower), renderValue(ab, v.Upper))
 	})
 }
 
@@ -305,4 +317,11 @@ func newCondColumn(ops string) OpBuilder {
 	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		return fmt.Sprintf("%s%s%s", ab.Quote(getOpKey(_op)), ops, ab.Quote(_op.Val.(string)))
 	})
+}
+
+func emptyIn(format string) string {
+	if strings.Contains(format, "NOT IN") {
+		return "1=1"
+	}
+	return "1=0"
 }

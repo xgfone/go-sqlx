@@ -17,47 +17,43 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
-// QueryRowOne executes the row query sql statement and returns Row instead of *sql.Row.
-func (db *DB) QueryRowOne(query string, args ...any) Row {
-	return db.QueryRowOneContext(context.Background(), query, args...)
-}
-
-// QueryRowOneContext executes the row query sql statement and returns Row instead of *sql.Row.
+// QueryRowOneContext executes raw SQL and returns the library's struct-aware Row.
 func (db *DB) QueryRowOneContext(ctx context.Context, query string, args ...any) Row {
 	return NewRow(db.queryRowsContext(ctx, nil, query, args...))
 }
 
-// QueryRow builds the sql and executes it.
-func (b *SelectBuilder) QueryRow() Row {
-	return b.QueryRowContext(context.Background())
-}
-
-// QueryRowContext builds the sql and executes it.
+// QueryRowContext preserves pagination and only narrows its limit to at most one.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
-	// Restrict this execution without changing the reusable builder or turning
-	// an explicit LIMIT 0 into a query that returns a row.
-	rowBuilder := *b
-	if !rowBuilder.hasLimit || rowBuilder.limit > 1 {
-		rowBuilder.Limit(1)
+	q := b.Clone()
+	if !q.hasLimit || q.limit > 1 {
+		q.Limit(1)
 	}
-
-	query, args := rowBuilder.build()
-	defer releaseBuildContext(args)
-
-	_args := args.argsView()
-	columns := b.SelectedColumns()
-	return b.binder.Row(getDB(b.db).queryRowsContext(ctx, columns, query, _args...))
+	return b.binder.Row(queryStatement(ctx, q, &q.builderBase))
 }
 
 /// ---------------------------------------------------------------------- ///
 
 func (b *binder) Row(rows *sql.Rows, columns []string, err error) Row {
 	if b.wrapper == nil {
-		return Row{rows: rows, err: err, columns: columns, wrapper: defaultbinder.wrapper}
+		return Row{
+			rows: rows,
+			err:  err,
+
+			columns: columns,
+			wrapper: defaultbinder.wrapper,
+		}
 	}
-	return Row{rows: rows, err: err, columns: columns, wrapper: b.wrapper}
+
+	return Row{
+		rows: rows,
+		err:  err,
+
+		columns: columns,
+		wrapper: b.wrapper,
+	}
 }
 
 // Row is the same as sql.Row to scan the row to the values.
@@ -74,11 +70,17 @@ func NewRow(rows *sql.Rows, columns []string, err error) Row {
 	return defaultbinder.Row(rows, columns, err)
 }
 
-// Next is the same as sql.Row.Next, but only used to implement RowScanner and must not be called.
-func (r Row) Next() bool { panic("sqlx.Row.Next: cannot be called") }
+// Next is always false: Row is a single-use result, not an iterator.
+func (r Row) Next() bool { return false }
 
 // Columns returns the names of the selected columns.
 func (r Row) Columns() ([]string, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.rows == nil {
+		return nil, errors.New("sqlx: nil row")
+	}
 	if len(r.columns) > 0 {
 		return r.columns, nil
 	}
@@ -93,7 +95,11 @@ func (r Row) WithColumns(columns ...string) Row {
 
 // WithScanner resets the row scanner wrapper and returns a new Row.
 func (r Row) WithScanner(wrapper RowScannerWrapper) Row {
-	r.wrapper = wrapper
+	if wrapper == nil {
+		r.wrapper = defaultbinder.wrapper
+	} else {
+		r.wrapper = wrapper
+	}
 	return r
 }
 
@@ -107,10 +113,20 @@ func (r Row) Bind(dsts ...any) (ok bool, err error) {
 // Scan implements the interface sql.Scanner, which is the same as sql.Row.Scan
 // but supports that the sql value is NULL.
 func (r Row) Scan(dsts ...any) (err error) {
+	defer recoverBinding(&err)
 	if r.err != nil {
 		return r.err
 	}
-	defer r.rows.Close() //nolint:errcheck
+
+	if r.rows == nil {
+		return errors.New("sqlx: nil row")
+	}
+
+	defer func() {
+		if e := r.rows.Close(); err == nil {
+			err = e
+		}
+	}()
 
 	if !r.rows.Next() {
 		if err := r.rows.Err(); err != nil {
@@ -126,5 +142,16 @@ func (r Row) Err() error {
 	if r.err != nil {
 		return r.err
 	}
+	if r.rows == nil {
+		return errors.New("sqlx: nil row")
+	}
 	return r.rows.Err()
+}
+
+// Close releases an unread row. Scan and Bind close it automatically.
+func (r Row) Close() error {
+	if r.rows == nil {
+		return nil
+	}
+	return r.rows.Close()
 }

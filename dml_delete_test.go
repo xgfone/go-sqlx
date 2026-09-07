@@ -37,8 +37,8 @@ func ExampleDeleteBuilder() {
 			),
 		)
 
-	sql1, args1 := delete1.Build() // Use the default dialect.
-	sql2, args2 := delete2.Build() // Use the PostgreSQL dialect.
+	sql1, args1 := delete1.MustBuild() // Use the default dialect.
+	sql2, args2 := delete2.MustBuild() // Use the PostgreSQL dialect.
 
 	fmt.Println(sql1)
 	fmt.Println(args1)

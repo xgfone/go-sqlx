@@ -16,586 +16,142 @@ package sqlx
 
 import (
 	"context"
-	"time"
+	"database/sql"
+	"errors"
+	"slices"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-toolkit/timex"
 )
 
-// Oper is used to collect a set of SQL DML & DQL operations based on a table.
+// Oper is an optional struct-aware operation layer. It has no default ordering,
+// primary-key convention or implicit filtering. Builders remain independently usable.
+// Configure SetDB before concurrent use, just as for Table.
 type Oper[T any] struct {
 	Table Table
 
-	// Sorter is used to sort the records when querying the records.
-	//
-	// Default: op.KeyId.OrderDesc()
-	Sorter op.Sorter
-
-	// SoftCondition is used by the method SoftXxxx as the WHERE condition.
-	//
-	// Default: op.IsNotDeletedCond
-	SoftCondition op.Condition
-
-	// SoftDeleteUpdater is used by SoftDelete to delete the records.
-	//
-	// Default: op.KeyDeletedAt.Set(time.Now())
+	Sorter            op.Sorter
+	SoftCondition     op.Condition
+	DeletedCondition  op.Condition
 	SoftDeleteUpdater func(context.Context) op.Updater
 
-	ignoredcolumns []string
-	forceOrder     bool
-
-	binder binder
+	conditions []op.Condition
+	binder     binder
 }
 
-// NewOper returns a new Oper with the table name.
-func NewOper[T any](table string) Oper[T] {
-	return NewOperWithTable[T](NewTable(table))
+func NewOper[T any](name string) Oper[T] {
+	return NewOperWithTable[T](NewTable(name))
 }
 
-// NewOperWithTable returns a new Oper with the table.
 func NewOperWithTable[T any](table Table) Oper[T] {
-	binder := ComposeRowsBinders(NewSliceRowsBinder[[]T](), defaultbinder.binder)
-	return Oper[T]{binder: defaultbinder}.
-		WithTable(table).
-		WithSorter(op.KeyId.OrderDesc()).
-		WithSoftCondition(op.IsNotDeletedCond).
-		WithSoftDeleteUpdater(softDeleteUpdater).
-		WithRowsBinder(binder).
-		withForceOrder(false)
-}
+	return Oper[T]{
+		Table: table,
 
-func softDeleteUpdater(context.Context) op.Updater {
-	return op.KeyDeletedAt.Set(time.Now())
-}
+		SoftCondition:     op.IsNull("deleted_at"),
+		DeletedCondition:  op.IsNotNull("deleted_at"),
+		SoftDeleteUpdater: func(context.Context) op.Updater { return op.Set("deleted_at", timex.Now()) },
 
-func (o Oper[T]) withForceOrder(force bool) Oper[T] {
-	o.forceOrder = force
-	return o
-}
-
-// WithDB returns a new Oper with the new db.
-func (o Oper[T]) WithDB(db *DB) Oper[T] {
-	o.Table.DB = db
-	return o
-}
-
-// WithTable returns a new Oper with the new table.
-func (o Oper[T]) WithTable(table Table) Oper[T] {
-	o.Table = table
-	return o
-}
-
-// WithSorter returns a new Oper with the new sorter.
-func (o Oper[T]) WithSorter(sorter op.Sorter) Oper[T] {
-	o.Sorter = sorter
-	return o.withForceOrder(true)
-}
-
-// WithRowsCap returns a new Oper with the default cap of the container,
-// such as slice or map, bound from rows.
-//
-// Default: DefaultRowsCap
-func (o Oper[T]) WithRowsCap(cap int) Oper[T] {
-	o.binder.rowscap = cap
-	return o
-}
-
-// WithRowsBinder returns a new Oper with the rows binder to bind the rows to a slice, map or other.
-//
-// Default: NewDegradedSliceRowsBinder[[]T](DefaultMixRowsBinder)
-func (o Oper[T]) WithRowsBinder(binder RowsBinder) Oper[T] {
-	o.binder.binder = binder
-	return o
-}
-
-// WithRowScannerWrapper returns a new Oper with the row scanner wrapper
-// to wrap the row scanner to customize to scan the row.
-//
-// Default: DefaultRowScanWrapper
-func (o Oper[T]) WithRowScannerWrapper(wrapper RowScannerWrapper) Oper[T] {
-	o.binder.wrapper = wrapper
-	return o
-}
-
-// WithSoftCondition returns a new Oper with the soft condition.
-func (o Oper[T]) WithSoftCondition(softcond op.Condition) Oper[T] {
-	o.SoftCondition = softcond
-	return o
-}
-
-// WithSoftDeleteUpdater returns a new Oper with the soft delete udpater.
-func (o Oper[T]) WithSoftDeleteUpdater(softDeleteUpdater func(context.Context) op.Updater) Oper[T] {
-	o.SoftDeleteUpdater = softDeleteUpdater
-	return o
-}
-
-// WithIgnoredColumns returns a new Oper with the ignored selected columns.
-//
-// Default: nil
-func (o Oper[T]) WithIgnoredColumns(columns []string) Oper[T] {
-	o.ignoredcolumns = columns
-	return o
-}
-
-// IgnoredColumns returned the ignored selected columns.
-func (o Oper[T]) IgnoredColumns() []string {
-	return o.ignoredcolumns
-}
-
-// RowsBinder returns the inner rows binder.
-func (o Oper[T]) RowsBinder() RowsBinder {
-	return o.binder.binder
-}
-
-// AppendRowsBinders returns a new Oper, which appends the new rows binders by ComposeRowsBinders.
-func (o Oper[T]) AppendRowsBinders(binders ...RowsBinder) Oper[T] {
-	if len(binders) > 0 {
-		newbinders := make([]RowsBinder, len(binders)+1)
-		newbinders = append(newbinders, o.binder.binder)
-		newbinders = append(newbinders, binders...)
-		o = o.WithRowsBinder(ComposeRowsBinders(newbinders...))
-	}
-	return o
-}
-
-/// ----------------------------------------------------------------------- ///
-
-// Add inserts the struct as the record into the sql table.
-func (o Oper[T]) Add(ctx context.Context, obj T) (err error) {
-	_, err = o.Table.InsertInto().Struct(obj).ExecContext(ctx)
-	return
-}
-
-// AddWithId is the same as Add, but also returns the inserted id.
-func (o Oper[T]) AddWithId(ctx context.Context, obj T) (id int64, err error) {
-	result, err := o.Table.InsertInto().Struct(obj).ExecContext(ctx)
-	if err == nil {
-		id, err = result.LastInsertId()
-	}
-	return
-}
-
-// Update updates the sql table records.
-//
-// If updater is nil, do nothing.
-func (o Oper[T]) Update(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
-	if updater == nil {
-		return nil
-	}
-
-	_, err := o.Table.Update(updater).Where(conds...).ExecContext(ctx)
-	return err
-}
-
-// Delete executes a DELETE statement to delete the records from table.
-func (o Oper[T]) Delete(ctx context.Context, conds ...op.Condition) error {
-	_, err := o.Table.DeleteFrom(conds...).ExecContext(ctx)
-	return err
-}
-
-// Get just queries a first record from table.
-func (o Oper[T]) Get(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	ok, err = o.GetRow(ctx, obj, conds...).Bind(&obj)
-	return
-}
-
-// Gets queries a set of results from table.
-func (o Oper[T]) Gets(ctx context.Context, page op.Pagination, conds ...op.Condition) (objs []T, err error) {
-	if limit := op.GetLimitFromPagination(page); limit > 0 {
-		o = o.WithRowsCap(limit)
-	}
-
-	var obj T
-	err = o.GetRows(ctx, obj, page, conds...).Bind(&objs)
-	return
-}
-
-// GetRow builds a SELECT statement and returns a Row.
-func (o Oper[T]) GetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
-	return o.Select(columns, conds...).QueryRowContext(ctx)
-}
-
-// GetRows builds a SELECT statement and returns a Rows.
-func (o Oper[T]) GetRows(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
-	return o.Select(columns, conds...).Pagination(page).QueryRowsContext(ctx)
-}
-
-// Query is a simplified GetsContext, which is equal to
-//
-//	o.Gets(ctx, op.PageSize(page, pageSize), conds...)
-//
-// page starts with 1. And if page or pageSize is less than 1, ignore the pagination.
-func (o Oper[T]) Query(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	return o.Gets(ctx, op.PageSize(page, pageSize), conds...)
-}
-
-// CountQuery is the combination of CountContext and QueryContext.
-func (o Oper[T]) CountQuery(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
-	if total, err = o.Count(ctx, conds...); err == nil && total > 0 {
-		objs, err = o.Query(ctx, page, min(pagesize, int64(total)), conds...)
-	}
-	return
-}
-
-func (o Oper[T]) CountGets(ctx context.Context, page op.Pagination, conds ...op.Condition) (total int, objs []T, err error) {
-	if total, err = o.Count(ctx, conds...); err == nil && total > 0 {
-		objs, err = o.Gets(ctx, page, conds...)
-	}
-	return
-}
-
-// MakeSlice makes a slice with the cap.
-//
-// If cap is equal to 0, use RowsCap or DefaultRowsCap instead.
-func (o Oper[T]) MakeSlice(cap int) []T {
-	switch {
-	case cap > 0:
-		return make([]T, 0, cap)
-
-	case o.binder.rowscap > 0:
-		return make([]T, 0, o.binder.rowscap)
-
-	default:
-		return make([]T, 0, DefaultRowsCap)
+		binder: binder{
+			rowscap: DefaultRowsCap,
+			wrapper: defaultbinder.wrapper,
+			binder:  ComposeRowsBinders(NewSliceRowsBinder[[]T](), defaultbinder.binder),
+		},
 	}
 }
 
-// Sum is the alias of SumInt.
-func (o Oper[T]) Sum(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return o.SumInt(ctx, field, conds...)
+func (o *Oper[T]) SetDB(db *DB) { o.Table.SetDB(db) }
+func (o Oper[T]) GetDB() *DB    { return o.Table.GetDB() }
+
+func (o Oper[T]) WithDB(db *DB) Oper[T]          { o.Table.SetDB(db); return o }
+func (o Oper[T]) WithTable(t Table) Oper[T]      { o.Table = t; return o }
+func (o Oper[T]) WithSorter(s op.Sorter) Oper[T] { o.Sorter = s; return o }
+func (o Oper[T]) WithRowsCap(n int) Oper[T]      { o.binder.rowscap = n; return o }
+
+func (o Oper[T]) WithRowsBinder(b RowsBinder) Oper[T]               { o.binder.binder = b; return o }
+func (o Oper[T]) WithRowScannerWrapper(w RowScannerWrapper) Oper[T] { o.binder.wrapper = w; return o }
+
+func (o Oper[T]) RowsBinder() RowsBinder { return o.binder.binder }
+func (o Oper[T]) AppendRowsBinders(bs ...RowsBinder) Oper[T] {
+	o.binder.binder = ComposeRowsBinders(append([]RowsBinder{o.binder.binder}, bs...)...)
+	return o
 }
 
-// SumInt is used to sum the field values of the records as int by the condition.
-func (o Oper[T]) SumInt(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return sumContext[int](ctx, o, field, conds)
+func (o Oper[T]) WithSoftCondition(c op.Condition) Oper[T]    { o.SoftCondition = c; return o }
+func (o Oper[T]) WithDeletedCondition(c op.Condition) Oper[T] { o.DeletedCondition = c; return o }
+func (o Oper[T]) WithSoftDeleteUpdater(f func(context.Context) op.Updater) Oper[T] {
+	o.SoftDeleteUpdater = f
+	return o
 }
 
-// SumInt64 is used to sum the field values of the records as int64 by the condition.
-func (o Oper[T]) SumInt64(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
-	return sumContext[int64](ctx, o, field, conds)
+// Where returns an independent operation scope. Existing scope conditions remain.
+func (o Oper[T]) Where(cs ...op.Condition) Oper[T] {
+	o.conditions = append(slices.Clone(o.conditions), cs...)
+	return o
 }
 
-// SumFloat is used to sum the field values of the records as float64 by the condition.
-func (o Oper[T]) SumFloat(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
-	return sumContext[float64](ctx, o, field, conds)
-}
+func (o Oper[T]) ClearWhere() Oper[T] { o.conditions = nil; return o }
+func (o Oper[T]) Active() Oper[T]     { return o.Where(o.SoftCondition) }
+func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 
-// SumString is used to sum the field values of the records as string by the condition.
-func (o Oper[T]) SumString(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
-	return sumContext[string](ctx, o, field, conds)
-}
-
-func sumContext[R, T any](ctx context.Context, o Oper[T], field string, conds []op.Condition) (total R, err error) {
-	_, err = o.GetRow(ctx, Sum(field), conds...).Bind(&total)
-	return
-}
-
-// Count is used to count the number of records by the condition.
-func (o Oper[T]) Count(ctx context.Context, conds ...op.Condition) (total int, err error) {
-	_, err = o.GetRow(ctx, Count("*"), conds...).Bind(&total)
-	return
-}
-
-// CountDistinct is the same as Count, but excluding the same field records.
-func (o Oper[T]) CountDistinct(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	_, err = o.GetRow(ctx, CountDistinct(field), conds...).Bind(&total)
-	return
-}
-
-// Exist is used to check whether the records qualified by the conditions exist.
-func (o Oper[T]) Exist(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
-	total, err := o.Count(ctx, conds...)
-	exist = err == nil && total > 0
-	return
-}
-
-// Select returns a SELECT builder, which sets the selected columns
-// and the where condtions.
-//
-// columns supports one of types as follow:
-//
-//	string
-//	[]string
-//	Expression
-//	struct
-func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
-	var q *SelectBuilder
-	switch c := columns.(type) {
-	case Expression:
-		q = o.Table.SelectExpr(c)
-	case string:
-		q = o.Table.Select(c)
-	case []string:
-		q = o.Table.Selects(c...)
-
-	case op.Op:
-		q = o.Table.Select(c.Key)
-	case []op.Op:
-		q = o.Table.Selects()
-		for _, op := range c {
-			q.Select(op.Key)
-		}
-
-	case interface{ Column() string }:
-		q = o.Table.Select(c.Column())
-	case interface{ Columns() []string }:
-		q = o.Table.Selects(c.Columns()...)
-
-	default:
-		q = o.Table.SelectStruct(columns)
-	}
-
+// Select creates a column query; typed model fields use SelectStruct instead.
+func (o Oper[T]) Select(columns ...string) *SelectBuilder {
+	q := o.Table.Select(columns...).Where(o.conditions...).Sort(o.Sorter)
 	q.binder = o.binder
-	return q.ForceOrderBy(o.forceOrder).IgnoreColumns(o.ignoredcolumns).Sort(o.Sorter).Where(conds...)
+	return q
 }
 
-/// ----------------------------------------------------------------------- ///
+func (o Oper[T]) SelectStruct() *SelectBuilder {
+	var v T
+	return o.Select().SelectStruct(v)
+}
 
-// SoftUpdate is the same as Update, but appending SoftCondition
-// into the conditions.
-func (o Oper[T]) SoftUpdate(ctx context.Context, updater op.Updater, conds ...op.Condition) error {
-	switch len(conds) {
-	case 0:
-		return o.Update(ctx, updater, o.SoftCondition)
-	case 1:
-		return o.Update(ctx, updater, conds[0], o.SoftCondition)
-	default:
-		return o.Update(ctx, updater, op.And(conds...), o.SoftCondition)
+func (o Oper[T]) Add(ctx context.Context, v T) (sql.Result, error) {
+	return o.Table.Insert().Struct(v).ExecContext(ctx)
+}
+
+func (o Oper[T]) Update(ctx context.Context, u op.Updater, cs ...op.Condition) (sql.Result, error) {
+	return o.Table.Update().Set(u).Where(o.conditions...).Where(cs...).ExecContext(ctx)
+}
+
+func (o Oper[T]) Delete(ctx context.Context, cs ...op.Condition) (sql.Result, error) {
+	return o.Table.Delete().Where(o.conditions...).Where(cs...).ExecContext(ctx)
+}
+
+func (o Oper[T]) SoftDelete(ctx context.Context, cs ...op.Condition) (sql.Result, error) {
+	if o.SoftDeleteUpdater == nil {
+		return nil, errors.New("sqlx: no soft-delete updater")
 	}
+	return o.Active().Update(ctx, o.SoftDeleteUpdater(ctx), cs...)
 }
 
-// SoftDelete soft deletes the records from the table,
-// which only marks the records deleted.
-func (o Oper[T]) SoftDelete(ctx context.Context, conds ...op.Condition) error {
-	return o.SoftUpdate(ctx, o.SoftDeleteUpdater(ctx), conds...)
+func (o Oper[T]) Get(ctx context.Context, cs ...op.Condition) (v T, ok bool, err error) {
+	ok, err = o.SelectStruct().Where(cs...).QueryRowContext(ctx).Bind(&v)
+	return
 }
 
-// SoftGet is the same as Get, but appending SoftCondition
-// into the conditions.
-func (o Oper[T]) SoftGet(ctx context.Context, conds ...op.Condition) (obj T, ok bool, err error) {
-	switch len(conds) {
-	case 0:
-		return o.Get(ctx, o.SoftCondition)
-	case 1:
-		return o.Get(ctx, conds[0], o.SoftCondition)
-	default:
-		return o.Get(ctx, op.And(conds...), o.SoftCondition)
+func (o Oper[T]) Gets(ctx context.Context, p op.Pagination, cs ...op.Condition) (vs []T, err error) {
+	err = o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(&vs)
+	return
+}
+
+func (o Oper[T]) Count(ctx context.Context, cs ...op.Condition) (n int64, err error) {
+	err = o.Select().ClearOrderBy().SelectExpr(Count("*")).Where(cs...).QueryRowContext(ctx).Scan(&n)
+	return
+}
+
+func (o Oper[T]) CountGets(ctx context.Context, p op.Pagination, cs ...op.Condition) (n int64, vs []T, err error) {
+	n, err = o.Count(ctx, cs...)
+	if err == nil && n > 0 {
+		vs, err = o.Gets(ctx, p, cs...)
 	}
+	return
+}
+func (o Oper[T]) Exist(ctx context.Context, cs ...op.Condition) (bool, error) {
+	var n int
+	return o.Select().ClearOrderBy().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
 }
 
-// SoftGets is the same as Gets, but appending SoftCondition
-// into the conditions.
-func (o Oper[T]) SoftGets(ctx context.Context, page op.Pagination, conds ...op.Condition) ([]T, error) {
-	switch len(conds) {
-	case 0:
-		return o.Gets(ctx, page, o.SoftCondition)
-	case 1:
-		return o.Gets(ctx, page, conds[0], o.SoftCondition)
-	default:
-		return o.Gets(ctx, page, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftGetRow is the same as GetRow, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRow(ctx context.Context, columns any, conds ...op.Condition) Row {
-	switch len(conds) {
-	case 0:
-		return o.GetRow(ctx, columns, o.SoftCondition)
-	case 1:
-		return o.GetRow(ctx, columns, conds[0], o.SoftCondition)
-	default:
-		return o.GetRow(ctx, columns, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftGetRows is the same as GetRows, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftGetRows(ctx context.Context, columns any, page op.Pagination, conds ...op.Condition) Rows {
-	switch len(conds) {
-	case 0:
-		return o.GetRows(ctx, columns, page, o.SoftCondition)
-	case 1:
-		return o.GetRows(ctx, columns, page, conds[0], o.SoftCondition)
-	default:
-		return o.GetRows(ctx, columns, page, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftQuery is the same as Query, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftQuery(ctx context.Context, page, pageSize int64, conds ...op.Condition) ([]T, error) {
-	switch len(conds) {
-	case 0:
-		return o.Query(ctx, page, pageSize, o.SoftCondition)
-	case 1:
-		return o.Query(ctx, page, pageSize, conds[0], o.SoftCondition)
-	default:
-		return o.Query(ctx, page, pageSize, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftCountQuery is the same as CountQuery, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftCountQuery(ctx context.Context, page, pagesize int64, conds ...op.Condition) (total int, objs []T, err error) {
-	switch len(conds) {
-	case 0:
-		return o.CountQuery(ctx, page, pagesize, o.SoftCondition)
-	case 1:
-		return o.CountQuery(ctx, page, pagesize, conds[0], o.SoftCondition)
-	default:
-		return o.CountQuery(ctx, page, pagesize, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftCountGets is the same as CountGets, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftCountGets(ctx context.Context, page op.Pagination, conds ...op.Condition) (total int, objs []T, err error) {
-	switch len(conds) {
-	case 0:
-		return o.CountGets(ctx, page, o.SoftCondition)
-	case 1:
-		return o.CountGets(ctx, page, conds[0], o.SoftCondition)
-	default:
-		return o.CountGets(ctx, page, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftSum is the alias of SoftSumInt.
-func (o Oper[T]) SoftSum(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return o.SoftSumInt(ctx, field, conds...)
-}
-
-// SoftSumInt is the same as SumInt, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumInt(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	return softSum(ctx, o.SumInt, field, o.SoftCondition, conds)
-}
-
-// SoftSumInt64 is the same as SumInt64, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumInt64(ctx context.Context, field string, conds ...op.Condition) (total int64, err error) {
-	return softSum(ctx, o.SumInt64, field, o.SoftCondition, conds)
-}
-
-// SoftSumFloat is the same as SumFloat, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumFloat(ctx context.Context, field string, conds ...op.Condition) (total float64, err error) {
-	return softSum(ctx, o.SumFloat, field, o.SoftCondition, conds)
-}
-
-// SoftSumString is the same as SumString, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftSumString(ctx context.Context, field string, conds ...op.Condition) (total string, err error) {
-	return softSum(ctx, o.SumString, field, o.SoftCondition, conds)
-}
-
-type _SumFunc[R any] func(ctx context.Context, field string, conds ...op.Condition) (R, error)
-
-func softSum[R any](ctx context.Context, f _SumFunc[R], field string,
-	soft op.Condition, conds []op.Condition) (total R, err error) {
-	switch len(conds) {
-	case 0:
-		return f(ctx, field, soft)
-	case 1:
-		return f(ctx, field, conds[0], soft)
-	default:
-		return f(ctx, field, op.And(conds...), soft)
-	}
-}
-
-// SoftCount is the same as Count, but appending SoftCondition
-// into the conditions.
-func (o Oper[T]) SoftCount(ctx context.Context, conds ...op.Condition) (total int, err error) {
-	switch len(conds) {
-	case 0:
-		return o.Count(ctx, o.SoftCondition)
-	case 1:
-		return o.Count(ctx, conds[0], o.SoftCondition)
-	default:
-		return o.Count(ctx, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftCountDistinct is the same as CountDistinct,
-// but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftCountDistinct(ctx context.Context, field string, conds ...op.Condition) (total int, err error) {
-	switch len(conds) {
-	case 0:
-		return o.CountDistinct(ctx, field, o.SoftCondition)
-	case 1:
-		return o.CountDistinct(ctx, field, conds[0], o.SoftCondition)
-	default:
-		return o.CountDistinct(ctx, field, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftExist is the same as Exist, but appending SoftCondition into the conditions.
-func (o Oper[T]) SoftExist(ctx context.Context, conds ...op.Condition) (exist bool, err error) {
-	switch len(conds) {
-	case 0:
-		return o.Exist(ctx, o.SoftCondition)
-	case 1:
-		return o.Exist(ctx, conds[0], o.SoftCondition)
-	default:
-		return o.Exist(ctx, op.And(conds...), o.SoftCondition)
-	}
-}
-
-// SoftSelect is the same as Select, but appends SoftCondition into the conditions.
-func (o Oper[T]) SoftSelect(columns any, conds ...op.Condition) *SelectBuilder {
-	switch len(conds) {
-	case 0:
-		return o.Select(columns, o.SoftCondition)
-	case 1:
-		return o.Select(columns, conds[0], o.SoftCondition)
-	default:
-		return o.Select(columns, op.And(conds...), o.SoftCondition)
-	}
-}
-
-/// ----------------------------------------------------------------------- ///
-
-// GetAll is equal to o.Gets(ctx, nil, conds...).
-func (o Oper[T]) GetAll(ctx context.Context, conds ...op.Condition) ([]T, error) {
-	return o.Gets(ctx, nil, conds...)
-}
-
-// SoftGetAll is equal to o.SoftGets(ctx, nil, conds...).
-func (o Oper[T]) SoftGetAll(ctx context.Context, conds ...op.Condition) ([]T, error) {
-	return o.SoftGets(ctx, nil, conds...)
-}
-
-/// ----------------------------------------------------------------------- ///
-
-// DeleteById is equal to o.Delete(ctx, op.KeyId.Eq(id)).
-func (o Oper[T]) DeleteById(ctx context.Context, id int64) error {
-	return o.Delete(ctx, op.KeyId.Eq(id))
-}
-
-// ExistById is equal to o.Exist(op.KeyId.Eq(id)).
-func (o Oper[T]) ExistById(ctx context.Context, id int64) (bool, error) {
-	return o.Exist(ctx, op.KeyId.Eq(id))
-}
-
-// GetById is equal to o.Get(nil, op.KeyId.Eq(id)).
-func (o Oper[T]) GetById(ctx context.Context, id int64) (v T, ok bool, err error) {
-	return o.Get(ctx, nil, op.KeyId.Eq(id))
-}
-
-// SoftDeleteById is equal to o.SoftDelete(op.KeyId.Eq(id)).
-func (o Oper[T]) SoftDeleteById(ctx context.Context, id int64) error {
-	return o.SoftDelete(ctx, op.KeyId.Eq(id))
-}
-
-// SoftExistById is equal to o.SoftExist(op.KeyId.Eq(id)).
-func (o Oper[T]) SoftExistById(ctx context.Context, id int64) (bool, error) {
-	return o.SoftExist(ctx, op.KeyId.Eq(id))
-}
-
-// SoftGetById is equal to o.SoftGet(nil, op.KeyId.Eq(id)).
-func (o Oper[T]) SoftGetById(ctx context.Context, id int64) (v T, ok bool, err error) {
-	return o.SoftGet(ctx, nil, op.KeyId.Eq(id))
-}
-
-/// ----------------------------------------------------------------------- ///
-
-// UpdateById is equal to o.Update(ctx, op.Batch(updaters...), op.KeyId.Eq(id)).
-func (o Oper[T]) UpdateById(ctx context.Context, id int64, updaters ...op.Updater) error {
-	return o.Update(ctx, op.Batch(updaters...), op.KeyId.Eq(id))
-}
-
-// SoftUpdateById is equal to o.SoftUpdate(ctx, op.Batch(updaters...), op.KeyId.Eq(id)).
-func (o Oper[T]) SoftUpdateById(ctx context.Context, id int64, updaters ...op.Updater) error {
-	return o.SoftUpdate(ctx, op.Batch(updaters...), op.KeyId.Eq(id))
+// Aggregate scans an aggregate expression into a caller-selected type.
+func (o Oper[T]) Aggregate(ctx context.Context, e Expression, dst any, cs ...op.Condition) error {
+	return o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx).Scan(dst)
 }

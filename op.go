@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/xgfone/go-op"
 )
 
+var opbuildersMu sync.RWMutex
 var opbuilders = make(map[string]OpBuilder)
 
 // OpBuilder is an operation builder to build a sql statement based on op.
@@ -45,13 +47,19 @@ func RegisterOpBuilder(op string, builder OpBuilder) {
 	if builder == nil {
 		panic("sqlx.RegisterOpBuilder: builder must not be nil")
 	}
+	opbuildersMu.Lock()
+	defer opbuildersMu.Unlock()
 	opbuilders[op] = builder
 }
 
 // GetOpBuilder returns the op builder by the op.
 //
 // Return nil instead if no the op builder.
-func GetOpBuilder(op string) OpBuilder { return opbuilders[op] }
+func GetOpBuilder(op string) OpBuilder {
+	opbuildersMu.RLock()
+	defer opbuildersMu.RUnlock()
+	return opbuilders[op]
+}
 
 // BuildOp builds the operation.
 func BuildOp(ab *BuildContext, op op.Op) string {

@@ -41,11 +41,11 @@ func ExampleInsertBuilder_Struct() {
 	_time := time.Date(2025, 1, 2, 3, 4, 5, 0, time.Local)
 	s1 := InsertStruct{DefaultField: "v1", IgnoredField: "v2", Valuer: NewMyTime(_time)}
 	insert1 := Insert().Into("table").Struct(s1)
-	sql1, args1 := insert1.Build()
+	sql1, args1 := insert1.MustBuild()
 
 	s2 := InsertStruct{exampleRecord: exampleRecord{ID: 123}, DefaultField: "v1", ModifiedField: "v2", ZeroField: "v3", IgnoredField: "v4"}
 	insert2 := Insert().Into("table").Struct(s2)
-	sql2, args2 := insert2.Build()
+	sql2, args2 := insert2.MustBuild()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)
@@ -60,16 +60,16 @@ func ExampleInsertBuilder_Struct() {
 	// [123 v1 v2 v3]
 }
 
-func ExampleInsertBuilder_ValuesFromStructs() {
+func ExampleInsertBuilder_Structs() {
 	_time := time.Date(2025, 1, 2, 3, 4, 5, 0, time.Local)
 	sql1, args1 := Insert().
 		Into("table").
 		Columns("field", "time", "ZeroField").
-		ValuesFromStructs([]InsertStruct{
+		Structs([]InsertStruct{
 			{DefaultField: "v1", IgnoredField: "v2", Valuer: NewMyTime(_time)},
 			{ModifiedField: "v3", ZeroField: "v4"},
 		}).
-		Build()
+		MustBuild()
 
 	fmt.Println(sql1)
 	fmt.Println(args1)

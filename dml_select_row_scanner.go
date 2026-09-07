@@ -16,11 +16,11 @@ package sqlx
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 )
-
-var _ScannerType = reflect.TypeFor[sql.Scanner]()
 
 var (
 	_ RowScanner = (*sql.Rows)(nil)
@@ -85,9 +85,29 @@ func defaultRowScanWrapper(scanner RowScanner, dsts ...any) error {
 }
 
 func scanrow(scanner RowScanner, dsts ...any) (err error) {
-	if len(dsts) == 1 && IsPointerToStruct(dsts[0]) &&
-		!reflect.TypeOf(dsts[0]).Implements(_ScannerType) {
-		return scanStruct(scanner, dsts[0])
+	if len(dsts) == 1 && dsts[0] != nil {
+		v := reflect.ValueOf(dsts[0])
+		t := v.Type()
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+
+		if t.Kind() == reflect.Struct && t != _timetype && !v.Type().Implements(_scannertype) {
+			if v.Kind() != reflect.Pointer || v.IsNil() {
+				return errors.New("sqlx: nil or non-pointer struct destination")
+			}
+
+			for v.Elem().Kind() == reflect.Pointer {
+				if v.Elem().IsNil() {
+					v.Elem().Set(reflect.New(v.Elem().Type().Elem()))
+				}
+				v = v.Elem()
+			}
+
+			if !v.Type().Implements(_scannertype) {
+				return scanStruct(scanner, v.Interface())
+			}
+		}
 	}
 	return scanner.Scan(dsts...)
 }
@@ -106,7 +126,7 @@ func needScannerWrapper(v any) bool {
 	}
 
 	t := reflect.TypeOf(v)
-	if t.Implements(_ScannerType) {
+	if t.Implements(_scannertype) {
 		return false
 	}
 
@@ -130,4 +150,14 @@ func ScanRow(scan func(dests ...any) error, dests ...any) error {
 		dests = newdests
 	}
 	return scan(dests...)
+}
+
+func recoverBinding(err *error) {
+	if r := recover(); r != nil {
+		if e, ok := r.(error); ok {
+			*err = fmt.Errorf("sqlx: binding: %w", e)
+		} else {
+			*err = fmt.Errorf("sqlx: binding: %v", r)
+		}
+	}
 }

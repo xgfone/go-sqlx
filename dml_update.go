@@ -17,277 +17,241 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"slices"
+	"strings"
 
 	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// UpdateBuilder returns a new empty UpdateBuilder.
-func (db *DB) UpdateBuilder() *UpdateBuilder {
-	return NewUpdateBuilder().SetDB(db)
-}
-
-// Update returns a UPDATE SQL builder, which is short for NewUpdateBuilder.
-func (db *DB) Update() *UpdateBuilder {
-	return Update().SetDB(db)
-}
-
-// Update is short for NewUpdateBuilder.
-func Update() *UpdateBuilder {
-	return NewUpdateBuilder()
-}
-
-// NewUpdateBuilder returns a new UPDATE builder.
-func NewUpdateBuilder() *UpdateBuilder {
-	return new(UpdateBuilder)
-}
-
-// UpdateBuilder is used to build the UPDATE statement.
 type UpdateBuilder struct {
-	db      *DB
-	comment string
-	utables []sqlTable
-	ftables []sqlTable
-	jtables []joinTable
-	setters []op.Updater
-	wheres  []op.Condition
+	builderBase
+
+	utables   []sqlTable
+	ftables   []sqlTable
+	jtables   []joinTable
+	setters   []op.Updater
+	wheres    []op.Condition
+	returning []selectedColumn
 }
 
-// Table is equal to b.TableAlias(table, "")
-func (b *UpdateBuilder) Table(table string) *UpdateBuilder {
-	return b.TableAlias(table, "")
-}
+func Update() *UpdateBuilder { return new(UpdateBuilder) }
 
-// Table appends the "UPDATE table AS alias" statement.
-//
-// If alias is empty, use "UPDATE table" instead.
-func (b *UpdateBuilder) TableAlias(table string, alias string) *UpdateBuilder {
-	if table != "" {
-		b.utables = appendTable(b.utables, table, alias)
+func (db *DB) Update() *UpdateBuilder { return Update().SetDB(db) }
+
+func (b *UpdateBuilder) Table(tables ...string) *UpdateBuilder {
+	for _, t := range tables {
+		b.TableAlias(t, "")
 	}
 	return b
 }
 
-// From is equal to b.FromAlias(table, "").
-func (b *UpdateBuilder) From(table string, alias ...string) *UpdateBuilder {
-	return b.FromAlias(table, "")
+func (b *UpdateBuilder) TableAlias(table, alias string) *UpdateBuilder {
+	b.utables = append(b.utables, sqlTable{Table: table, Alias: alias})
+	return b
 }
 
-// From appends the "FROM table AS alias" statement.
-//
-// If alias is empty, use "FROM table" instead.
-func (b *UpdateBuilder) FromAlias(table string, alias string) *UpdateBuilder {
-	if table != "" {
-		b.ftables = appendTable(b.ftables, table, alias)
+func (b *UpdateBuilder) From(tables ...string) *UpdateBuilder {
+	for _, t := range tables {
+		b.FromAlias(t, "")
 	}
 	return b
 }
 
-// Join appends the "JOIN table ON on..." statement.
-func (b *UpdateBuilder) Join(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("", table, alias, ons...)
-}
-
-// JoinInner appends the "INNER JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinInner(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("INNER", table, alias, ons...)
-}
-
-// JoinLeft appends the "LEFT JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("LEFT", table, alias, ons...)
-}
-
-// JoinLeftOuter appends the "LEFT OUTER JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinLeftOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("LEFT OUTER", table, alias, ons...)
-}
-
-// JoinRight appends the "RIGHT JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinRight(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("RIGHT", table, alias, ons...)
-}
-
-// JoinRightOuter appends the "RIGHT OUTER JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinRightOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("RIGHT OUTER", table, alias, ons...)
-}
-
-// JoinFull appends the "FULL JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinFull(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("FULL", table, alias, ons...)
-}
-
-// JoinFullOuter appends the "FULL OUTER JOIN table ON on..." statement.
-func (b *UpdateBuilder) JoinFullOuter(table, alias string, ons ...JoinOn) *UpdateBuilder {
-	return b.joinTable("FULL OUTER", table, alias, ons...)
-}
-
-func (b *UpdateBuilder) joinTable(cmd, table, alias string, ons ...JoinOn) *UpdateBuilder {
-	if b.jtables == nil {
-		b.jtables = make([]joinTable, 0, 2)
-	}
-
-	b.jtables = append(b.jtables, joinTable{Type: cmd, Table: table, Alias: alias, Ons: ons})
+func (b *UpdateBuilder) FromAlias(table, alias string) *UpdateBuilder {
+	b.ftables = append(b.ftables, sqlTable{Table: table, Alias: alias})
 	return b
 }
 
-// Set appends the "SET" statement to setters.
 func (b *UpdateBuilder) Set(updaters ...op.Updater) *UpdateBuilder {
-	if b.setters == nil {
-		b.setters = make([]op.Updater, 0, len(updaters))
-	}
-	b.setters = append(b.setters, updaters...)
-	return b
-}
-
-// SetNamedArg is the same as Set, but uses the NamedArg as the Setter.
-func (b *UpdateBuilder) SetNamedArg(args ...sql.NamedArg) *UpdateBuilder {
-	if b.setters == nil {
-		b.setters = make([]op.Updater, 0, len(args))
-	}
-
-	for _, arg := range args {
-		b.Set(op.New(op.UpdateOpSet, arg.Name, arg.Value).Updater())
+	for _, u := range updaters {
+		if u != nil {
+			b.setters = append(b.setters, u)
+		}
 	}
 	return b
 }
 
-// Comment set the comment, which will be appended to the end of the built SQL statement.
-func (b *UpdateBuilder) Comment(comment string) *UpdateBuilder {
-	b.comment = comment
+func (b *UpdateBuilder) SetExpr(column string, e Expression) *UpdateBuilder {
+	return b.Set(op.Set(column, e))
+}
+
+func (b *UpdateBuilder) ClearSet() *UpdateBuilder       { b.setters = nil; return b }
+func (b *UpdateBuilder) ClearFrom() *UpdateBuilder      { b.ftables = nil; return b }
+func (b *UpdateBuilder) ClearTable() *UpdateBuilder     { b.utables = nil; return b }
+func (b *UpdateBuilder) ClearJoins() *UpdateBuilder     { b.jtables = nil; return b }
+func (b *UpdateBuilder) ClearWhere() *UpdateBuilder     { b.wheres = nil; return b }
+func (b *UpdateBuilder) ClearReturning() *UpdateBuilder { b.returning = nil; return b }
+
+func (b *UpdateBuilder) Clone() *UpdateBuilder {
+	v := *b
+	v.utables = slices.Clone(b.utables)
+	v.ftables = slices.Clone(b.ftables)
+	v.jtables = slices.Clone(b.jtables)
+	v.setters = slices.Clone(b.setters)
+	v.wheres = slices.Clone(b.wheres)
+	v.returning = cloneColumns(b.returning)
+	return &v
+}
+
+func (b *UpdateBuilder) Reset() *UpdateBuilder {
+	base := b.builderBase
+	base.err = nil
+	base.comment = ""
+	*b = UpdateBuilder{builderBase: base}
 	return b
 }
 
-// WhereNamedArgs is the same as Where, but uses the NamedArg as the EQUAL condition.
-func (b *UpdateBuilder) WhereNamedArgs(andArgs ...sql.NamedArg) *UpdateBuilder {
-	if b.wheres == nil {
-		b.wheres = make([]op.Condition, 0, len(andArgs))
+func (b *UpdateBuilder) render(c *BuildContext) string {
+	if b.err != nil {
+		panic(b.err)
 	}
-
-	for _, arg := range andArgs {
-		b.Where(op.Equal(arg.Name, arg.Value))
-	}
-	return b
-}
-
-// Where appends the "WHERE" conditions.
-func (b *UpdateBuilder) Where(andConditions ...op.Condition) *UpdateBuilder {
-	b.wheres = appendWheres(b.wheres, andConditions...)
-	return b
-}
-
-// Exec builds the sql and executes it by *sql.DB.
-func (b *UpdateBuilder) Exec() (sql.Result, error) {
-	return b.ExecContext(context.Background())
-}
-
-// ExecContext builds the sql and executes it by *sql.DB.
-func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
-	query, args := b.build()
-	defer releaseBuildContext(args)
-	return getDB(b.db).ExecContext(ctx, query, args.argsView()...)
-}
-
-// SetDB sets the DB to db.
-func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder {
-	b.db = db
-	return b
-}
-
-// String returns the SQL from Build without copying the arguments.
-func (b *UpdateBuilder) String() string {
-	sql, args := b.build()
-	releaseBuildContext(args)
-	return sql
-}
-
-// Build builds the "UPDATE" sql statement.
-func (b *UpdateBuilder) Build() (string, []any) {
-	query, ctx := b.build()
-	defer releaseBuildContext(ctx)
-	return query, ctx.Args()
-}
-
-func (b *UpdateBuilder) build() (sql string, args *BuildContext) {
 	if len(b.utables) == 0 {
-		panic("sqlx.UpdateBuilder: no table name")
-	} else if len(b.setters) == 0 {
-		panic("sqlx.UpdateBuilder: no SET values")
+		panic("UPDATE requires target")
+	}
+	if len(b.setters) == 0 {
+		panic("UPDATE requires SET")
 	}
 
-	d := getDialect(b.db)
-	if len(b.utables) > 1 && !dialect.Supports(d, dialect.MultiTableUpdate) {
-		panic("sqlx: dialect does not support multiple UPDATE targets")
+	if len(b.utables) > 1 {
+		requireFeature(c, dialect.MultiTableUpdate, "multiple UPDATE targets")
 	}
-	if len(b.ftables) > 0 && !dialect.Supports(d, dialect.UpdateFrom) {
-		panic("sqlx: dialect does not support UPDATE FROM")
-	}
-	joinsBeforeSet := dialect.Supports(d, dialect.UpdateJoinBeforeSet)
-	if len(b.jtables) > 0 && !joinsBeforeSet && (len(b.ftables) == 0 || !dialect.Supports(d, dialect.UpdateFrom)) {
-		panic("sqlx: UPDATE joins require a supported FROM clause")
+	if len(b.ftables) > 0 {
+		requireFeature(c, dialect.UpdateFrom, "UPDATE FROM")
 	}
 
-	// Update Table
-	buf := getBuffer()
-	defer putBuffer(buf)
-	buf.WriteString("UPDATE ")
-	for i, t := range b.utables {
-		if i > 0 {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(quotePath(d, t.Table))
-		if t.Alias != "" {
-			buf.WriteString(" AS ")
-			buf.WriteString(d.QuoteIdent(t.Alias))
+	before := dialect.Supports(c.Dialect(), dialect.UpdateJoinBeforeSet)
+	if len(b.jtables) > 0 && !before && len(b.ftables) == 0 {
+		panic("UPDATE JOIN requires FROM")
+	}
+
+	var s strings.Builder
+	s.Grow(128)
+
+	_, _ = s.WriteString("UPDATE " + renderTables(c, b.utables))
+
+	if before {
+		for _, j := range b.jtables {
+			s.WriteString(j.render(c))
 		}
 	}
 
-	// MySQL places joins before SET; PostgreSQL/SQLite join FROM items.
-	if joinsBeforeSet {
-		for _, join := range b.jtables {
-			args = join.build(buf, d, args)
+	set := BuildOper(c, op.Batch(b.setters...))
+	if set == "" {
+		panic("empty SET")
+	}
+
+	_, _ = s.WriteString(" SET " + set)
+	if len(b.ftables) > 0 {
+		_, _ = s.WriteString(" FROM " + renderTables(c, b.ftables))
+	}
+
+	if !before {
+		for _, j := range b.jtables {
+			_, _ = s.WriteString(j.render(c))
 		}
 	}
 
-	// Set
-	buf.WriteString(" SET ")
-	if args == nil {
-		args = acquireBuildContext(d)
+	s.WriteString(clause(c, "WHERE", b.wheres))
+	s.WriteString(renderReturning(c, b.returning))
+	s.WriteString(commentSQL(b.comment))
+	return s.String()
+}
+
+func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder { b.db = db; return b }
+func (b *UpdateBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+// SetExecutor overrides execution without changing the SQL dialect.
+func (b *UpdateBuilder) SetExecutor(e Executor) *UpdateBuilder { b.executor = e; return b }
+
+// SetDialect overrides SQL rendering independently of the executor.
+func (b *UpdateBuilder) SetDialect(d Dialect) *UpdateBuilder { b.dialect = d; return b }
+
+func (b *UpdateBuilder) Comment(s string) *UpdateBuilder { b.comment = s; return b }
+
+func (b *UpdateBuilder) String() string                { return stringStatement(b) }
+func (b *UpdateBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
+func (b *UpdateBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
+	if len(b.returning) > 0 {
+		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
-	buf.WriteString(BuildOper(args, op.Batch(b.setters...)))
+	return execStatement(ctx, b, &b.builderBase)
+}
 
-	// From Table
-	for i, t := range b.ftables {
-		if i == 0 {
-			buf.WriteString(" FROM ")
-		} else {
-			buf.WriteString(", ")
-		}
-		buf.WriteString(quotePath(d, t.Table))
-		if t.Alias != "" {
-			buf.WriteString(" AS ")
-			buf.WriteString(d.QuoteIdent(t.Alias))
-		}
+func (b *UpdateBuilder) Returning(columns ...string) *UpdateBuilder {
+	for _, v := range columns {
+		b.returning = append(b.returning, selectedColumn{Column: v})
 	}
+	return b
+}
 
-	// Join
-	if !joinsBeforeSet {
-		for _, join := range b.jtables {
-			args = join.build(buf, d, args)
-		}
+func (b *UpdateBuilder) ReturningExpr(e Expression, alias string) *UpdateBuilder {
+	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
+	return b
+}
+
+func (b *UpdateBuilder) QueryRowsContext(ctx context.Context) Rows {
+	if len(b.returning) == 0 {
+		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
+	return NewRows(queryStatement(ctx, b, &b.builderBase))
+}
 
-	// Where
-	args = buildWheres(buf, args, d, b.wheres)
-
-	// Comment
-	if b.comment != "" {
-		buf.WriteString(" /* ")
-		buf.WriteString(b.comment)
-		buf.WriteString(" */")
+func (b *UpdateBuilder) QueryRowContext(ctx context.Context) Row {
+	if len(b.returning) == 0 {
+		return NewRow(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
+	return NewRow(queryStatement(ctx, b, &b.builderBase))
+}
 
-	sql = buf.String()
-	return
+func (b *UpdateBuilder) Where(conds ...op.Condition) *UpdateBuilder {
+	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
+	return b
+}
+
+func (b *UpdateBuilder) Join(table, alias string, ons ...op.Condition) *UpdateBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "INNER",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...op.Condition) *UpdateBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "LEFT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *UpdateBuilder) JoinRight(table, alias string, ons ...op.Condition) *UpdateBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "RIGHT",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *UpdateBuilder) JoinFull(table, alias string, ons ...op.Condition) *UpdateBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "FULL",
+		Table: sqlTable{Table: table, Alias: alias},
+		Ons:   append([]op.Condition(nil), ons...),
+	})
+	return b
+}
+
+func (b *UpdateBuilder) CrossJoin(table, alias string) *UpdateBuilder {
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "CROSS",
+		Table: sqlTable{Table: table, Alias: alias},
+	})
+	return b
 }

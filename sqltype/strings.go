@@ -16,6 +16,7 @@ package sqltype
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -42,11 +43,11 @@ func (s *Strings) Scan(src any) error {
 // EncodeStrings rejects values that cannot round-trip with the given separator.
 func EncodeStrings[S ~[]string](s S, sep string) (string, error) {
 	if sep == "" {
-		return "", fmt.Errorf("sqltype: separator must not be empty")
+		return "", errors.New("sqltype: separator must not be empty")
 	}
 
 	if len(s) == 1 && s[0] == "" {
-		return "", fmt.Errorf("sqltype: singleton empty string is ambiguous")
+		return "", errors.New("sqltype: singleton empty string is ambiguous")
 	}
 
 	for _, v := range s {
@@ -61,12 +62,12 @@ func EncodeStrings[S ~[]string](s S, sep string) (string, error) {
 		i := 0
 		for decoded := range strings.SplitSeq(encoded, sep) {
 			if i >= len(s) || s[i] != decoded {
-				return "", fmt.Errorf("sqltype: ambiguous separator boundary")
+				return "", errors.New("sqltype: ambiguous separator boundary")
 			}
 			i++
 		}
 		if i != len(s) {
-			return "", fmt.Errorf("sqltype: ambiguous separator boundary")
+			return "", errors.New("sqltype: ambiguous separator boundary")
 		}
 	}
 	return encoded, nil
@@ -74,10 +75,10 @@ func EncodeStrings[S ~[]string](s S, sep string) (string, error) {
 
 func DecodeStrings[S ~[]string](dst *S, src any, sep string) error {
 	if dst == nil {
-		return fmt.Errorf("sqltype: nil string-slice destination")
+		return errors.New("sqltype: nil string-slice destination")
 	}
 	if sep == "" {
-		return fmt.Errorf("sqltype: separator must not be empty")
+		return errors.New("sqltype: separator must not be empty")
 	}
 	if src == nil {
 		*dst = nil

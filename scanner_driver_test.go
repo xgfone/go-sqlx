@@ -85,7 +85,7 @@ func fixtureDB(t *testing.T, f *scanFixture) *DB {
 	t.Helper()
 	std := sql.OpenDB(fixtureConnector{f})
 	t.Cleanup(func() { _ = std.Close() })
-	return &DB{Dialect: dialect.SQLite, Database: std}
+	return &DB{Dialect: dialect.SQLite, Executor: std}
 }
 
 func TestQueryContextNamedArgsAndBufferLifetime(t *testing.T) {
@@ -123,7 +123,7 @@ func TestQueryContextNamedArgsAndBufferLifetime(t *testing.T) {
 
 func TestQueryScannerResetsReusedStruct(t *testing.T) {
 	fixture := &scanFixture{values: []driver.Value{int64(7), nil}}
-	rows := fixtureDB(t, fixture).Select("value").From("t").QueryRows()
+	rows := fixtureDB(t, fixture).Select("value").From("t").QueryRowsContext(context.Background())
 	defer rows.Close() //nolint:errcheck
 
 	type scalar int64
@@ -153,7 +153,7 @@ func TestQueryRowPreservesBuilderLimit(t *testing.T) {
 	builder := db.Select("value").From("t").Limit(0)
 
 	var value int
-	if err := builder.QueryRow().Scan(&value); err != sql.ErrNoRows {
+	if err := builder.QueryRowContext(context.Background()).Scan(&value); err != sql.ErrNoRows {
 		t.Fatal(err)
 	}
 	if fixture.query != `SELECT "value" FROM "t" LIMIT 0` {
@@ -161,13 +161,13 @@ func TestQueryRowPreservesBuilderLimit(t *testing.T) {
 	}
 
 	unlimited := db.Select("value").From("t")
-	if err := unlimited.QueryRow().Scan(&value); err != sql.ErrNoRows {
+	if err := unlimited.QueryRowContext(context.Background()).Scan(&value); err != sql.ErrNoRows {
 		t.Fatal(err)
 	}
 	if fixture.query != `SELECT "value" FROM "t" LIMIT 1` {
 		t.Fatal(fixture.query)
 	}
-	if q, _ := unlimited.Build(); q != `SELECT "value" FROM "t"` {
+	if q, _ := unlimited.MustBuild(); q != `SELECT "value" FROM "t"` {
 		t.Fatal("QueryRow modified builder:", q)
 	}
 }

@@ -17,10 +17,13 @@ package sqlx
 import (
 	"context"
 	"database/sql"
-	"io"
 )
 
-var _ Database = new(sql.DB)
+var _ Executor = (*sql.DB)(nil)
+var _ Executor = (*DB)(nil)
+var _ Executor = (*sql.Tx)(nil)
+var _ Executor = (*sql.Conn)(nil)
+var _ TxBeginner = (*DB)(nil)
 
 // Executor is used to execute the sql statement.
 type Executor interface {
@@ -33,11 +36,4 @@ type Executor interface {
 // TxBeginner is used to open a sql transaction.
 type TxBeginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
-}
-
-// Database is used to operate the sql database.
-type Database interface {
-	TxBeginner
-	Executor
-	io.Closer
 }
