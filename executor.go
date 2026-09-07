@@ -20,16 +20,24 @@ import (
 	"io"
 )
 
-var (
-	_ Executor = new(DB)
-	_ Executor = new(sql.DB)
-)
+var _ Database = new(sql.DB)
 
 // Executor is used to execute the sql statement.
 type Executor interface {
-	io.Closer
-
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// TxBeginner is used to open a sql transaction.
+type TxBeginner interface {
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
+// Database is used to operate the sql database.
+type Database interface {
+	TxBeginner
+	Executor
+	io.Closer
 }

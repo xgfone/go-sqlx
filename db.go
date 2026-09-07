@@ -91,7 +91,7 @@ func ConnMaxIdleTime(d time.Duration) Config {
 // DB is the wrapper of the sql.DB.
 type DB struct {
 	Dialect
-	Executor
+	Database
 }
 
 // Open opens a database specified by its database driver name
@@ -115,7 +115,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		c(db)
 	}
 
-	xdb := &DB{Dialect: dialect, Executor: db}
+	xdb := &DB{Dialect: dialect, Database: db}
 	return xdb, nil
 }
 
@@ -124,17 +124,6 @@ func getDB(db *DB) *DB {
 		return db
 	}
 	return DefaultDB
-}
-
-// Set resets the current db to other.
-func (db *DB) Reset(other *DB) {
-	if other == nil {
-		db.Dialect = nil
-		db.Executor = nil
-	} else {
-		db.Dialect = other.Dialect
-		db.Executor = other.Executor
-	}
 }
 
 // GetDialect returns the dialect of the db.
