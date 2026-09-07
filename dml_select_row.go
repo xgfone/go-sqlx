@@ -110,7 +110,7 @@ func (r Row) Scan(dsts ...any) (err error) {
 	if r.err != nil {
 		return r.err
 	}
-	defer r.rows.Close()
+	defer r.rows.Close() //nolint:errcheck
 
 	if !r.rows.Next() {
 		if err := r.rows.Err(); err != nil {

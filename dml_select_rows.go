@@ -146,7 +146,8 @@ func (r Rows) Bind(dst any) error {
 		return err
 	}
 
-	defer r.Rows.Close()
+	defer r.Close() //nolint:errcheck
+
 	if err := r.binder.binder.BindRows(r, dst); err != nil {
 		return err
 	}

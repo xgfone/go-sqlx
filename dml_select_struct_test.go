@@ -104,8 +104,8 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 					t.Errorf("expect '%s', but got '%s'", expectv.S1, *s)
 				}
 			case 1:
-				if s := v.(*string); *s != expectv.S2.EmbededField {
-					t.Errorf("expect '%s', but got '%s'", expectv.S2.EmbededField, *s)
+				if s := v.(*string); *s != expectv.EmbededField {
+					t.Errorf("expect '%s', but got '%s'", expectv.EmbededField, *s)
 				}
 
 			case 2:

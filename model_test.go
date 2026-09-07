@@ -35,6 +35,6 @@ type MyTime struct {
 
 func NewMyTime(t time.Time) MyTime { return MyTime{Time: t} }
 
-func (t MyTime) String() string               { return t.Time.Format("2006-01-02/15:04:05") }
+func (t MyTime) String() string               { return t.Format("2006-01-02/15:04:05") }
 func (t MyTime) Value() (driver.Value, error) { return t.String(), nil }
 func (t MyTime) MarshalJSON() ([]byte, error) { return json.Marshal(t.String()) }
