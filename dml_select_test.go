@@ -32,16 +32,16 @@ func ExampleSelectBuilder() {
 	sql4, args4 := sel4.Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 
 	fmt.Println(sql2)
-	fmt.Println(args2.Args())
+	fmt.Println(args2)
 
 	fmt.Println(sql3)
-	fmt.Println(args3.Args())
+	fmt.Println(args3)
 
 	fmt.Println(sql4)
-	fmt.Println(args4.Args())
+	fmt.Println(args4)
 
 	// Output:
 	// SELECT * FROM `table` WHERE `id`=? /* abc */
@@ -59,7 +59,7 @@ func ExampleSelectBuilder_GroupBy() {
 	sql, args := s.Build()
 
 	fmt.Println(sql)
-	fmt.Println(args.Args())
+	fmt.Println(args)
 
 	// Output:
 	// SELECT * FROM `table` WHERE `id`=? GROUP BY `area`
@@ -74,10 +74,10 @@ func ExampleSelectBuilder_OrderBy() {
 	sql2, args2 := s2.Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 
 	fmt.Println(sql2)
-	fmt.Println(args2.Args())
+	fmt.Println(args2)
 
 	// Output:
 	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` ASC
@@ -92,7 +92,7 @@ func ExampleSelectBuilder_Limit() {
 	sql, args := s.Build()
 
 	fmt.Println(sql)
-	fmt.Println(args.Args())
+	fmt.Println(args)
 
 	// Output:
 	// SELECT * FROM `table` WHERE `id`=? ORDER BY `time` ASC LIMIT 10 OFFSET 100
@@ -105,7 +105,7 @@ func ExampleSelectBuilder_Join() {
 	sql, args := s.Build()
 
 	fmt.Println(sql)
-	fmt.Println(args.Args())
+	fmt.Println(args)
 
 	// Output:
 	// SELECT * FROM `table1` JOIN `table2` ON `table1`.`id`=`table2`.`id` WHERE `table1`.`id`=? ORDER BY `table1`.`time` ASC LIMIT 10 OFFSET 100
@@ -138,7 +138,7 @@ func ExampleSelectBuilder_IgnoreColumns() {
 
 	fmt.Println(b.SelectedColumns())
 	fmt.Println(sql)
-	fmt.Println(args.Args())
+	fmt.Println(args)
 
 	// Output:
 	// [id name age]

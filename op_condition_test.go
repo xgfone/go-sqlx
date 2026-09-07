@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 func TestAnd(t *testing.T) {
@@ -27,7 +28,7 @@ func TestAnd(t *testing.T) {
 	cond3 := op.Or(op.In("k4", []string{"v41", "v42"}), op.Between("k5", 333, 444))
 	cond4 := op.And(cond2, cond3, op.And(op.And()), op.NotEq("noop2", (*int)(nil)))
 
-	args := GetArgsBuilderFromPool(MySQL)
+	args := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(args, op.And(appendWheres(nil, cond4)...))
 
 	expectsql := "(`k1`=? AND `k2`>? AND `k3`<? AND (`k4` IN (?, ?) OR `k5` BETWEEN ? AND ?))"
@@ -47,21 +48,21 @@ func TestAnd(t *testing.T) {
 		}
 	}
 
-	if sql := BuildOper(GetArgsBuilderFromPool(MySQL), op.And()); sql != "" {
+	if sql := BuildOper(NewBuildContext(dialect.MySQL), op.And()); sql != "" {
 		t.Errorf("expect an empty sql, but got: %s", sql)
 	}
 
 	expectsql = "SELECT `c1`, `c2` FROM `table` WHERE `id`=?"
 	expectargs = []any{1}
-	sql, args = Selects("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).Build()
-	if expectsql != sql {
-		t.Errorf("expect sql: %s; but got: %s;", expectsql, sql)
+	query, values := Selects("c1", "c2").From("table").Where(op.And(op.Eq("id", 1), op.And())).Build()
+	if expectsql != query {
+		t.Errorf("expect sql: %s; but got: %s;", expectsql, query)
 	}
 
-	if len(args.Args()) != len(expectargs) {
-		t.Errorf("expect %d args, but got %d", len(expectargs), len(args.Args()))
+	if len(values) != len(expectargs) {
+		t.Errorf("expect %d args, but got %d", len(expectargs), len(values))
 	} else {
-		for i, arg := range args.Args() {
+		for i, arg := range values {
 			if expect := expectargs[i]; expect != arg {
 				t.Errorf("args %d: expect '%v', but got '%v'", i, expect, arg)
 			}
@@ -70,7 +71,7 @@ func TestAnd(t *testing.T) {
 }
 
 func TestCondInForNil(t *testing.T) {
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, op.In("field", []any(nil)))
 	args := ab.Args()
 
@@ -86,7 +87,7 @@ func TestCondInForNil(t *testing.T) {
 }
 
 func TestCondInForOne(t *testing.T) {
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, op.In("field", []string{"value"}))
 	args := ab.Args()
 
@@ -102,7 +103,7 @@ func TestCondInForOne(t *testing.T) {
 }
 
 func TestCondInForMapNil(t *testing.T) {
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, op.Key("field").In(map[string]struct{}(nil)))
 	args := ab.Args()
 
@@ -118,7 +119,7 @@ func TestCondInForMapNil(t *testing.T) {
 }
 
 func TestCondInForMap(t *testing.T) {
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, op.Key("field").In(map[string]bool{"value": false}))
 	args := ab.Args()
 

@@ -19,6 +19,7 @@ import (
 	"database/sql"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 // DeleteBuilder returns a new empty DeleteBuilder.
@@ -145,9 +146,9 @@ func (b *DeleteBuilder) Exec() (sql.Result, error) {
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
-	query, args := b.Build()
-	defer args.Release()
-	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
+	query, args := b.build()
+	defer releaseBuildContext(args)
+	return getDB(b.db).ExecContext(ctx, query, args.argsView()...)
 }
 
 // SetDB sets the db.
@@ -156,42 +157,67 @@ func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder {
 	return b
 }
 
-// String is the same as b.Build(), except args.
+// String returns the SQL from Build without copying the arguments.
 func (b *DeleteBuilder) String() string {
-	sql, _ := b.Build()
+	sql, args := b.build()
+	releaseBuildContext(args)
 	return sql
 }
 
 // Build builds the DELETE FROM TABLE sql statement.
-func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
+func (b *DeleteBuilder) Build() (string, []any) {
+	query, ctx := b.build()
+	defer releaseBuildContext(ctx)
+	return query, ctx.Args()
+}
+
+func (b *DeleteBuilder) build() (sql string, args *BuildContext) {
 	if len(b.ftables) == 0 {
 		panic("sqlx.DeleteBuilder: no FROM table name")
 	}
 
-	dialect := getDialect(b.db)
+	d := getDialect(b.db)
+	multi := len(b.ftables) > 1 || len(b.jtables) > 0
+	if multi && !dialect.Supports(d, dialect.MultiTableDelete) {
+		panic("sqlx: dialect does not support DELETE targets with joins")
+	}
 
 	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteString("DELETE ")
+	if multi {
+		for i, target := range b.ftables {
+			if i > 0 {
+				buf.WriteString(", ")
+			}
+			if target.Alias != "" {
+				buf.WriteString(d.QuoteIdent(target.Alias))
+			} else {
+				buf.WriteString(quotePath(d, target.Table))
+			}
+		}
+		buf.WriteByte(' ')
+	}
 
 	buf.WriteString("FROM ")
 	for i, t := range b.ftables {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(dialect.Quote(t.Table))
+		buf.WriteString(quotePath(d, t.Table))
 		if t.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(dialect.Quote(t.Alias))
+			buf.WriteString(d.QuoteIdent(t.Alias))
 		}
 	}
 
 	// Join
 	for _, join := range b.jtables {
-		args = join.Build(buf, dialect, args)
+		args = join.build(buf, d, args)
 	}
 
 	// Where
-	args = buildWheres(buf, args, dialect, b.wheres)
+	args = buildWheres(buf, args, d, b.wheres)
 
 	// Comment
 	if b.comment != "" {
@@ -201,6 +227,5 @@ func (b *DeleteBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	sql = buf.String()
-	putBuffer(buf)
 	return
 }

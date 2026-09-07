@@ -52,10 +52,10 @@ func (b *SelectBuilder) QueryRows() Rows {
 
 // QueryRowsContext builds the sql and executes it.
 func (b *SelectBuilder) QueryRowsContext(ctx context.Context) Rows {
-	query, args := b.Build()
-	defer args.Release()
+	query, args := b.build()
+	defer releaseBuildContext(args)
 
-	_args := args.Args()
+	_args := args.argsView()
 	columns := b.SelectedColumns()
 	return b.binder.Rows(getDB(b.db).queryRowsContext(ctx, columns, query, _args...))
 }

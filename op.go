@@ -26,16 +26,16 @@ var opbuilders = make(map[string]OpBuilder)
 
 // OpBuilder is an operation builder to build a sql statement based on op.
 type OpBuilder interface {
-	Build(*ArgsBuilder, op.Op) string
+	Build(*BuildContext, op.Op) string
 }
 
 var _ OpBuilder = OpBuilderFunc(nil)
 
 // OpBuilderFunc is a operation build function.
-type OpBuilderFunc func(ab *ArgsBuilder, op op.Op) string
+type OpBuilderFunc func(ab *BuildContext, op op.Op) string
 
 // Build implements the interface OpBuilder.
-func (f OpBuilderFunc) Build(ab *ArgsBuilder, op op.Op) string { return f(ab, op) }
+func (f OpBuilderFunc) Build(ab *BuildContext, op op.Op) string { return f(ab, op) }
 
 // RegisterOpBuilder registers the operation builder.
 func RegisterOpBuilder(op string, builder OpBuilder) {
@@ -54,7 +54,7 @@ func RegisterOpBuilder(op string, builder OpBuilder) {
 func GetOpBuilder(op string) OpBuilder { return opbuilders[op] }
 
 // BuildOp builds the operation.
-func BuildOp(ab *ArgsBuilder, op op.Op) string {
+func BuildOp(ab *BuildContext, op op.Op) string {
 	if builder := GetOpBuilder(op.Op); builder != nil {
 		if op.Lazy != nil {
 			op = op.Lazy(op)
@@ -65,7 +65,7 @@ func BuildOp(ab *ArgsBuilder, op op.Op) string {
 }
 
 // BuildOper is equal to BuildOp(ab, op.Operation()).
-func BuildOper(ab *ArgsBuilder, op op.Oper) string {
+func BuildOper(ab *BuildContext, op op.Oper) string {
 	return BuildOp(ab, op.Op())
 }
 

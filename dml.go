@@ -14,7 +14,12 @@
 
 package sqlx
 
-import "bytes"
+import (
+	"bytes"
+	"strings"
+
+	"github.com/xgfone/go-sqlx/dialect"
+)
 
 // JoinOn is the join on statement.
 type JoinOn struct {
@@ -36,17 +41,21 @@ type joinTable struct {
 	Ons   []JoinOn
 }
 
-func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect, args *ArgsBuilder) *ArgsBuilder {
+func (jt joinTable) build(buf *bytes.Buffer, d Dialect, args *BuildContext) *BuildContext {
+	if strings.HasPrefix(jt.Type, "FULL") && !dialect.Supports(d, dialect.FullJoin) {
+		panic("sqlx: dialect does not support FULL JOIN")
+	}
+
 	if jt.Type != "" {
 		buf.WriteByte(' ')
 		buf.WriteString(jt.Type)
 	}
 
 	buf.WriteString(" JOIN ")
-	buf.WriteString(dialect.Quote(jt.Table))
+	buf.WriteString(quotePath(d, jt.Table))
 	if jt.Alias != "" {
 		buf.WriteString(" AS ")
-		buf.WriteString(dialect.Quote(jt.Alias))
+		buf.WriteString(d.QuoteIdent(jt.Alias))
 	}
 
 	if len(jt.Ons) > 0 {
@@ -55,19 +64,18 @@ func (jt joinTable) Build(buf *bytes.Buffer, dialect Dialect, args *ArgsBuilder)
 			if i > 0 {
 				buf.WriteString(" AND ")
 			}
-			buf.WriteString(dialect.Quote(on.Left))
+			buf.WriteString(quotePath(d, on.Left))
 			buf.WriteByte('=')
 			if on.IsArg {
 				if args == nil {
-					args = GetArgsBuilderFromPool(dialect)
+					args = acquireBuildContext(d)
 				}
 				buf.WriteString(args.Add(on.Right))
 			} else {
-				buf.WriteString(dialect.Quote(on.Right))
+				buf.WriteString(quotePath(d, on.Right))
 			}
 		}
 	}
-
 	return args
 }
 

@@ -55,12 +55,11 @@ func appendWheres(wheres []op.Condition, conds ...op.Condition) []op.Condition {
 	return wheres
 }
 
-func buildWheres(buf *bytes.Buffer, args *ArgsBuilder, dialect Dialect, conds []op.Condition) *ArgsBuilder {
+func buildWheres(buf *bytes.Buffer, args *BuildContext, d Dialect, conds []op.Condition) *BuildContext {
 	if len(conds) > 0 {
 		if args == nil {
-			args = GetArgsBuilderFromPool(dialect)
+			args = acquireBuildContext(d)
 		}
-
 		buf.WriteString(" WHERE ")
 		buf.WriteString(BuildOper(args, op.And(conds...)))
 	}
@@ -99,13 +98,13 @@ func init() {
 }
 
 func newCondOne(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		return fmt.Sprintf(format, ab.Quote(getOpKey(op)))
 	})
 }
 
 func newCondTwo(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		if opvalueisnil(op) {
 			return ""
 		}
@@ -115,7 +114,7 @@ func newCondTwo(format string) OpBuilder {
 }
 
 func newCondLike(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		if opvalueisnil(op) {
 			return ""
 		}
@@ -129,7 +128,7 @@ func newCondLike(format string) OpBuilder {
 }
 
 func newCondIn(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		switch vs := op.Val.(type) {
 		case nil:
 			return "1=0"
@@ -234,7 +233,7 @@ func newCondIn(format string) OpBuilder {
 	})
 }
 
-func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, ab *ArgsBuilder, op op.Op, vs M) string {
+func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, ab *BuildContext, op op.Op, vs M) string {
 	switch _len := len(vs); _len {
 	case 0:
 		return "1=0"
@@ -248,7 +247,7 @@ func fmtcondin_map[M ~map[K]V, K comparable, V bool | struct{}](format string, a
 	}
 }
 
-func fmtcondin_slice[T any](format string, ab *ArgsBuilder, op op.Op, vs []T) string {
+func fmtcondin_slice[T any](format string, ab *BuildContext, op op.Op, vs []T) string {
 	switch _len := len(vs); _len {
 	case 0:
 		return "1=0"
@@ -266,14 +265,14 @@ func fmtcondin_slice[T any](format string, ab *ArgsBuilder, op op.Op, vs []T) st
 }
 
 func newCondBetween(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		v := _op.Val.(op.Boundary)
 		return fmt.Sprintf(format, ab.Quote(getOpKey(_op)), ab.Add(v.Lower), ab.Add(v.Upper))
 	})
 }
 
 func newCondGroup(sep string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		var ss []string
 		switch vs := _op.Val.(type) {
 		case []op.Condition:
@@ -303,7 +302,7 @@ func newCondGroup(sep string) OpBuilder {
 }
 
 func newCondColumn(ops string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		return fmt.Sprintf("%s%s%s", ab.Quote(getOpKey(_op)), ops, ab.Quote(_op.Val.(string)))
 	})
 }

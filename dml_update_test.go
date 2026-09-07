@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 func ExampleUpdateBuilder() {
@@ -34,12 +35,12 @@ func ExampleUpdateBuilder() {
 		Where(op.Between("c8", 11, 22))
 
 	sql1, args1 := update1.Build()
-	sql2, args2 := update2.SetDB(&DB{Dialect: Postgres}).Build()
+	sql2, args2 := update2.SetDB(&DB{Dialect: dialect.Postgres}).Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 	fmt.Println(sql2)
-	fmt.Println(args2.Args())
+	fmt.Println(args2)
 
 	// Output:
 	// UPDATE `table` SET `c1`=`c1`+?, `c2`=`c2`-?, `c3`=`c3`*?, `c4`=`c4`/?

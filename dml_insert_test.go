@@ -17,6 +17,8 @@ package sqlx
 import (
 	"database/sql"
 	"fmt"
+
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 func ExampleInsertBuilder() {
@@ -37,26 +39,26 @@ func ExampleInsertBuilder() {
 	insert4 := Insert().Into("table").Values("v1", "v2", "v3")
 	insert5 := Insert().Into("table").Values("v11", "v12").Values("v21", "v22")
 
-	sql1, args1 := insert1.SetDB(&DB{Dialect: Postgres}).Build() // Use the PostgreSQL dialect.
-	sql2, args2 := insert2.SetDB(&DB{Dialect: Postgres}).Build() // Use the PostgreSQL dialect.
-	sql3, args3 := insert3.Build()                               // Use the default dialect.
-	sql4, args4 := insert4.Build()                               // Use the default dialect.
-	sql5, args5 := insert5.Build()                               // Use the default dialect.
+	sql1, args1 := insert1.SetDB(&DB{Dialect: dialect.Postgres}).Build() // Use the PostgreSQL dialect.
+	sql2, args2 := insert2.SetDB(&DB{Dialect: dialect.Postgres}).Build() // Use the PostgreSQL dialect.
+	sql3, args3 := insert3.Build()                                       // Use the default dialect.
+	sql4, args4 := insert4.Build()                                       // Use the default dialect.
+	sql5, args5 := insert5.Build()                                       // Use the default dialect.
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 
 	fmt.Println(sql2)
-	fmt.Println(args2.Args())
+	fmt.Println(args2)
 
 	fmt.Println(sql3)
-	fmt.Println(args3.Args())
+	fmt.Println(args3)
 
 	fmt.Println(sql4)
-	fmt.Println(args4.Args())
+	fmt.Println(args4)
 
 	fmt.Println(sql5)
-	fmt.Println(args5.Args())
+	fmt.Println(args5)
 
 	// Output:
 	// INSERT INTO "table" ("c1", "c2", "c3") VALUES ($1, $2, $3)
@@ -80,7 +82,7 @@ func ExampleInsertBuilder_NamedValues() {
 	sql, args := insert.Build()
 
 	fmt.Println(sql)
-	fmt.Println(args.Args())
+	fmt.Println(args)
 
 	// Output:
 	// INSERT INTO `table` (`column1`, `column2`, `column3`) VALUES (?, ?, ?)

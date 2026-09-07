@@ -33,7 +33,7 @@ func init() {
 }
 
 func newUpdaterBatch() OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) string {
 		var ss []string
 		switch vs := _op.Val.(type) {
 		case []op.Updater:
@@ -63,7 +63,7 @@ func newUpdaterBatch() OpBuilder {
 }
 
 func newUpdaterSet() OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, o op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, o op.Op) string {
 		if opvalueisnil(o) {
 			return ""
 		}
@@ -80,14 +80,14 @@ func newUpdaterSet() OpBuilder {
 }
 
 func newUpdaterTwo(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, op op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, op op.Op) string {
 		column := ab.Quote(getOpKey(op))
 		return fmt.Sprintf(format, column, column)
 	})
 }
 
 func newUpdaterThree(format string) OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, o op.Op) string {
+	return OpBuilderFunc(func(ab *BuildContext, o op.Op) string {
 		left := ab.Quote(getOpKey(o))
 		right := left
 

@@ -22,11 +22,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xgfone/go-sqlx/dialect"
 	"github.com/xgfone/go-toolkit/timex"
 )
 
 // DefaultDB is the default global DB.
-var DefaultDB = new(DB)
+var DefaultDB = &DB{Dialect: dialect.MySQL}
 
 // SetConnURLLocation sets the argument "loc" in the connection url if missing.
 //
@@ -96,8 +97,8 @@ type DB struct {
 // Open opens a database specified by its database driver name
 // and a driver-specific data source name,
 func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
-	dialect := GetDialect(driverName)
-	if dialect == nil {
+	d, ok := dialect.Get(driverName)
+	if !ok {
 		return nil, fmt.Errorf("the dialect '%s' has not been registered",
 			driverName)
 	}
@@ -114,7 +115,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		c(db)
 	}
 
-	xdb := &DB{Dialect: dialect, Database: db}
+	xdb := &DB{Dialect: d, Database: db}
 	return xdb, nil
 }
 
@@ -127,7 +128,7 @@ func getDB(db *DB) *DB {
 
 func getDialect(db *DB) Dialect {
 	if db != nil {
-		return db.Dialect
+		return resolveDialect(db.Dialect)
 	}
-	return DefaultDB.Dialect
+	return resolveDialect(nil)
 }

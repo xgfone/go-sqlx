@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 func TestBatch(t *testing.T) {
@@ -27,7 +28,7 @@ func TestBatch(t *testing.T) {
 	updater3 := op.Batch(updater1, updater2, op.Add("k4", 123), op.Sub("k5", 456))
 	updater4 := op.Batch(updater3, op.Set("noop2", (*int)(nil)))
 
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, updater4)
 	args := ab.Args()
 
@@ -58,7 +59,7 @@ func TestAdd(t *testing.T) {
 }
 
 func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...any) {
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	sql := BuildOper(ab, op)
 	args := ab.Args()
 
@@ -73,7 +74,7 @@ func testsqlargs(t *testing.T, op op.Updater, expectsql string, expectargs ...an
 func TestUpdateSet(t *testing.T) {
 	key := op.KeyReason.WithLazy(op.StrCharsLen(32))
 
-	ab := GetArgsBuilderFromPool(MySQL)
+	ab := NewBuildContext(dialect.MySQL)
 	BuildOper(ab, key.Set("abcdefghijklmnopqrstuvwxyz0123456789"))
 	expectargs := []any{"abcdefghijklmnopqrstuvwxyz012345"}
 	if args := ab.Args(); len(args) != len(expectargs) || !reflect.DeepEqual(args, expectargs) {

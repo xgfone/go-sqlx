@@ -17,10 +17,12 @@ package sqlx
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 // SelectBuilder returns a new empty SelectBuilder.
@@ -33,9 +35,19 @@ func (db *DB) SelectAlias(column, alias string) *SelectBuilder {
 	return SelectAlias(column, alias).SetDB(db)
 }
 
-// Select is equal todb.SelectAlias(column, "").
+// Select is equal to db.SelectAlias(column, "").
 func (db *DB) Select(column string) *SelectBuilder {
 	return db.SelectAlias(column, "")
+}
+
+// SelectExprAlias is equal to SelectExprAlias(expr, alias) with this DB.
+func (db *DB) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
+	return SelectExprAlias(expr, alias).SetDB(db)
+}
+
+// SelectExpr is equal to db.SelectExprAlias(expr, "").
+func (db *DB) SelectExpr(expr Expression) *SelectBuilder {
+	return db.SelectExprAlias(expr, "")
 }
 
 // Selects is equal to db.Select(columns[0]).Select(columns[1])...
@@ -51,6 +63,16 @@ func SelectAlias(column, alias string) *SelectBuilder {
 // Select is equal to SelectAlias(column, "").
 func Select(column string) *SelectBuilder {
 	return SelectAlias(column, "")
+}
+
+// SelectExprAlias starts a SELECT with an explicit expression and optional alias.
+func SelectExprAlias(expr Expression, alias string) *SelectBuilder {
+	return new(SelectBuilder).SelectExprAlias(expr, alias)
+}
+
+// SelectExpr is equal to SelectExprAlias(expr, "").
+func SelectExpr(expr Expression) *SelectBuilder {
+	return SelectExprAlias(expr, "")
 }
 
 // Selects is equal to Select(columns[0]).Select(columns[1])...
@@ -75,11 +97,13 @@ func extractName(name string) string {
 type selectedColumn struct {
 	Column string
 	Alias  string
+	Expr   *Expression
 }
 
 type orderby struct {
 	Column string
 	Order  Order
+	Expr   *Expression
 }
 
 // Order represents the order used by ORDER BY.
@@ -95,53 +119,55 @@ const (
 type SelectBuilder struct {
 	db *DB
 
-	ftables  []sqlTable
-	jtables  []joinTable
-	columns  []selectedColumn
-	wheres   []op.Condition
-	ignores  []string // Ignored the columns
-	havings  []string
-	groupbys []string
-	orderbys []orderby
-	comment  string
-	offset   int64
-	limit    int64
-	page     op.Pagination
+	ftables    []sqlTable
+	jtables    []joinTable
+	columns    []selectedColumn
+	wheres     []op.Condition
+	ignores    []string // Ignored the columns
+	havings    []string
+	groupbys   []string
+	groupExprs []Expression
+	orderbys   []orderby
+	comment    string
+	offset     int64
+	limit      int64
+	page       op.Pagination
 
 	binder binder
 
+	hasLimit     bool
 	distinct     bool
 	forceOrderBy bool
 }
 
-// Count returns a COUNT(field).
-func Count(field string) string {
-	return strings.Join([]string{"COUNT(", ")"}, field)
+// Count builds COUNT(field), quoting the field when the query is built.
+func Count(field string) Expression {
+	return Expression{sql: field, function: "COUNT"}
 }
 
-// CountDistinct returns a COUNT(DISTINCT field).
-func CountDistinct(field string) string {
-	return strings.Join([]string{"COUNT(DISTINCT ", ")"}, field)
+// CountDistinct builds COUNT(DISTINCT field).
+func CountDistinct(field string) Expression {
+	return Expression{sql: field, function: "COUNT", distinct: true}
 }
 
-// Sum returns a SUM(field).
-func Sum(field string) string {
-	return strings.Join([]string{"SUM(", ")"}, field)
+// Sum builds SUM(field).
+func Sum(field string) Expression {
+	return Expression{sql: field, function: "SUM"}
 }
 
-// SelectSum appends the selected SUM(field) column in SELECT.
+// Sum appends SUM(field) to the selection.
 func (b *SelectBuilder) Sum(field string) *SelectBuilder {
-	return b.Select(Sum(getDialect(b.db).Quote(field)))
+	return b.SelectExpr(Sum(field))
 }
 
-// SelectCount appends the selected COUNT(field) column in SELECT.
+// SelectCount appends COUNT(field) to the selection.
 func (b *SelectBuilder) SelectCount(field string) *SelectBuilder {
-	return b.Select(Count(getDialect(b.db).Quote(field)))
+	return b.SelectExpr(Count(field))
 }
 
-// SelectCountDistinct appends the selected COUNT(DISTINCT field) column in SELECT.
+// SelectCountDistinct appends COUNT(DISTINCT field) to the selection.
 func (b *SelectBuilder) SelectCountDistinct(field string) *SelectBuilder {
-	return b.Select(CountDistinct(getDialect(b.db).Quote(field)))
+	return b.SelectExpr(CountDistinct(field))
 }
 
 // Distinct marks SELECT as DISTINCT.
@@ -158,18 +184,41 @@ func (b *SelectBuilder) growcolumns(n int) {
 	}
 }
 
-// Select appends the selected column in SELECT.
+// Select appends an identifier path to SELECT. Use SelectExpr for expressions.
 func (b *SelectBuilder) Select(column string) *SelectBuilder {
 	return b.SelectAlias(column, "")
 }
 
-// Select appends the selected column in SELECT with the alias.
+// SelectAlias appends an identifier path to SELECT with the alias.
 //
 // If alias is empty, it will be ignored.
 func (b *SelectBuilder) SelectAlias(column, alias string) *SelectBuilder {
 	if column != "" {
-		b.columns = append(b.columns, selectedColumn{column, alias})
+		b.columns = append(b.columns, selectedColumn{Column: column, Alias: alias})
 	}
+	return b
+}
+
+// SelectExpr appends an explicit expression to SELECT.
+func (b *SelectBuilder) SelectExpr(expr Expression) *SelectBuilder {
+	return b.SelectExprAlias(expr, "")
+}
+
+// SelectExprAlias appends an explicit expression with an optional alias.
+func (b *SelectBuilder) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
+	b.columns = append(b.columns, selectedColumn{Column: expr.String(), Alias: alias, Expr: &expr})
+	return b
+}
+
+// GroupByExpr appends explicit expressions to GROUP BY.
+func (b *SelectBuilder) GroupByExpr(exprs ...Expression) *SelectBuilder {
+	b.groupExprs = append(b.groupExprs, exprs...)
+	return b
+}
+
+// OrderByExpr appends an explicit expression to ORDER BY.
+func (b *SelectBuilder) OrderByExpr(expr Expression, order Order) *SelectBuilder {
+	b.orderbys = append(b.orderbys, orderby{Column: expr.String(), Order: order, Expr: &expr})
 	return b
 }
 
@@ -411,12 +460,19 @@ func (b *SelectBuilder) sort(sorter op.Sorter) {
 
 // Limit sets the LIMIT to limit.
 func (b *SelectBuilder) Limit(limit int64) *SelectBuilder {
+	if limit < 0 {
+		panic("sqlx: limit must be nonnegative")
+	}
+	b.hasLimit = true
 	b.limit = limit
 	return b
 }
 
 // Offset sets the OFFSET to offset.
 func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
+	if offset < 0 {
+		panic("sqlx: offset must be nonnegative")
+	}
 	b.offset = offset
 	return b
 }
@@ -426,6 +482,9 @@ func (b *SelectBuilder) Offset(offset int64) *SelectBuilder {
 // pageNum starts with 1. If pageNum or pageSize is less than 1, do nothing.
 func (b *SelectBuilder) Paginate(pageNum, pageSize int64) *SelectBuilder {
 	if pageNum > 0 && pageSize > 0 {
+		if pageNum-1 > math.MaxInt64/pageSize {
+			panic("sqlx: pagination offset overflows")
+		}
 		b.Limit(pageSize).Offset((pageNum - 1) * pageSize)
 	}
 	return b
@@ -449,15 +508,21 @@ func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder {
 	return b
 }
 
-// String is the same as b.Build(), except args.
+// String returns the SQL from Build without copying the arguments.
 func (b *SelectBuilder) String() string {
-	sql, args := b.Build()
-	args.Release()
+	sql, args := b.build()
+	releaseBuildContext(args)
 	return sql
 }
 
 // Build builds the SELECT sql statement.
-func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
+func (b *SelectBuilder) Build() (string, []any) {
+	query, ctx := b.build()
+	defer releaseBuildContext(ctx)
+	return query, ctx.Args()
+}
+
+func (b *SelectBuilder) build() (sql string, args *BuildContext) {
 	if len(b.ftables) == 0 {
 		panic("sqlx.SelectBuilder: no from table names")
 	} else if len(b.columns) == 0 {
@@ -465,13 +530,14 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteString("SELECT ")
 
 	if b.distinct {
 		buf.WriteString("DISTINCT ")
 	}
 
-	dialect := getDialect(b.db)
+	d := getDialect(b.db)
 
 	// Selected Columns
 	var i int
@@ -483,10 +549,14 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 		if i++; i > 1 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(dialect.Quote(column.Column))
+		if column.Expr != nil {
+			buf.WriteString(column.Expr.build(d))
+		} else {
+			buf.WriteString(quotePath(d, column.Column))
+		}
 		if column.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(dialect.Quote(column.Alias))
+			buf.WriteString(d.QuoteIdent(column.Alias))
 		}
 	}
 
@@ -496,29 +566,35 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(dialect.Quote(table.Table))
+		buf.WriteString(quotePath(d, table.Table))
 		if table.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(dialect.Quote(table.Alias))
+			buf.WriteString(d.QuoteIdent(table.Alias))
 		}
 	}
 
 	// Join
 	for _, table := range b.jtables {
-		args = table.Build(buf, dialect, args)
+		args = table.build(buf, d, args)
 	}
 
 	// Where
-	args = buildWheres(buf, args, dialect, b.wheres)
+	args = buildWheres(buf, args, d, b.wheres)
 
 	// Group By & Having By
-	if len(b.groupbys) > 0 {
+	if len(b.groupbys) > 0 || len(b.groupExprs) > 0 {
 		buf.WriteString(" GROUP BY ")
 		for i, s := range b.groupbys {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(dialect.Quote(s))
+			buf.WriteString(quotePath(d, s))
+		}
+		for i, expr := range b.groupExprs {
+			if i > 0 || len(b.groupbys) > 0 {
+				buf.WriteString(", ")
+			}
+			buf.WriteString(expr.build(d))
 		}
 
 		if len(b.havings) > 0 {
@@ -547,7 +623,11 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 				notfirst = true
 			}
 
-			buf.WriteString(dialect.Quote(ob.Column))
+			if ob.Expr != nil {
+				buf.WriteString(ob.Expr.build(d))
+			} else {
+				buf.WriteString(quotePath(d, ob.Column))
+			}
 			if ob.Order != "" {
 				buf.WriteByte(' ')
 				buf.WriteString(string(ob.Order))
@@ -556,12 +636,16 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	// Limit & Offset
-	if b.limit > 0 || b.offset > 0 {
+	if b.hasLimit || b.offset > 0 {
 		buf.WriteByte(' ')
-		buf.WriteString(dialect.LimitOffset(b.limit, b.offset))
+		buf.WriteString(d.LimitOffset(dialect.Pagination{
+			Limit:    b.limit,
+			Offset:   b.offset,
+			HasLimit: b.hasLimit,
+		}))
 	} else if b.page != nil {
 		if args == nil {
-			args = GetArgsBuilderFromPool(dialect)
+			args = acquireBuildContext(d)
 		}
 		buf.WriteByte(' ')
 		buf.WriteString(BuildOper(args, b.page))
@@ -575,7 +659,6 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	sql = buf.String()
-	putBuffer(buf)
 	return
 }
 

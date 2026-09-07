@@ -20,6 +20,7 @@ import (
 	"database/sql"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 // InsertBuilder returns a new empty InsertBuilder.
@@ -174,9 +175,9 @@ func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 		return sqlResult{}, nil
 	}
 
-	query, args := b.Build()
-	defer args.Release()
-	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
+	query, args := b.build()
+	defer releaseBuildContext(args)
+	return getDB(b.db).ExecContext(ctx, query, args.argsView()...)
 }
 
 // SetDB sets the db.
@@ -185,14 +186,21 @@ func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder {
 	return b
 }
 
-// String is the same as b.Build(), except args.
+// String returns the SQL from Build without copying the arguments.
 func (b *InsertBuilder) String() string {
-	sql, _ := b.Build()
+	sql, args := b.build()
+	releaseBuildContext(args)
 	return sql
 }
 
 // Build builds the INSERT INTO TABLE sql statement.
-func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
+func (b *InsertBuilder) Build() (string, []any) {
+	query, ctx := b.build()
+	defer releaseBuildContext(ctx)
+	return query, ctx.Args()
+}
+
+func (b *InsertBuilder) build() (sql string, args *BuildContext) {
 	var valnum int
 	vallen := len(b.values)
 	if vallen > 0 {
@@ -214,12 +222,24 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 		panic("sqlx.InsertBuilder: no table name")
 	}
 
-	dialect := getDialect(b.db)
+	d := getDialect(b.db)
+	if b.verb == "INSERT IGNORE" && !dialect.Supports(d, dialect.InsertIgnore) {
+		panic("sqlx: dialect does not support INSERT IGNORE")
+	}
+	if b.verb == "REPLACE" && !dialect.Supports(d, dialect.ReplaceInto) {
+		panic("sqlx: dialect does not support REPLACE INTO")
+	}
+	for _, row := range b.values {
+		if len(row) != valnum {
+			panic("sqlx: inconsistent INSERT row width")
+		}
+	}
 
 	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteString(b.verb)
 	buf.WriteString(" INTO ")
-	buf.WriteString(dialect.Quote(b.table))
+	buf.WriteString(quotePath(d, b.table))
 
 	if colnum > 0 {
 		buf.WriteString(" (")
@@ -227,21 +247,21 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			buf.WriteString(dialect.Quote(col))
+			buf.WriteString(d.QuoteIdent(col))
 		}
 		buf.WriteByte(')')
 	}
 
 	buf.WriteString(" VALUES ")
 	if vallen == 0 {
-		b.addValues(dialect, buf, nil, valnum, nil)
+		b.addValues(d, buf, nil, valnum, nil)
 	} else {
-		args = GetArgsBuilderFromPool(dialect)
+		args = acquireBuildContext(d)
 		for i, vs := range b.values {
 			if i > 0 {
 				buf.WriteString(", ")
 			}
-			b.addValues(dialect, buf, args, valnum, vs)
+			b.addValues(d, buf, args, valnum, vs)
 		}
 	}
 
@@ -252,12 +272,11 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	sql = buf.String()
-	putBuffer(buf)
 	return
 }
 
 func (b *InsertBuilder) addValues(dialect Dialect, buf *bytes.Buffer,
-	ab *ArgsBuilder, valnum int, values []any) {
+	ab *BuildContext, valnum int, values []any) {
 	if ab == nil {
 		buf.WriteByte('(')
 		for i := 1; i <= valnum; i++ {

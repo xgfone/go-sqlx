@@ -315,10 +315,13 @@ func (o Oper[T]) Exist(ctx context.Context, conds ...op.Condition) (exist bool, 
 //
 //	string
 //	[]string
+//	Expression
 //	struct
 func (o Oper[T]) Select(columns any, conds ...op.Condition) *SelectBuilder {
 	var q *SelectBuilder
 	switch c := columns.(type) {
+	case Expression:
+		q = o.Table.SelectExpr(c)
 	case string:
 		q = o.Table.Select(c)
 	case []string:

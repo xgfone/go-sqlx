@@ -36,10 +36,17 @@ func (b *SelectBuilder) QueryRow() Row {
 
 // QueryRowContext builds the sql and executes it.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
-	query, args := b.Limit(1).Build()
-	defer args.Release()
+	// Restrict this execution without changing the reusable builder or turning
+	// an explicit LIMIT 0 into a query that returns a row.
+	rowBuilder := *b
+	if !rowBuilder.hasLimit || rowBuilder.limit > 1 {
+		rowBuilder.Limit(1)
+	}
 
-	_args := args.Args()
+	query, args := rowBuilder.build()
+	defer releaseBuildContext(args)
+
+	_args := args.argsView()
 	columns := b.SelectedColumns()
 	return b.binder.Row(getDB(b.db).queryRowsContext(ctx, columns, query, _args...))
 }

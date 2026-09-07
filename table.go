@@ -72,6 +72,16 @@ func (t Table) Select(column string) *SelectBuilder {
 	return t.GetDB().Select(column).From(t.Name)
 }
 
+// SelectExprAlias selects an expression and alias from this table.
+func (t Table) SelectExprAlias(expr Expression, alias string) *SelectBuilder {
+	return t.GetDB().SelectExprAlias(expr, alias).From(t.Name)
+}
+
+// SelectExpr selects an expression from this table.
+func (t Table) SelectExpr(expr Expression) *SelectBuilder {
+	return t.GetDB().SelectExpr(expr).From(t.Name)
+}
+
 // Selects is equal to t.GetDB().Selects(columns...).
 func (t Table) Selects(columns ...string) *SelectBuilder {
 	return t.GetDB().Selects(columns...).From(t.Name)

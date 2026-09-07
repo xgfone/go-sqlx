@@ -19,8 +19,16 @@ import (
 	"time"
 )
 
+// An application chooses its own common model fields.
+type exampleRecord struct {
+	ID        int64     `sql:"id,omitempty"`
+	CreatedAt time.Time `sql:"created_at,omitempty"`
+	UpdatedAt time.Time `sql:"updated_at,omitempty"`
+	DeletedAt time.Time `sql:"deleted_at,omitempty"`
+}
+
 type InsertStruct struct {
-	Base2
+	exampleRecord
 
 	DefaultField  string
 	ModifiedField string `sql:"field"`
@@ -35,15 +43,15 @@ func ExampleInsertBuilder_Struct() {
 	insert1 := Insert().Into("table").Struct(s1)
 	sql1, args1 := insert1.Build()
 
-	s2 := InsertStruct{Base2: Base2{Id: 123}, DefaultField: "v1", ModifiedField: "v2", ZeroField: "v3", IgnoredField: "v4"}
+	s2 := InsertStruct{exampleRecord: exampleRecord{ID: 123}, DefaultField: "v1", ModifiedField: "v2", ZeroField: "v3", IgnoredField: "v4"}
 	insert2 := Insert().Into("table").Struct(s2)
 	sql2, args2 := insert2.Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 
 	fmt.Println(sql2)
-	fmt.Println(args2.Args())
+	fmt.Println(args2)
 
 	// Output:
 	// INSERT INTO `table` (`DefaultField`, `field`, `time`) VALUES (?, ?, ?)
@@ -64,7 +72,7 @@ func ExampleInsertBuilder_ValuesFromStructs() {
 		Build()
 
 	fmt.Println(sql1)
-	fmt.Println(args1.Args())
+	fmt.Println(args1)
 
 	// Output:
 	// INSERT INTO `table` (`field`, `time`, `ZeroField`) VALUES (?, ?, ?), (?, ?, ?)

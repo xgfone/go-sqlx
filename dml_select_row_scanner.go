@@ -18,7 +18,6 @@ import (
 	"database/sql"
 	"reflect"
 	"slices"
-	"time"
 )
 
 var _ScannerType = reflect.TypeFor[sql.Scanner]()
@@ -102,16 +101,16 @@ func scanStruct(scanner RowScanner, dst any) (err error) {
 }
 
 func needScannerWrapper(v any) bool {
-	switch v.(type) {
-	case *time.Duration, *time.Time, *any,
-		*bool, *float32, *float64, *string,
-		*int, *int8, *int16, *int32, *int64,
-		*uint, *uint8, *uint16, *uint32, *uint64:
-		return true
-
-	default:
+	if v == nil {
 		return false
 	}
+
+	t := reflect.TypeOf(v)
+	if t.Implements(_ScannerType) {
+		return false
+	}
+
+	return t.Kind() == reflect.Pointer && supportedScanType(t.Elem())
 }
 
 // ScanRow uses the function scan to scan the sql row into dests,

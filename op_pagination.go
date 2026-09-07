@@ -14,17 +14,30 @@
 
 package sqlx
 
-import "github.com/xgfone/go-op"
+import (
+	"math"
+
+	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
+)
 
 func init() {
 	RegisterOpBuilder(op.PaginationOpPageSize, newPageSize())
 }
 
 func newPageSize() OpBuilder {
-	return OpBuilderFunc(func(ab *ArgsBuilder, _op op.Op) (sql string) {
+	return OpBuilderFunc(func(ab *BuildContext, _op op.Op) (sql string) {
 		ps := _op.Val.(op.PageSizer)
 		if ps.Page > 0 && ps.Size > 0 {
-			sql = ab.Dialect.LimitOffset(ps.Size, (ps.Page-1)*ps.Size)
+			if ps.Page-1 > math.MaxInt64/ps.Size {
+				panic("sqlx: pagination offset overflows")
+			}
+
+			sql = ab.Dialect().LimitOffset(dialect.Pagination{
+				Limit:    ps.Size,
+				Offset:   (ps.Page - 1) * ps.Size,
+				HasLimit: true,
+			})
 		}
 		return
 	})

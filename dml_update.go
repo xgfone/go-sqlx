@@ -19,6 +19,7 @@ import (
 	"database/sql"
 
 	"github.com/xgfone/go-op"
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 // UpdateBuilder returns a new empty UpdateBuilder.
@@ -183,9 +184,9 @@ func (b *UpdateBuilder) Exec() (sql.Result, error) {
 
 // ExecContext builds the sql and executes it by *sql.DB.
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
-	query, args := b.Build()
-	defer args.Release()
-	return getDB(b.db).ExecContext(ctx, query, args.Args()...)
+	query, args := b.build()
+	defer releaseBuildContext(args)
+	return getDB(b.db).ExecContext(ctx, query, args.argsView()...)
 }
 
 // SetDB sets the DB to db.
@@ -194,39 +195,66 @@ func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder {
 	return b
 }
 
-// String is the same as b.Build(), except args.
+// String returns the SQL from Build without copying the arguments.
 func (b *UpdateBuilder) String() string {
-	sql, _ := b.Build()
+	sql, args := b.build()
+	releaseBuildContext(args)
 	return sql
 }
 
 // Build builds the "UPDATE" sql statement.
-func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
+func (b *UpdateBuilder) Build() (string, []any) {
+	query, ctx := b.build()
+	defer releaseBuildContext(ctx)
+	return query, ctx.Args()
+}
+
+func (b *UpdateBuilder) build() (sql string, args *BuildContext) {
 	if len(b.utables) == 0 {
 		panic("sqlx.UpdateBuilder: no table name")
 	} else if len(b.setters) == 0 {
 		panic("sqlx.UpdateBuilder: no SET values")
 	}
 
-	dialect := getDialect(b.db)
+	d := getDialect(b.db)
+	if len(b.utables) > 1 && !dialect.Supports(d, dialect.MultiTableUpdate) {
+		panic("sqlx: dialect does not support multiple UPDATE targets")
+	}
+	if len(b.ftables) > 0 && !dialect.Supports(d, dialect.UpdateFrom) {
+		panic("sqlx: dialect does not support UPDATE FROM")
+	}
+	joinsBeforeSet := dialect.Supports(d, dialect.UpdateJoinBeforeSet)
+	if len(b.jtables) > 0 && !joinsBeforeSet && (len(b.ftables) == 0 || !dialect.Supports(d, dialect.UpdateFrom)) {
+		panic("sqlx: UPDATE joins require a supported FROM clause")
+	}
 
 	// Update Table
 	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteString("UPDATE ")
 	for i, t := range b.utables {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(dialect.Quote(t.Table))
+		buf.WriteString(quotePath(d, t.Table))
 		if t.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(dialect.Quote(t.Alias))
+			buf.WriteString(d.QuoteIdent(t.Alias))
+		}
+	}
+
+	// MySQL places joins before SET; PostgreSQL/SQLite join FROM items.
+	if joinsBeforeSet {
+		for _, join := range b.jtables {
+			args = join.build(buf, d, args)
 		}
 	}
 
 	// Set
 	buf.WriteString(" SET ")
-	args = GetArgsBuilderFromPool(dialect)
+	if args == nil {
+		args = acquireBuildContext(d)
+	}
 	buf.WriteString(BuildOper(args, op.Batch(b.setters...)))
 
 	// From Table
@@ -236,20 +264,22 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 		} else {
 			buf.WriteString(", ")
 		}
-		buf.WriteString(dialect.Quote(t.Table))
+		buf.WriteString(quotePath(d, t.Table))
 		if t.Alias != "" {
 			buf.WriteString(" AS ")
-			buf.WriteString(dialect.Quote(t.Alias))
+			buf.WriteString(d.QuoteIdent(t.Alias))
 		}
 	}
 
 	// Join
-	for _, join := range b.jtables {
-		args = join.Build(buf, dialect, args)
+	if !joinsBeforeSet {
+		for _, join := range b.jtables {
+			args = join.build(buf, d, args)
+		}
 	}
 
 	// Where
-	args = buildWheres(buf, args, dialect, b.wheres)
+	args = buildWheres(buf, args, d, b.wheres)
 
 	// Comment
 	if b.comment != "" {
@@ -259,6 +289,5 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 	}
 
 	sql = buf.String()
-	putBuffer(buf)
 	return
 }

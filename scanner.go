@@ -15,699 +15,512 @@
 package sqlx
 
 import (
+	"bytes"
+	"database/sql"
+	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
-
-	"github.com/xgfone/go-toolkit/timex"
 )
 
-// GeneralScanner is a general sql.Scanner.
+// GeneralScanner adapts scalar values with SQL NULL mapped to the destination's
+// zero value. It copies driver byte buffers, checks numeric ranges, and leaves
+// the destination unchanged on conversion errors. Custom sql.Scanner values
+// receive the original source, including NULL. A nil Value discards the column.
+//
+// Text numbers use decimal syntax; empty text is invalid. Boolean inputs accept
+// ParseBool text, numeric 0/1, and the single binary bytes 0/1. Integer conversions
+// reject fractions and overflow. Floating-point conversions allow normal IEEE
+// rounding, but reject non-finite values, overflow, and float32 narrowing
+// underflow to zero.
+//
+// Named scalar types and *[]byte are supported in addition to built-in pointers.
+// Time strings default to RFC3339Nano, SQL datetime, or SQL date. Existing
+// time.Time values retain their location unless Location is explicitly set.
+// Numeric timestamps are Unix seconds. Numeric durations use DurationUnit
+// (milliseconds by default), regardless of whether the source is integral.
 type GeneralScanner struct {
 	Value any
+
+	Location     *time.Location
+	TimeLayouts  []string
+	DurationUnit time.Duration
+
+	// AllowZeroDate maps MySQL zero dates to time.Time{} instead of an error.
+	AllowZeroDate bool
 }
 
-// Scan implements the interface sql.Scanner to scan the sql column src into the wrapped Value,
-// which supports the sql NULL as the ZERO.
-//
-// For time, if src is empty or equal to "0000-00-00 00:00:00", the time value will be ZERO.
-//
-// The wrapped value supports the following types:
-//
-//	nil: ignore the column value src
-//	*any: put src as it is into the wrapped value
-//	*time.Duration:
-//	    string:    time.ParseDuration(src)
-//	    []byte:    time.ParseDuration(string(src))
-//	    int64:     time.Duration(src) * time.Millisecond
-//	    uint64:    time.Duration(src) * time.Millisecond
-//	    float64:   time.Duration(src  * float64(time.Second))
-//	*time.Time:
-//	    int64:     time.Unix(src, 0).In(Location)
-//	    uint64:    time.Unix(src, 0).In(Location)
-//	    float64:   time.Unix(Integer, Fraction).In(Location)
-//	    string:    time.ParseInLocation(DatetimeLayout, src, Location))
-//	    []byte:    time.ParseInLocation(DatetimeLayout, string(src), Location))
-//	    time.Time: src
-//	*bool:
-//	     bool:     src
-//	     int64:    src!=0
-//	     uint64:   src!=0
-//	     float64:  src!=0
-//	     string:   strconv.ParseBool(src)
-//	     []byte:
-//	               len(src)==1: src[0] != '\x00'
-//	               len(src)!=1: strconv.ParseBool(string(src))
-//	*string:
-//	    string:    src
-//	    []byte:    string(src)
-//	    bool:      "true" or "false"
-//	    int64:     strconv.FormatInt(src, 10)
-//	    uint64:    strconv.FormatUint(src, 10)
-//	    float64:   strconv.FormatFloat(src, 'f', -1, 64)
-//	    time.Time: src.In(Location).Format(DatetimeLayout)
-//	*float32, *float64:
-//	    bool:      true=>1, false=>0
-//	    int64:     floatXX(src)
-//	    uint64:    floatXX(src)
-//	    float64:   floatXX(src)
-//	    string:    strconv.ParseFloat(src, 64)
-//	    []byte:    strconv.ParseFloat(string(src), 64)
-//	*int, *int8, *int16, *int32, *int64:
-//		bool:      true=>1, false=>0
-//	    int64:     intXX(src)
-//	    uint64:    intXX(src)
-//	    float64:   intXX(src)
-//	    string:    strconv.ParseInt(src, 10, 64)
-//	    []byte:    strconv.ParseInt(string(src), 10, 64)
-//	    time.Time: src.Unix() only for int/int64
-//	*uint, *uint8, *uint16, *uint32, *uint64:
-//		bool:      true=>1, false=>0
-//	    int64:     uintXX(src)
-//	    uint64:    uintXX(src)
-//	    float64:   uintXX(src)
-//	    string:    strconv.ParseUint(src, 10, 64)
-//	    []byte:    strconv.ParseUint(string(src), 10, 64)
-//	    time.Time: src.Unix() only for uint/uint64
-func (s GeneralScanner) Scan(src any) (err error) {
-	if src == nil {
-		return
+func (s GeneralScanner) Scan(src any) error {
+	if s.Value == nil {
+		return nil
 	}
 
+	dst := reflect.ValueOf(s.Value)
+	switch dst.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice,
+		reflect.Func, reflect.Chan:
+		if dst.IsNil() {
+			return fmt.Errorf("sqlx.GeneralScanner: nil destination %T", s.Value)
+		}
+	}
+
+	if scanner, ok := s.Value.(sql.Scanner); ok {
+		return scanner.Scan(src)
+	}
+
+	if dst.Kind() != reflect.Pointer {
+		return fmt.Errorf("sqlx.GeneralScanner: destination %T is not a pointer", s.Value)
+	}
+
+	dst = dst.Elem()
+	if !supportedScanType(dst.Type()) {
+		return fmt.Errorf("sqlx.GeneralScanner: unsupported destination %T", s.Value)
+	}
+
+	if src == nil {
+		dst.SetZero()
+		return nil
+	}
+
+	var err error
 	switch v := s.Value.(type) {
-	case *time.Duration:
-		switch s := src.(type) {
-		case string:
-			*v, err = time.ParseDuration(s)
-
-		case []byte:
-			*v, err = time.ParseDuration(string(s))
-
-		case int64:
-			*v = time.Duration(s) * time.Millisecond
-
-		case uint64:
-			*v = time.Duration(s) * time.Millisecond
-
-		case float32:
-			*v = time.Duration(float64(s) * float64(time.Second))
-
-		case float64:
-			*v = time.Duration(s * float64(time.Second))
-
-		default:
-			err = fmt.Errorf("converting %T to time.Duration is unsupported", src)
-		}
-
 	case *time.Time:
-		*v, err = toTime(src, timex.Location)
-
-	case *bool:
-		switch s := src.(type) {
-		case int64:
-			*v = s != 0
-		case uint64:
-			*v = s != 0
-		case float32:
-			*v = s != 0
-		case float64:
-			*v = s != 0
-		case bool:
-			*v = s
-		case []byte:
-			if len(s) == 1 {
-				*v = s[0] != '\x00'
-			} else {
-				*v, err = parseBool(string(s))
-			}
-		case string:
-			*v, err = parseBool(s)
-		default:
-			err = fmt.Errorf("converting %T to bool is unsupported", src)
+		var value time.Time
+		value, err = s.scanTime(src)
+		if err == nil {
+			*v = value
 		}
 
-	case *int:
-		switch s := src.(type) {
-		case int64:
-			*v = int(s)
-
-		case uint64:
-			*v = int(s)
-
-		case float32:
-			*v = int(s)
-
-		case float64:
-			*v = int(s)
-
-		case string:
-			var i int64
-			if i, err = parseInt(s, 10, 64); err == nil {
-				*v = int(i)
-			}
-
-		case []byte:
-			var i int64
-			if i, err = parseInt(string(s), 10, 64); err == nil {
-				*v = int(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		case time.Time:
-			*v = int(s.Unix())
-
-		default:
-			err = fmt.Errorf("converting %T to int is unsupported", src)
-		}
-
-	case *int8:
-		switch s := src.(type) {
-		case int64:
-			*v = int8(s)
-
-		case uint64:
-			*v = int8(s)
-
-		case float32:
-			*v = int8(s)
-
-		case float64:
-			*v = int8(s)
-
-		case string:
-			var i int64
-			if i, err = parseInt(s, 10, 64); err == nil {
-				*v = int8(i)
-			}
-
-		case []byte:
-			var i int64
-			if i, err = parseInt(string(s), 10, 64); err == nil {
-				*v = int8(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to int8 is unsupported", src)
-		}
-
-	case *int16:
-		switch s := src.(type) {
-		case int64:
-			*v = int16(s)
-
-		case uint64:
-			*v = int16(s)
-
-		case float32:
-			*v = int16(s)
-
-		case float64:
-			*v = int16(s)
-
-		case string:
-			var i int64
-			if i, err = parseInt(s, 10, 64); err == nil {
-				*v = int16(i)
-			}
-
-		case []byte:
-			var i int64
-			if i, err = parseInt(string(s), 10, 64); err == nil {
-				*v = int16(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to int16 is unsupported", src)
-		}
-
-	case *int32:
-		switch s := src.(type) {
-		case int64:
-			*v = int32(s)
-
-		case uint64:
-			*v = int32(s)
-
-		case float32:
-			*v = int32(s)
-
-		case float64:
-			*v = int32(s)
-
-		case string:
-			var i int64
-			if i, err = parseInt(s, 10, 64); err == nil {
-				*v = int32(i)
-			}
-
-		case []byte:
-			var i int64
-			if i, err = parseInt(string(s), 10, 64); err == nil {
-				*v = int32(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to int32 is unsupported", src)
-		}
-
-	case *int64:
-		switch s := src.(type) {
-		case int64:
-			*v = s
-
-		case uint64:
-			*v = int64(s)
-
-		case float32:
-			*v = int64(s)
-
-		case float64:
-			*v = int64(s)
-
-		case string:
-			*v, err = parseInt(s, 10, 64)
-
-		case []byte:
-			*v, err = parseInt(string(s), 10, 64)
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		case time.Time:
-			*v = s.Unix()
-
-		default:
-			err = fmt.Errorf("converting %T to int64 is unsupported", src)
-		}
-
-	case *uint:
-		switch s := src.(type) {
-		case int64:
-			*v = uint(s)
-
-		case uint64:
-			*v = uint(s)
-
-		case float32:
-			*v = uint(s)
-
-		case float64:
-			*v = uint(s)
-
-		case string:
-			var i uint64
-			if i, err = parseUint(s, 10, 64); err == nil {
-				*v = uint(i)
-			}
-
-		case []byte:
-			var i uint64
-			if i, err = parseUint(string(s), 10, 64); err == nil {
-				*v = uint(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		case time.Time:
-			*v = uint(s.Unix())
-
-		default:
-			err = fmt.Errorf("converting %T to uint is unsupported", src)
-		}
-
-	case *uint8:
-		switch s := src.(type) {
-		case int64:
-			*v = uint8(s)
-
-		case uint64:
-			*v = uint8(s)
-
-		case float32:
-			*v = uint8(s)
-
-		case float64:
-			*v = uint8(s)
-
-		case string:
-			var i uint64
-			if i, err = parseUint(s, 10, 64); err == nil {
-				*v = uint8(i)
-			}
-
-		case []byte:
-			var i uint64
-			if i, err = parseUint(string(s), 10, 64); err == nil {
-				*v = uint8(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to uint8 is unsupported", src)
-		}
-
-	case *uint16:
-		switch s := src.(type) {
-		case int64:
-			*v = uint16(s)
-
-		case uint64:
-			*v = uint16(s)
-
-		case float32:
-			*v = uint16(s)
-
-		case float64:
-			*v = uint16(s)
-
-		case string:
-			var i uint64
-			if i, err = parseUint(s, 10, 64); err == nil {
-				*v = uint16(i)
-			}
-
-		case []byte:
-			var i uint64
-			if i, err = parseUint(string(s), 10, 64); err == nil {
-				*v = uint16(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to uint16 is unsupported", src)
-		}
-
-	case *uint32:
-		switch s := src.(type) {
-		case int64:
-			*v = uint32(s)
-
-		case uint64:
-			*v = uint32(s)
-
-		case float32:
-			*v = uint32(s)
-
-		case float64:
-			*v = uint32(s)
-
-		case string:
-			var i uint64
-			if i, err = parseUint(s, 10, 64); err == nil {
-				*v = uint32(i)
-			}
-
-		case []byte:
-			var i uint64
-			if i, err = parseUint(string(s), 10, 64); err == nil {
-				*v = uint32(i)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to uint32 is unsupported", src)
-		}
-
-	case *uint64:
-		switch s := src.(type) {
-		case int64:
-			*v = uint64(s)
-
-		case uint64:
-			*v = uint64(s)
-
-		case float32:
-			*v = uint64(s)
-
-		case float64:
-			*v = uint64(s)
-
-		case string:
-			*v, err = parseUint(s, 10, 64)
-
-		case []byte:
-			*v, err = parseUint(string(s), 10, 64)
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		case time.Time:
-			*v = uint64(s.Unix())
-
-		default:
-			err = fmt.Errorf("converting %T to uint64 is unsupported", src)
-		}
-
-	case *float32:
-		switch s := src.(type) {
-		case int64:
-			*v = float32(s)
-
-		case uint64:
-			*v = float32(s)
-
-		case float32:
-			*v = s
-
-		case float64:
-			*v = float32(s)
-
-		case string:
-			var f float64
-			if f, err = parseFloat(s, 64); err == nil {
-				*v = float32(f)
-			}
-
-		case []byte:
-			var f float64
-			if f, err = parseFloat(string(s), 64); err == nil {
-				*v = float32(f)
-			}
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to float32 is unsupported", src)
-		}
-
-	case *float64:
-		switch s := src.(type) {
-		case int64:
-			*v = float64(s)
-
-		case uint64:
-			*v = float64(s)
-
-		case float32:
-			*v = float64(s)
-
-		case float64:
-			*v = s
-
-		case string:
-			*v, err = parseFloat(s, 64)
-
-		case []byte:
-			*v, err = parseFloat(string(s), 64)
-
-		case bool:
-			if s {
-				*v = 1
-			} else {
-				*v = 0
-			}
-
-		default:
-			err = fmt.Errorf("converting %T to float64 is unsupported", src)
-		}
-
-	case *string:
-		switch s := src.(type) {
-		case int64:
-			*v = strconv.FormatInt(s, 10)
-
-		case uint64:
-			*v = strconv.FormatUint(s, 10)
-
-		case float32:
-			*v = strconv.FormatFloat(float64(s), 'f', -1, 64)
-
-		case float64:
-			*v = strconv.FormatFloat(s, 'f', -1, 64)
-
-		case string:
-			*v = s
-
-		case []byte:
-			*v = string(s)
-
-		case bool:
-			if s {
-				*v = "true"
-			} else {
-				*v = "false"
-			}
-
-		case time.Time:
-			*v = s.In(timex.Location).Format("2006-01-02 15:04:05")
-
-		default:
-			err = fmt.Errorf("converting %T to string is unsupported", src)
+	case *time.Duration:
+		var value time.Duration
+		value, err = s.scanDuration(src)
+		if err == nil {
+			*v = value
 		}
 
 	case *any:
-		*v = src
-
-	case nil:
-		// ignore the column value
+		if data, ok := src.([]byte); ok {
+			*v = bytes.Clone(data)
+		} else {
+			*v = src
+		}
 
 	default:
-		panic(fmt.Errorf("sqlx.GeneralScanner.Scan: unsupported type '%T'", s.Value))
+		err = scanScalar(dst, src)
 	}
 
-	return
-}
-
-func parseInt(s string, base int, bitSize int) (v int64, err error) {
-	if s != "" {
-		v, err = strconv.ParseInt(s, base, bitSize)
+	if err != nil {
+		return fmt.Errorf("sqlx.GeneralScanner: converting %T to %T: %w", src, s.Value, err)
 	}
-	return
+	return nil
 }
 
-func parseUint(s string, base int, bitSize int) (v uint64, err error) {
-	if s != "" {
-		v, err = strconv.ParseUint(s, base, bitSize)
+func supportedScanType(t reflect.Type) bool {
+	if t == reflect.TypeFor[time.Time]() {
+		return true
 	}
-	return
-}
 
-func parseBool(s string) (v bool, err error) {
-	if s != "" {
-		v, err = strconv.ParseBool(s)
+	switch t.Kind() {
+	case reflect.Bool, reflect.String, reflect.Float32, reflect.Float64,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+
+	case reflect.Interface:
+		return t.NumMethod() == 0
+
+	case reflect.Slice:
+		return t.Elem().Kind() == reflect.Uint8
 	}
-	return
+
+	return false
 }
 
-func parseFloat(s string, bitSize int) (v float64, err error) {
-	if s != "" {
-		v, err = strconv.ParseFloat(s, bitSize)
+func scanScalar(dst reflect.Value, src any) error {
+	switch dst.Kind() {
+	case reflect.Interface:
+		if b, ok := src.([]byte); ok {
+			src = bytes.Clone(b)
+		}
+		dst.Set(reflect.ValueOf(src))
+		return nil
+
+	case reflect.Slice:
+		var data []byte
+		switch v := src.(type) {
+		case []byte:
+			data = v
+
+		case string:
+			data = []byte(v)
+
+		default:
+			return errors.New("unsupported byte source")
+		}
+
+		if data == nil {
+			dst.SetZero()
+			return nil
+		}
+
+		// Named byte slices need per-element conversion if the element is named.
+		value := reflect.MakeSlice(dst.Type(), len(data), len(data))
+		for i, b := range data {
+			value.Index(i).SetUint(uint64(b))
+		}
+		dst.Set(value)
+		return nil
+
+	case reflect.String:
+		text, err := scanString(src)
+		if err == nil {
+			dst.SetString(text)
+		}
+		return err
+
+	case reflect.Bool:
+		value, err := scanBool(src)
+		if err == nil {
+			dst.SetBool(value)
+		}
+		return err
 	}
-	return
+
+	if t, ok := src.(time.Time); ok {
+		switch dst.Kind() {
+		case reflect.Int, reflect.Int64, reflect.Uint, reflect.Uint64:
+			src = t.Unix()
+
+		default:
+			return errors.New("unsupported time source")
+		}
+	}
+
+	if data, ok := src.([]byte); ok {
+		src = string(data)
+	}
+
+	source := reflect.ValueOf(src)
+	switch dst.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value, err := scanInt(source, dst.Type().Bits())
+		if err == nil {
+			dst.SetInt(value)
+		}
+		return err
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		value, err := scanUint(source, dst.Type().Bits())
+		if err == nil {
+			dst.SetUint(value)
+		}
+		return err
+
+	case reflect.Float32, reflect.Float64:
+		value, err := scanFloat(source, dst.Type().Bits())
+		if err == nil {
+			dst.SetFloat(value)
+		}
+		return err
+	}
+
+	return errors.New("unsupported scalar conversion")
 }
 
-func toTime(src any, loc *time.Location) (time.Time, error) {
-	switch s := src.(type) {
-	case string:
-		return parseTimeString(s, loc)
+func scanInt(src reflect.Value, bits int) (int64, error) {
+	var value int64
+	switch src.Kind() {
+	case reflect.String:
+		return strconv.ParseInt(src.String(), 10, bits)
+	case reflect.Bool:
+		if src.Bool() {
+			value = 1
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value = src.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		u := src.Uint()
+		if u > uint64(math.MaxInt64) {
+			return 0, errors.New("integer overflow")
+		}
+		value = int64(u)
+	case reflect.Float32, reflect.Float64:
+		f := src.Float()
+		bound := math.Ldexp(1, bits-1)
+		if !finite(f) || f < -bound || f >= bound || math.Trunc(f) != f {
+			return 0, errors.New("fractional or out-of-range integer")
+		}
+		return int64(f), nil
+	default:
+		return 0, errors.New("unsupported integer source")
+	}
+	if bits < 64 && (value < -(int64(1)<<(bits-1)) || value > (int64(1)<<(bits-1))-1) {
+		return 0, errors.New("integer overflow")
+	}
+	return value, nil
+}
 
+func scanUint(src reflect.Value, bits int) (uint64, error) {
+	var value uint64
+	switch src.Kind() {
+	case reflect.String:
+		return strconv.ParseUint(src.String(), 10, bits)
+
+	case reflect.Bool:
+		if src.Bool() {
+			value = 1
+		}
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		i := src.Int()
+		if i < 0 {
+			return 0, errors.New("negative unsigned integer")
+		}
+		value = uint64(i)
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		value = src.Uint()
+
+	case reflect.Float32, reflect.Float64:
+		f := src.Float()
+		if !finite(f) || f < 0 || f >= math.Ldexp(1, bits) || math.Trunc(f) != f {
+			return 0, errors.New("fractional or out-of-range unsigned integer")
+		}
+		return uint64(f), nil
+
+	default:
+		return 0, errors.New("unsupported unsigned integer source")
+	}
+
+	if bits < 64 && value > (uint64(1)<<bits)-1 {
+		return 0, errors.New("unsigned integer overflow")
+	}
+	return value, nil
+}
+
+func scanFloat(src reflect.Value, bits int) (float64, error) {
+	var value float64
+	var err error
+	switch src.Kind() {
+	case reflect.String:
+		value, err = strconv.ParseFloat(src.String(), bits)
+		if err == nil && bits == 32 && value == 0 {
+			wide, wideErr := strconv.ParseFloat(src.String(), 64)
+			if wideErr == nil && wide != 0 {
+				return 0, errors.New("float32 underflow")
+			}
+		}
+
+	case reflect.Bool:
+		if src.Bool() {
+			value = 1
+		}
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value = float64(src.Int())
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		value = float64(src.Uint())
+
+	case reflect.Float32, reflect.Float64:
+		value = src.Float()
+
+	default:
+		return 0, errors.New("unsupported float source")
+	}
+
+	if err != nil {
+		return 0, err
+	}
+	if !finite(value) {
+		return 0, errors.New("non-finite float")
+	}
+
+	if bits == 32 {
+		rounded := float32(value)
+		if math.IsInf(float64(rounded), 0) || value != 0 && rounded == 0 {
+			return 0, errors.New("float32 out of range")
+		}
+		value = float64(rounded)
+	}
+
+	return value, nil
+}
+
+func finite(f float64) bool {
+	return !math.IsNaN(f) && !math.IsInf(f, 0)
+}
+
+func scanBool(src any) (bool, error) {
+	if data, ok := src.([]byte); ok {
+		if len(data) == 1 && data[0] <= 1 {
+			return data[0] == 1, nil
+		}
+		src = string(data)
+	}
+
+	v := reflect.ValueOf(src)
+	if v.Kind() == reflect.String {
+		return strconv.ParseBool(v.String())
+	}
+
+	if v.Kind() == reflect.Bool {
+		return v.Bool(), nil
+	}
+
+	n, err := scanInt(v, 64)
+	if err != nil {
+		return false, err
+	}
+
+	if n != 0 && n != 1 {
+		return false, errors.New("boolean number must be 0 or 1")
+	}
+	return n == 1, nil
+}
+
+func scanString(src any) (string, error) {
+	switch v := src.(type) {
 	case []byte:
-		return parseTimeBytes(s, loc)
-
-	case int64:
-		return time.Unix(s, 0).In(loc), nil
-
-	case uint64:
-		return time.Unix(int64(s), 0).In(loc), nil
-
-	case float32:
-		int, frac := math.Modf(float64(s))
-		return time.Unix(int64(int), int64(frac*1000000000)).In(loc), nil
-
-	case float64:
-		int, frac := math.Modf(s)
-		return time.Unix(int64(int), int64(frac*1000000000)).In(loc), nil
-
-	case nil:
-		return time.Time{}.In(loc), nil
+		return string(v), nil
 
 	case time.Time:
-		return s.In(loc), nil
-
-	default:
-		return time.Time{}, fmt.Errorf("converting %T to time.Time is unsupported", src)
+		return v.Format(time.RFC3339Nano), nil
 	}
+
+	switch v := reflect.ValueOf(src); v.Kind() {
+	case reflect.String:
+		return v.String(), nil
+
+	case reflect.Bool:
+		return strconv.FormatBool(v.Bool()), nil
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(v.Int(), 10), nil
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(v.Uint(), 10), nil
+
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(v.Float(), 'g', -1, v.Type().Bits()), nil
+	}
+
+	return "", errors.New("unsupported string source")
 }
 
-func parseTimeString(s string, loc *time.Location) (t time.Time, err error) {
-	switch s {
-	case "", "0000-00-00 00:00:00", "0000-00-00 00:00:00.000", "0000-00-00 00:00:00.000000":
-		t = t.In(loc)
-	default:
-		t, err = time.ParseInLocation("2006-01-02 15:04:05", s, loc)
+func (s GeneralScanner) scanDuration(src any) (time.Duration, error) {
+	if b, ok := src.([]byte); ok {
+		src = string(b)
 	}
-	return
+
+	if text, ok := src.(string); ok {
+		return time.ParseDuration(text)
+	}
+
+	unit := s.DurationUnit
+	if unit == 0 {
+		unit = time.Millisecond
+	}
+	if unit < 0 {
+		return 0, errors.New("duration unit must be positive")
+	}
+
+	v := reflect.ValueOf(src)
+	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
+		f := v.Float() * float64(unit)
+		if !finite(f) || f < -math.Ldexp(1, 63) || f >= math.Ldexp(1, 63) || math.Trunc(f) != f {
+			return 0, errors.New("duration is out of range or has fractional nanoseconds")
+		}
+		return time.Duration(f), nil
+	}
+
+	if v.Kind() == reflect.Bool {
+		return 0, errors.New("unsupported duration source")
+	}
+
+	n, err := scanInt(v, 64)
+	if err != nil {
+		return 0, err
+	}
+	if n > math.MaxInt64/int64(unit) || n < math.MinInt64/int64(unit) {
+		return 0, errors.New("duration overflow")
+	}
+
+	return time.Duration(n) * unit, nil
 }
 
-func parseTimeBytes(b []byte, loc *time.Location) (t time.Time, err error) {
-	if len(b) == 0 {
-		t = t.In(loc)
-	} else {
-		t, err = parseTimeString(string(b), loc)
+func (s GeneralScanner) scanTime(src any) (time.Time, error) {
+	loc := s.Location
+	if loc == nil {
+		loc = time.UTC
 	}
-	return
+
+	if t, ok := src.(time.Time); ok {
+		if s.Location != nil {
+			t = t.In(loc)
+		}
+		return t, nil
+	}
+
+	if b, ok := src.([]byte); ok {
+		src = string(b)
+	}
+
+	if text, ok := src.(string); ok {
+		if s.AllowZeroDate && isZeroDate(text) {
+			return time.Time{}, nil
+		}
+
+		layouts := s.TimeLayouts
+		if len(layouts) == 0 {
+			layouts = []string{time.RFC3339Nano, "2006-01-02 15:04:05", "2006-01-02"}
+		}
+
+		var err error
+		for _, layout := range layouts {
+			var t time.Time
+			t, err = time.ParseInLocation(layout, text, loc)
+			if err == nil {
+				return t, nil
+			}
+		}
+
+		return time.Time{}, err
+	}
+
+	v := reflect.ValueOf(src)
+	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
+		f := v.Float()
+		if !finite(f) || f < -math.Ldexp(1, 63) || f >= math.Ldexp(1, 63) {
+			return time.Time{}, errors.New("timestamp out of range")
+		}
+
+		seconds, fraction := math.Modf(f)
+		return time.Unix(int64(seconds), int64(fraction*float64(time.Second))).In(loc), nil
+	}
+
+	if v.Kind() == reflect.Bool {
+		return time.Time{}, errors.New("unsupported timestamp source")
+	}
+
+	seconds, err := scanInt(v, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(seconds, 0).In(loc), nil
+}
+
+func isZeroDate(s string) bool {
+	if s == "0000-00-00" || s == "0000-00-00 00:00:00" {
+		return true
+	}
+
+	if suffix, ok := strings.CutPrefix(s, "0000-00-00 00:00:00."); ok {
+		return len(suffix) > 0 && len(suffix) <= 9 && strings.Trim(suffix, "0") == ""
+	}
+
+	return false
 }
