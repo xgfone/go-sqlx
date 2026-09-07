@@ -1,4 +1,4 @@
 github.com/xgfone/go-op v0.16.1 h1:Nv/REiF3zWoXSR58VWtPCXsnFM0myoHzCcSEF5MH17I=
 github.com/xgfone/go-op v0.16.1/go.mod h1:J8xaM7cCXnvDgpU3BjIqNz+1TGAJQPLKHVVeceu+emA=
-github.com/xgfone/go-toolkit v0.16.1 h1:1f4WIYmHscfK64XT8q4QslRLAEB3ym/q2XHUwXaOIAM=
-github.com/xgfone/go-toolkit v0.16.1/go.mod h1:eOWnIK/acAJOoqEOtWnvuY0Pbn6cZ0DP/Oeoyn17QHw=
+github.com/xgfone/go-toolkit v0.30.2 h1:WXAoET7+Ivf8BWjaljouDXuDOFZsYjroV2uspYe0sQY=
+github.com/xgfone/go-toolkit v0.30.2/go.mod h1:VlFzuj2OJP3NGLCk+civtWEZ4hrDBlep6k5G89YIZfc=
