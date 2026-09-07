@@ -1,4 +1,4 @@
-// Copyright 2020~2024 xgfone
+// Copyright 2020~2026 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
 package sqlx
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"net/url"
@@ -126,27 +125,9 @@ func getDB(db *DB) *DB {
 	return DefaultDB
 }
 
-// GetDialect returns the dialect of the db.
-//
-// If not set, return DefaultDialect instead.
-func (db *DB) GetDialect() Dialect {
-	if db != nil && db.Dialect != nil {
+func getDialect(db *DB) Dialect {
+	if db != nil {
 		return db.Dialect
 	}
-	return DefaultDialect
-}
-
-// Exec is equal to db.ExecContext(context.Background(), query, args...).
-func (db *DB) Exec(query string, args ...any) (r sql.Result, err error) {
-	return db.ExecContext(context.Background(), query, args...)
-}
-
-// Query is equal to db.QueryContext(context.Background(), query, args...).
-func (db *DB) Query(query string, args ...any) (rows *sql.Rows, err error) {
-	return db.QueryContext(context.Background(), query, args...)
-}
-
-// QueryRow is equal to db.QueryRowContext(context.Background(), query, args...)
-func (db *DB) QueryRow(query string, args ...any) *sql.Row {
-	return db.QueryRowContext(context.Background(), query, args...)
+	return DefaultDB.Dialect
 }

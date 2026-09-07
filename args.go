@@ -1,4 +1,4 @@
-// Copyright 2020 xgfone
+// Copyright 2020~2026 xgfone
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -64,6 +64,7 @@ func (a *ArgsBuilder) Release() {
 func (a *ArgsBuilder) Reset() {
 	clear(a.args)
 	a.args = a.args[:0]
+	a.Dialect = nil
 }
 
 // Add appends the argument and returns the its placeholder.

@@ -214,7 +214,7 @@ func (b *InsertBuilder) Build() (sql string, args *ArgsBuilder) {
 		panic("sqlx.InsertBuilder: no table name")
 	}
 
-	dialect := getDB(b.db).GetDialect()
+	dialect := getDialect(b.db)
 
 	buf := getBuffer()
 	buf.WriteString(b.verb)

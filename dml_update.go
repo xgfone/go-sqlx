@@ -208,7 +208,7 @@ func (b *UpdateBuilder) Build() (sql string, args *ArgsBuilder) {
 		panic("sqlx.UpdateBuilder: no SET values")
 	}
 
-	dialect := getDB(b.db).GetDialect()
+	dialect := getDialect(b.db)
 
 	// Update Table
 	buf := getBuffer()

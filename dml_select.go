@@ -131,17 +131,17 @@ func Sum(field string) string {
 
 // SelectSum appends the selected SUM(field) column in SELECT.
 func (b *SelectBuilder) Sum(field string) *SelectBuilder {
-	return b.Select(Sum(getDB(b.db).GetDialect().Quote(field)))
+	return b.Select(Sum(getDialect(b.db).Quote(field)))
 }
 
 // SelectCount appends the selected COUNT(field) column in SELECT.
 func (b *SelectBuilder) SelectCount(field string) *SelectBuilder {
-	return b.Select(Count(getDB(b.db).GetDialect().Quote(field)))
+	return b.Select(Count(getDialect(b.db).Quote(field)))
 }
 
 // SelectCountDistinct appends the selected COUNT(DISTINCT field) column in SELECT.
 func (b *SelectBuilder) SelectCountDistinct(field string) *SelectBuilder {
-	return b.Select(CountDistinct(getDB(b.db).GetDialect().Quote(field)))
+	return b.Select(CountDistinct(getDialect(b.db).Quote(field)))
 }
 
 // Distinct marks SELECT as DISTINCT.
@@ -471,7 +471,7 @@ func (b *SelectBuilder) Build() (sql string, args *ArgsBuilder) {
 		buf.WriteString("DISTINCT ")
 	}
 
-	dialect := getDB(b.db).GetDialect()
+	dialect := getDialect(b.db)
 
 	// Selected Columns
 	var i int
