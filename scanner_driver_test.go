@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -91,7 +90,7 @@ func fixtureDB(t *testing.T, f *scanFixture) *DB {
 func TestQueryContextNamedArgsAndBufferLifetime(t *testing.T) {
 	fixture := &scanFixture{values: []driver.Value{[]byte("abc"), []byte("xyz")}}
 	db := fixtureDB(t, fixture)
-	rows := db.Select("value").From("t").Where(op.Eq("id", sql.Named("id", 7))).QueryRowsContext(context.Background())
+	rows := db.Select("value").From("t").Where(OnArg("id", sql.Named("id", 7))).QueryRowsContext(context.Background())
 	if rows.Err() != nil {
 		t.Fatal(rows.Err())
 	}

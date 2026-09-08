@@ -9,6 +9,9 @@
 Package `sqlx` provides composable SQL builders and `database/sql` adapters.
 Builders are the foundation; `Oper[T]` is an optional struct-aware convenience
 layer. Dialects live in `dialect`; column value adapters live in `sqltype`.
+The main module has no third-party dependencies. Optional go-op integration
+requires a separate adapter. The extracted adapter is being prepared for a
+dedicated repository and is not included here.
 
 ```shell
 go get github.com/xgfone/go-sqlx
@@ -18,14 +21,14 @@ go get github.com/xgfone/go-sqlx
 
 ```go
 q, args, err := sqlx.Select("id", "name").
-    From("users").Where(op.Eq("active", true)).
+    From("users").Where(sqlx.OnArg("active", true)).
     SetDialect(dialect.Postgres).Build()
 // SELECT "id", "name" FROM "users" WHERE "active"=$1
 // args: [true]
 ```
 
 `Build()` returns `(string, []any, error)`. Validation failures, unsupported
-features, and failures from legacy operation renderers become build errors.
+features, and failures from custom clause renderers become build errors.
 `MustBuild()` returns `(string, []any)` and panics on failure, for initialization
 or other explicitly asserted invariants. `String()` returns SQL or a diagnostic;
 it must not be used in place of checking `Build` errors.
@@ -76,7 +79,7 @@ defer tx.Rollback()
 txdb := db.WithExecutor(tx)
 var account Account
 if err := txdb.Select("id", "balance").From("accounts").
-    Where(op.Eq("id", accountID)).ForUpdate().
+    Where(sqlx.OnArg("id", accountID)).ForUpdate().
     QueryRowContext(ctx).Scan(&account); err != nil {
     return err
 }
@@ -98,11 +101,36 @@ String columns and table names are identifier paths. `Ident("literal.dot")`
 quotes one name; `Ident("u", "id")` quotes qualified components. String `"u.*"`
 preserves the wildcard; `Ident("*")` is a literal identifier.
 
-`Expr(sql)` copies trusted SQL verbatim. With arguments, unquoted `?` tokens
-bind data or render nested expressions; `??` escapes a literal question mark.
-The tokenizer skips quoted literals/identifiers, comments and PostgreSQL dollar
-quotes. Raw syntax remains the caller's responsibility, including dialect-specific
-operators and quoting conventions. Never concatenate untrusted data into SQL.
+`Expr(sql, args...)` uses two sqlx template markers when arguments are present.
+The template is independent of the database's parameter syntax:
+
+| Marker | Meaning |
+| --- | --- |
+| `?` | Consumes the next argument. An `Expression`, including `Ident` or `Subquery`, renders in the current context; other values bind through the dialect's placeholder API. |
+| `??` | Emits a literal `?` and consumes no argument. For PostgreSQL JSON operators, `??`, `??\|` and `??&` emit `?`, `?\|` and `?&`. Use `?` with `Ident` for identifiers. |
+
+For example, `Expr("? + 1", Ident("version"))` renders a quoted column plus 1,
+with no bound values. `Expr("? + ?", Ident("version"), 1)` renders that column
+plus `?` on MySQL or `$1` on PostgreSQL (assuming no earlier bound values).
+Keep the template unchanged when switching dialects. Identifiers do not consume
+parameter numbers; nested expressions share the whole statement's numbering.
+Ordinary string arguments are data, so use `Ident` explicitly for column names.
+
+There are no other template markers. `$1`, `:name` and `@name` are copied
+unchanged and do not bind arguments. Pass `sql.Named(name, value)` through a `?`
+argument for dialect-aware named binding.
+
+Markers inside single quotes, double quotes, backticks, `--` line comments,
+`/* ... */` comments (including nested comments), and PostgreSQL dollar quotes
+(`$$...$$`, `$tag$...$tag$`) remain unchanged. Quoted text recognizes doubled
+delimiters and backslash escapes. With arguments, mismatched counts and
+unterminated quotes or block comments become statement Build errors.
+
+`Expr(sql)` without arguments copies trusted SQL verbatim, including `?` and
+`??`: escaping is disabled in this form. For example, `Expr("document ? 'key'")`
+preserves the JSON operator, while `Expr("??")` preserves both question marks.
+Raw SQL operators and quoting conventions must suit the target database; they
+are not translated. Never concatenate untrusted data into SQL.
 
 ```go
 builder := db.Select().
@@ -111,9 +139,9 @@ builder := db.Select().
     Having(sqlx.Expr("COUNT(*) > ?", 5).Condition())
 ```
 
-`Expression.Condition()` adapts expressions to `op.Condition` and groups them
+`Expression.Condition()` adapts expressions to `sqlx.Condition` and groups them
 with parentheses. Conditions work in WHERE, HAVING and JOIN ON, including
-`op.And`/`op.Or`. `On(left,right)` compares columns; `OnArg(left,value)` accepts
+`sqlx.And`/`sqlx.Or`. `On(left,right)` compares columns; `OnArg(left,value)` accepts
 any argument type. `Join`, `JoinLeft`, `JoinRight`, `JoinFull`, `CrossJoin` are
 available; SELECT also supports `JoinUsing` and `JoinSelect`.
 
@@ -125,7 +153,7 @@ operands; wrap an operand containing its own ordering/pagination/CTEs/compound
 query with `Select("*").FromSelect(operand, "q")` first.
 
 `Count`, `CountDistinct`, `Sum`, `Min`, `Max`, `Avg` produce expressions.
-UPDATE accepts expressions through `SetExpr` or `op.Set(column, expression)`;
+UPDATE accepts expressions through `SetExpr` or `sqlx.Set(column, expression)`;
 INSERT `Values` accepts expressions as well as bound values.
 
 ## Append, clear and clone
@@ -142,11 +170,11 @@ DISTINCT. `ClearValues` clears all insert source modes. `Reset` starts a fresh
 statement while preserving its execution configuration.
 
 Builders are mutable and must not be concurrently mutated. `Clone()` copies
-builder-owned slices; argument objects and custom go-op values remain shallow.
+builder-owned slices; argument objects and custom clause implementations remain shallow.
 Build does not mutate the builder. QueryRow preserves offset and an explicit
 zero limit, restricting a positive/unset limit to at most one.
 
-`Limit(0)` means zero rows. `Pagination(op.PageSize(...))` and `Paginate` update
+`Limit(0)` means zero rows. `Pagination(sqlx.PageSize(...))` and `Paginate` update
 the same limit/offset state. Pages and sizes must be positive; bounds and overflow
 errors surface through Build. To remove pagination, use `ClearPagination()`.
 ORDER BY is always emitted as requested; there is no projection-based filter.
@@ -166,9 +194,9 @@ positional alternative. `sql.NamedArg` remains reserved for parameter binding.
 An INSERT requires exactly one source: nonempty Values/Row/Struct(s),
 `FromSelect`, or explicit `DefaultValues`. Empty input never silently executes a
 successful no-op. `Default()` represents a SQL DEFAULT value where supported.
-Nil INSERT/SET values bind SQL NULL. `op.Eq(column,nil)` renders IS NULL;
-`op.NotEq(column,nil)` renders IS NOT NULL. Other nil comparisons fail instead
-of silently dropping predicates. Empty IN is false; empty NOT IN is true.
+Nil INSERT/SET values bind SQL NULL. `OnArg(column,nil)` renders IS NULL.
+Other predicates can use `Expr(...).Condition()` or a custom `Condition`.
+The Op adapter retains its NULL comparison and empty IN/NOT IN semantics.
 
 PostgreSQL/SQLite support `OnConflictDoNothing` and `OnConflictDoUpdate`.
 MySQL has explicit `OnDuplicateKeyUpdate`, `Ignore`, and `Replace` modes, which
@@ -240,25 +268,51 @@ These defaults no longer depend on go-op's zero-date constants.
 
 ```go
 oper := sqlx.NewOper[User]("users").
-    WithSoftCondition(op.Eq("deleted", false)).
-    WithDeletedCondition(op.Eq("deleted", true)).
-    WithSoftDeleteUpdater(func(context.Context) op.Updater {
-        return op.Set("deleted", true)
+    WithSoftCondition(sqlx.OnArg("deleted", false)).
+    WithDeletedCondition(sqlx.OnArg("deleted", true)).
+    WithSoftDeleteUpdater(func(context.Context) sqlx.Updater {
+        return sqlx.Set("deleted", true)
     })
 oper.SetDB(db) // supported for initialization of predeclared operations
-users, err := oper.Active().Gets(ctx, op.PageSize(1, 20))
+users, err := oper.Active().Gets(ctx, sqlx.PageSize(1, 20))
 ```
 
 ## Extending and testing
 
 Dialect registration uses `Register` (error) or `MustRegister` (panic at startup).
-Custom OpBuilder callbacks receive a borrowed BuildContext; use Add for parameters
-and Quote for identifier paths. Do not retain the context. The low-level
-BuildOp/BuildOper contract is unchanged; statement Build catches rendering
-failures. SQL grammar supplied as raw expressions is still validated by the DB.
+Clause extension interfaces are defined in this package:
+
+```go
+type Condition interface { BuildCondition(*BuildContext) string }
+type Updater interface { BuildUpdate(*BuildContext) string }
+type Sorter interface { SortColumns() []SortColumn }
+type Pagination interface { LimitOffset() (limit, offset int64) }
+```
+
+`ConditionFunc` and `UpdaterFunc` adapt functions. `SortColumn`, `SortColumns`
+and `PageSizer` provide native ordering and pagination values. Sorting is copied
+into the builder; pagination is normalized into its limit/offset state.
+
+Render predicates without WHERE/HAVING/ON and assignments without SET. Custom
+predicates must preserve their own precedence, for example by parenthesizing OR.
+Renderers receive a borrowed `BuildContext`: use `Quote` for identifier paths,
+`Add` for bound data, and `Value` for operands that may include an `Expression`
+or `Subquery`. All nested rendering shares the statement's parameter numbering.
+Do not retain the context. A renderer may panic on invalid input; statement
+`Build` catches the failure and returns an error. Raw SQL is still validated by
+the database. An empty renderer result must not add arguments. A clause with
+no effective predicates or assignments is rejected; nil conditions and native
+empty AND groups passed to Where/Having are skipped.
+
+The extracted adapter owns `OpBuilder`, its registry, and `BuildOp`/`BuildOper`.
+Its planned API, `Where(opadapter.Condition(op.Eq("id", 7)))`, uses an existing Op
+predicate without making the core depend on go-op. Native and adapted conditions
+can be combined with `sqlx.And`/`sqlx.Or`.
 
 `go test ./...` and `go test -race ./...` cover building, binding, and transaction
-dispatch. A test additionally executes generated SQL with bound parameters in
+dispatch in this module. CI runs the main module's tests; the separate adapter
+will maintain its own tests in its dedicated repository.
+A test additionally executes generated SQL with bound parameters in
 Python's SQLite 3.39+ when available. PostgreSQL/MySQL grammar and feature guards
 are tested as generated SQL; tests do not require those database servers.
 

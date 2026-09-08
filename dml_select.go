@@ -16,11 +16,9 @@ package sqlx
 
 import (
 	"errors"
-	"math"
 	"slices"
 	"strings"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -30,12 +28,6 @@ const (
 	Asc  Order = "ASC"
 	Desc Order = "DESC"
 )
-
-type orderby struct {
-	Column string
-	Order  Order
-	Expr   *Expression
-}
 
 type commonTable struct {
 	Name      string
@@ -56,10 +48,10 @@ type SelectBuilder struct {
 	ftables  []sqlTable
 	jtables  []joinTable
 	columns  []selectedColumn
-	wheres   []op.Condition
-	havings  []op.Condition
+	wheres   []Condition
+	havings  []Condition
 	groups   []Expression
-	orderbys []orderby
+	orderbys []SortColumn
 	ctes     []commonTable
 	unions   []unionQuery
 
@@ -156,7 +148,7 @@ func (b *SelectBuilder) FromSelect(q *SelectBuilder, alias string) *SelectBuilde
 	return b
 }
 
-func (b *SelectBuilder) JoinSelect(q *SelectBuilder, alias string, ons ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) JoinSelect(q *SelectBuilder, alias string, ons ...Condition) *SelectBuilder {
 	if q == nil {
 		b.fail(errors.New("sqlx: nil JOIN query"))
 	} else {
@@ -182,47 +174,40 @@ func (b *SelectBuilder) GroupByExpr(exprs ...Expression) *SelectBuilder {
 	return b
 }
 
-func (b *SelectBuilder) Having(conds ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) Having(conds ...Condition) *SelectBuilder {
 	b.mutate(func() { b.havings = appendWheres(b.havings, conds...) })
 	return b
 }
 
 func (b *SelectBuilder) OrderBy(column string, order Order) *SelectBuilder {
-	b.orderbys = append(b.orderbys, orderby{Column: column, Order: order})
+	b.orderbys = append(b.orderbys, SortColumn{Column: column, Order: order})
 	return b
 }
 func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder  { return b.OrderBy(column, Asc) }
 func (b *SelectBuilder) OrderByDesc(column string) *SelectBuilder { return b.OrderBy(column, Desc) }
 func (b *SelectBuilder) OrderByExpr(e Expression, order Order) *SelectBuilder {
-	b.orderbys = append(b.orderbys, orderby{Expr: &e, Order: order})
+	b.orderbys = append(b.orderbys, SortColumn{Expr: &e, Order: order})
 	return b
 }
 
-func (b *SelectBuilder) Sort(sorters ...op.Sorter) *SelectBuilder {
+func (b *SelectBuilder) Sort(sorters ...Sorter) *SelectBuilder {
 	b.mutate(func() {
 		for _, sorter := range sorters {
 			if sorter == nil {
 				continue
 			}
-
-			switch o := sorter.Op(); o.Op {
-			case op.SortOpOrders:
-				b.Sort(o.Val.([]op.Sorter)...)
-
-			case op.SortOpOrder:
-				v := strings.ToUpper(o.Val.(string))
-				if v != "ASC" && v != "DESC" {
-					panic("invalid sort direction")
+			for _, term := range sorter.SortColumns() {
+				if term.Expr != nil {
+					b.OrderByExpr(*term.Expr, term.Order)
+				} else {
+					b.OrderBy(term.Column, term.Order)
 				}
-				b.OrderBy(getOpKey(o), Order(v))
-
-			default:
-				panic("unsupported sort operation")
 			}
 		}
 	})
 	return b
 }
+
 func (b *SelectBuilder) Limit(n int64) *SelectBuilder {
 	if n < 0 {
 		b.fail(errors.New("sqlx: negative limit"))
@@ -243,33 +228,16 @@ func (b *SelectBuilder) Offset(n int64) *SelectBuilder {
 }
 
 func (b *SelectBuilder) Paginate(page, size int64) *SelectBuilder {
-	if page < 1 || size < 1 {
-		b.fail(errors.New("sqlx: page and size must be positive"))
-		return b
-	}
-
-	if page-1 > math.MaxInt64/size {
-		b.fail(errors.New("sqlx: pagination overflow"))
-		return b
-	}
-
-	return b.Limit(size).Offset((page - 1) * size)
+	return b.Pagination(PageSize(page, size))
 }
 
-func (b *SelectBuilder) Pagination(p op.Pagination) *SelectBuilder {
-	if p == nil {
-		return b
+func (b *SelectBuilder) Pagination(p Pagination) *SelectBuilder {
+	if p != nil {
+		b.mutate(func() {
+			limit, offset := p.LimitOffset()
+			b.Limit(limit).Offset(offset)
+		})
 	}
-
-	b.mutate(func() {
-		o := p.Op()
-		if o.Op != op.PaginationOpPageSize {
-			panic("unsupported pagination operation")
-		}
-
-		ps := o.Val.(op.PageSizer)
-		b.Paginate(ps.Page, ps.Size)
-	})
 	return b
 }
 
@@ -541,43 +509,43 @@ func (b *SelectBuilder) String() string                { return stringStatement(
 func (b *SelectBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
 func (b *SelectBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
 
-func (b *SelectBuilder) Where(conds ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) Where(conds ...Condition) *SelectBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b
 }
 
-func (b *SelectBuilder) Join(table, alias string, ons ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) Join(table, alias string, ons ...Condition) *SelectBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "INNER",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *SelectBuilder) JoinLeft(table, alias string, ons ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) JoinLeft(table, alias string, ons ...Condition) *SelectBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "LEFT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *SelectBuilder) JoinRight(table, alias string, ons ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) JoinRight(table, alias string, ons ...Condition) *SelectBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "RIGHT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *SelectBuilder) JoinFull(table, alias string, ons ...op.Condition) *SelectBuilder {
+func (b *SelectBuilder) JoinFull(table, alias string, ons ...Condition) *SelectBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "FULL",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }

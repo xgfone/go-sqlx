@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -44,7 +43,7 @@ func TestExplicitSortingHavingAndPagination(t *testing.T) {
 
 	fixture := &scanFixture{}
 	db := fixtureDB(t, fixture)
-	b := db.Select("value").From("t").Pagination(op.PageSize(3, 10))
+	b := db.Select("value").From("t").Pagination(PageSize(3, 10))
 	r := b.QueryRowContext(context.Background())
 	_ = r.Close()
 
@@ -53,16 +52,16 @@ func TestExplicitSortingHavingAndPagination(t *testing.T) {
 	}
 
 	checkSQL(t, b, `SELECT "value" FROM "t" LIMIT 10 OFFSET 20`)
-	checkSQL(t, b.Pagination(op.PageSize(2, 5)).Offset(7), `SELECT "value" FROM "t" LIMIT 5 OFFSET 7`)
+	checkSQL(t, b.Pagination(PageSize(2, 5)).Offset(7), `SELECT "value" FROM "t" LIMIT 5 OFFSET 7`)
 }
 
 func TestNestedBindingsAndJoinConditions(t *testing.T) {
 	pg := &DB{Dialect: dialect.Postgres}
-	sub := Select("id").From("u").Where(op.Eq("active", true))
+	sub := Select("id").From("u").Where(OnArg("active", true))
 	b := pg.Select().SelectExpr(Expr("COALESCE(?, ?)", Ident("a", "name"), "unknown")).
 		FromSelect(sub, "a").
-		JoinLeft("v", "b", op.Or(On("a.id", "b.id"), op.Gt("b.score", 10))).
-		Where(Exists(Select().SelectExpr(Expr("1")).From("w").Where(op.Eq("kind", "x")))).
+		JoinLeft("v", "b", Or(On("a.id", "b.id"), ConditionFunc(func(c *BuildContext) string { return c.Quote("b.score") + ">" + c.Add(10) }))).
+		Where(Exists(Select().SelectExpr(Expr("1")).From("w").Where(OnArg("kind", "x")))).
 		Having(Expr("COUNT(*) > ?", 2).Condition())
 
 	checkSQL(t, b,
@@ -73,7 +72,7 @@ func TestNestedBindingsAndJoinConditions(t *testing.T) {
 		`SELECT "id" FROM "t" WHERE "id" IN (SELECT "id" FROM "u" WHERE "active"=$1)`,
 		true)
 
-	checkSQL(t, pg.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 3)).Where(op.Eq("id", 4)),
+	checkSQL(t, pg.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 3)).Where(OnArg("id", 4)),
 		`UPDATE "t" SET "n"="n" + $1 WHERE "id"=$2`,
 		3, 4)
 }
@@ -93,7 +92,7 @@ func TestExpressionTokenization(t *testing.T) {
 func TestLockingAndDialectErrors(t *testing.T) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL} {
 		db := &DB{Dialect: d}
-		q, a, e := db.Select("id").FromAlias("t", "a").Where(op.Eq("id", 4)).ForUpdate("a").SkipLocked().Build()
+		q, a, e := db.Select("id").FromAlias("t", "a").Where(OnArg("id", 4)).ForUpdate("a").SkipLocked().Build()
 		if e != nil || !strings.Contains(q, " FOR UPDATE OF ") || !strings.HasSuffix(q, " SKIP LOCKED") || len(a) != 1 {
 			t.Fatalf("%s %v %v", q, a, e)
 		}
@@ -126,13 +125,13 @@ func TestInsertAlignmentDefaultsAndErrors(t *testing.T) {
 func TestReturningAndConflictPolicies(t *testing.T) {
 	db := &DB{Dialect: dialect.Postgres}
 	checkSQL(t, db.Insert().Into("t").Columns("id", "v").Values(1, "a").
-		OnConflictDoUpdate([]string{"id"}, op.Set("v", Ident("excluded", "v"))).Returning("id"),
+		OnConflictDoUpdate([]string{"id"}, Set("v", Ident("excluded", "v"))).Returning("id"),
 		`INSERT INTO "t" ("id", "v") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "v"="excluded"."v" RETURNING "id"`,
 		1, "a")
 
 	checkSQL(t, db.Insert().Into("t").Values(1).OnConflictDoNothing(),
 		`INSERT INTO "t" VALUES ($1) ON CONFLICT DO NOTHING`, 1)
-	checkSQL(t, Insert().Into("t").Values(1).OnDuplicateKeyUpdate(op.Set("v", 2)),
+	checkSQL(t, Insert().Into("t").Values(1).OnDuplicateKeyUpdate(Set("v", 2)),
 		"INSERT INTO `t` VALUES (?) ON DUPLICATE KEY UPDATE `v`=?", 1, 2)
 
 	checkBuildError(t, Insert().Into("t").Values(1).OnConflictDoNothing())
@@ -159,8 +158,8 @@ func TestReturningAndConflictPolicies(t *testing.T) {
 }
 
 func TestCloneAppendAndReset(t *testing.T) {
-	base := Select("id").From("t").GroupBy("id").GroupBy("v").Where(op.Eq("id", 1))
-	derived := base.Clone().Select("v").Where(op.Eq("v", 2))
+	base := Select("id").From("t").GroupBy("id").GroupBy("v").Where(OnArg("id", 1))
+	derived := base.Clone().Select("v").Where(OnArg("v", 2))
 
 	checkSQL(t, base, "SELECT `id` FROM `t` WHERE `id`=? GROUP BY `id`, `v`", 1)
 	checkSQL(t, derived, "SELECT `id`, `v` FROM `t` WHERE (`id`=? AND `v`=?) GROUP BY `id`, `v`", 1, 2)
@@ -171,9 +170,9 @@ func TestCloneAppendAndReset(t *testing.T) {
 	checkBuildError(t, b)
 	checkSQL(t, b.Reset().SelectExpr(Expr("1")), "SELECT 1")
 
-	sub := Select("id").From("t").Where(op.Eq("id", 1))
+	sub := Select("id").From("t").Where(OnArg("id", 1))
 	q := Select().SelectExpr(Subquery(sub))
-	sub.Where(op.Eq("id", 2))
+	sub.Where(OnArg("id", 2))
 	checkSQL(t, q, "SELECT (SELECT `id` FROM `t` WHERE `id`=?)", 1)
 
 	input := []any{1}
@@ -199,11 +198,11 @@ func TestTableOperAndSoftDeleteScopes(t *testing.T) {
 	checkSQL(t, o.SelectStruct(), `SELECT "value" FROM "t"`)
 	checkSQL(t, o.Active().Select("value"), `SELECT "value" FROM "t" WHERE "deleted_at" IS NULL`)
 
-	custom := o.WithSoftCondition(op.Eq("deleted", false)).WithDeletedCondition(op.Eq("deleted", true))
+	custom := o.WithSoftCondition(OnArg("deleted", false)).WithDeletedCondition(OnArg("deleted", true))
 	checkSQL(t, custom.Active().Select("value"), `SELECT "value" FROM "t" WHERE "deleted"=$1`, false)
 	checkSQL(t, custom.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE "deleted"=$1`, true)
 	checkSQL(t, o.Select("value"), `SELECT "value" FROM "t"`)
-	checkSQL(t, o.Table.Update().Set(op.Set("value", nil)), `UPDATE "t" SET "value"=$1`, nil)
+	checkSQL(t, o.Table.Update().Set(Set("value", nil)), `UPDATE "t" SET "value"=$1`, nil)
 }
 
 func TestStructFieldConsistencyAndPointers(t *testing.T) {
@@ -327,12 +326,12 @@ func TestTransactionExecutor(t *testing.T) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	_, e = db.Update().Table("t").Set(op.Set("value", 7)).SetExecutor(tx).ExecContext(context.Background())
+	_, e = db.Update().Table("t").Set(Set("value", 7)).SetExecutor(tx).ExecContext(context.Background())
 	if e != nil {
 		t.Fatal(e)
 	}
 
-	_, e = db.WithExecutor(tx).Delete().From("t").Where(op.Eq("id", 1)).ExecContext(context.Background())
+	_, e = db.WithExecutor(tx).Delete().From("t").Where(OnArg("id", 1)).ExecContext(context.Background())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -374,17 +373,17 @@ func TestSQLiteExecution(t *testing.T) {
 		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "two", 20).
 			OnConflictDoUpdate(
 				[]string{"id"},
-				op.Set("v", Ident("excluded", "v")),
-				op.Set("n", Ident("excluded", "n")),
+				Set("v", Ident("excluded", "v")),
+				Set("n", Ident("excluded", "n")),
 			).
 			Returning("v", "n"), [][]any{{"two", 20}}},
 		{db.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 2)).
-			Where(op.Eq("id", 1)).Returning("n"), [][]any{{22}}},
+			Where(OnArg("id", 1)).Returning("n"), [][]any{{22}}},
 		{db.Select().SelectExpr(Sum("n")).From("t").Having(Expr("SUM(n) > ?", 20).Condition()), [][]any{{22}}},
-		{db.Select("id").With("filtered", Select("id").From("t").Where(op.Eq("n", 22))).
+		{db.Select("id").With("filtered", Select("id").From("t").Where(OnArg("n", 22))).
 			From("filtered").UnionAll(Select().SelectExpr(Value(9))), [][]any{{1}, {9}}},
 		{db.Insert().Into("archive").Columns("id").FromSelect(Select("id").From("t").
-			Where(op.Eq("id", 1))).Returning("id"), [][]any{{1}}},
+			Where(OnArg("id", 1))).Returning("id"), [][]any{{1}}},
 		{db.Select("a.id").FromAlias("t", "a").Join("archive", "b", On("a.id", "b.id")), [][]any{{1}}},
 		{db.Delete().From("t").Where(InQuery("id", Select("id").From("archive"))).Returning("id"), [][]any{{1}}},
 		{db.Insert().Into("t").DefaultValues().Returning("v"), [][]any{{"default"}}},
@@ -425,7 +424,7 @@ print('SQLite',sqlite3.sqlite_version,'passed')
 
 func ExampleSelectBuilder_ForUpdate() {
 	db := &DB{Dialect: dialect.Postgres}
-	q, args, err := db.Select("id", "balance").From("accounts").Where(op.Eq("id", 42)).ForUpdate().NoWait().Build()
+	q, args, err := db.Select("id", "balance").From("accounts").Where(OnArg("id", 42)).ForUpdate().NoWait().Build()
 
 	fmt.Println(q)
 	fmt.Println(args, err)
@@ -435,10 +434,10 @@ func ExampleSelectBuilder_ForUpdate() {
 }
 
 func TestExpressionPredicateGrouping(t *testing.T) {
-	checkSQL(t, Select("id").From("t").Where(Expr("a=? OR b=?", 1, 2).Condition(), op.Eq("tenant", 3)),
+	checkSQL(t, Select("id").From("t").Where(Expr("a=? OR b=?", 1, 2).Condition(), OnArg("tenant", 3)),
 		"SELECT `id` FROM `t` WHERE ((a=? OR b=?) AND `tenant`=?)", 1, 2, 3)
-	checkSQL(t, Delete().From("t").Where(op.Eq("deleted_at", nil)), "DELETE FROM `t` WHERE `deleted_at` IS NULL")
-	checkBuildError(t, Update().Table("t").Set(op.Set("v", 1)).Where(op.Gt("id", nil)))
+	checkSQL(t, Delete().From("t").Where(OnArg("deleted_at", nil)), "DELETE FROM `t` WHERE `deleted_at` IS NULL")
+	checkBuildError(t, Update().Table("t").Set(Set("v", 1)).Where(ConditionFunc(func(*BuildContext) string { panic("invalid comparison") })))
 }
 
 type dynamicColumns struct{ column string }

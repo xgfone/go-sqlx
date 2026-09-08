@@ -21,7 +21,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -68,10 +67,10 @@ func TestBuildContextNamedBindings(t *testing.T) {
 
 func TestBuildResultsOwnArguments(t *testing.T) {
 	builders := []interface{ MustBuild() (string, []any) }{
-		Select("id").From("t").Where(op.Eq("id", 7)),
+		Select("id").From("t").Where(OnArg("id", 7)),
 		Insert().Into("t").Columns("id").Values(7),
-		Update().Table("t").Set(op.Set("id", 7)),
-		Delete().From("t").Where(op.Eq("id", 7)),
+		Update().Table("t").Set(Set("id", 7)),
+		Delete().From("t").Where(OnArg("id", 7)),
 	}
 	for _, b := range builders {
 		q, args := b.MustBuild()
@@ -141,28 +140,19 @@ func TestExecBorrowsAndReleasesArguments(t *testing.T) {
 	}
 }
 
-func TestCustomOpReceivesBuildContext(t *testing.T) {
-	const name = "test.custom.context"
-	previous := GetOpBuilder(name)
-	defer func() {
-		if previous == nil {
-			delete(opbuilders, name)
-		} else {
-			opbuilders[name] = previous
-		}
-	}()
-	RegisterOpBuilder(name, OpBuilderFunc(func(ctx *BuildContext, o op.Op) string {
-		return ctx.Quote(o.Key) + "=" + ctx.Add(o.Val)
-	}))
+func TestCustomConditionReceivesBuildContext(t *testing.T) {
+	condition := ConditionFunc(func(ctx *BuildContext) string {
+		return ctx.Quote("t.id") + "=" + ctx.Add(7)
+	})
 	c := NewBuildContext(dialect.Postgres)
-	q := BuildOp(c, op.Op{Op: name, Key: "t.id", Val: 7})
+	q := condition.BuildCondition(c)
 	if q != `"t"."id"=$1` || !reflect.DeepEqual(c.Args(), []any{7}) {
 		t.Fatalf("%q %#v", q, c.Args())
 	}
 }
 
 func BenchmarkSelectBuild(b *testing.B) {
-	builder := Select("id").From("t").Where(op.Eq("id", 7))
+	builder := Select("id").From("t").Where(OnArg("id", 7))
 	b.Run("internal", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

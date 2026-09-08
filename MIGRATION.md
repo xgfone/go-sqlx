@@ -3,6 +3,42 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## Removing the go-op dependency
+
+The root module no longer imports or requires go-op, including in its tests.
+Builder and Oper signatures now use local `Condition`, `Updater`, `Sorter` and
+`Pagination` interfaces. They contain only exported methods; application types
+can implement them without inheriting an Op operation tree.
+
+The `opadapter` examples below describe the extracted adapter's API. That
+adapter is being prepared for a dedicated repository and is not included in
+this repository or published yet.
+
+| Previous use | Native replacement | Keep using go-op |
+| --- | --- | --- |
+| `Where(op.Eq("id", id))` | `Where(sqlx.OnArg("id", id))` | `Where(opadapter.Condition(op.Eq("id", id)))` |
+| `Set(op.Set("name", value))` | `Set(sqlx.Set("name", value))` | `Set(opadapter.Updater(op.Set("name", value)))` |
+| `Sort(sorter)` | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` | `Sort(opadapter.Sorter(sorter))` |
+| `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` | `Pagination(opadapter.Pagination(op.PageSize(page, size)))` |
+| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly | Same names in `opadapter` |
+
+`Expression.Condition`, `On`, `OnArg`, `Exists`, `NotExists`, `InQuery`, and
+`NotInQuery` return native `sqlx.Condition` values. Combine native and adapted
+conditions with `sqlx.And`/`sqlx.Or`. To put native predicates inside an existing
+Op tree, use `opadapter.ToOpCondition(native)`; `ToOpUpdater` works for Op batches.
+`opadapter.Condition(conditions...)` and `Updater(updaters...)` accept existing
+Op slices directly and combine them as AND/batch respectively. Go does not allow
+`[]op.Condition` to be expanded as `...sqlx.Condition` or covariant function
+returns: soft-delete callbacks must return `sqlx.Updater` explicitly.
+
+The old `op*.go` translation code and its tests have been removed from this
+repository for use in an independent adapter depending on both libraries.
+The main module has no requirement or replace directive pointing back to it.
+The extracted adapter preserves SQL rendering,
+tags, lazy values and custom Op builders. Explicitly adapted empty predicates
+(for example `Condition(op.And())`) fail when they leave WHERE/HAVING/ON empty;
+`Condition(nil)` remains nil. JOIN also rejects an empty effective ON clause.
+
 ## Builder and execution APIs
 
 | Previous API | Replacement |
@@ -14,10 +50,10 @@ not have deprecated aliases.
 | Package/DB `SelectStruct`; `SelectStructWithTable` | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)` |
 | Builder `Sum`, `SelectCount`, `SelectCountDistinct` | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc. |
 | `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter` | `Join`, `JoinLeft`, `JoinRight`, `JoinFull` |
-| `JoinOn` | `op.Condition`; On/OnArg remain helpers and accept arbitrary bound values |
-| `Having(string...)` | `Having(Expr(sql, args...).Condition())` or another op.Condition |
+| `JoinOn` | `sqlx.Condition`; On/OnArg remain helpers and accept arbitrary bound values |
+| `Having(string...)` | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition |
 | `IgnoreColumns`, `ForceOrderBy` | Removed; choose projection explicitly and specify ordering intentionally |
-| `WhereNamedArgs`, `SetNamedArg` | `Where(op.Eq(...))`, `Set(op.Set(...))` |
+| `WhereNamedArgs`, `SetNamedArg` | `Where(OnArg(...))`, `Set(sqlx.Set(...))` |
 | `Insert.NamedValues`, `Insert.Ops` | `Row(ColValue(column,value),...)`, or positional Columns/Values |
 | `ValuesFromStructs` | `Structs`; matches single-row Struct semantics |
 | `GrowValues`, `DefaultBufferCap` | Removed internal allocation controls |
@@ -56,9 +92,10 @@ error. Empty NOT IN now evaluates true. Optional application filters should be
 conditionally appended by the application, not encoded using nil operands.
 
 String() returns a diagnostic on invalid builders; execution must use Build or
-the context methods to retain structured errors. Legacy OpBuilder panics are
-contained at the statement build boundary. Low-level BuildOp/BuildOper and
-invalid startup registration retain their existing assertive contracts.
+the context methods to retain structured errors. Custom clause renderer panics
+are contained at the statement build boundary.
+The adapter's low-level BuildOp/BuildOper and invalid startup registration retain
+their existing assertive contracts.
 
 ## Struct mapping
 
@@ -99,7 +136,7 @@ explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
 | SoftGet/SoftGets/SoftCount/SoftExist and similar | `Active().Get/Gets/Count/Exist` |
 | SoftSelect | `Active().Select` or `Active().SelectStruct` |
 | SoftUpdate | `Active().Update` |
-| Query, CountQuery | Gets, CountGets with op.PageSize |
+| Query, CountQuery | Gets, CountGets with sqlx.PageSize |
 | GetAll | Gets with nil pagination |
 | Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with Sum expression and typed destination |
 | CountDistinct | Aggregate with CountDistinct expression |

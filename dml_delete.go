@@ -21,7 +21,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -31,7 +30,7 @@ type DeleteBuilder struct {
 	ftables   []sqlTable
 	using     []sqlTable
 	jtables   []joinTable
-	wheres    []op.Condition
+	wheres    []Condition
 	returning []selectedColumn
 }
 
@@ -178,43 +177,43 @@ func (b *DeleteBuilder) QueryRowContext(ctx context.Context) Row {
 	return NewRow(queryStatement(ctx, b, &b.builderBase))
 }
 
-func (b *DeleteBuilder) Where(conds ...op.Condition) *DeleteBuilder {
+func (b *DeleteBuilder) Where(conds ...Condition) *DeleteBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b
 }
 
-func (b *DeleteBuilder) Join(table, alias string, ons ...op.Condition) *DeleteBuilder {
+func (b *DeleteBuilder) Join(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "INNER",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...op.Condition) *DeleteBuilder {
+func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "LEFT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *DeleteBuilder) JoinRight(table, alias string, ons ...op.Condition) *DeleteBuilder {
+func (b *DeleteBuilder) JoinRight(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "RIGHT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *DeleteBuilder) JoinFull(table, alias string, ons ...op.Condition) *DeleteBuilder {
+func (b *DeleteBuilder) JoinFull(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "FULL",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }

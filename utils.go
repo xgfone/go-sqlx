@@ -68,6 +68,15 @@ func CheckErrNoRows(err error) (exist bool, e error) {
 	return
 }
 
+func isNil(v any) bool {
+	if v == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(v)
+	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
 func isZero(v reflect.Value) bool {
 	if v.IsZero() {
 		return true
@@ -78,20 +87,6 @@ func isZero(v reflect.Value) bool {
 	}
 
 	return false
-}
-
-func toslice[S ~[]E, E any](srcs S, to func(E) string) (dsts []string) {
-	if len(srcs) == 0 {
-		return
-	}
-
-	dsts = make([]string, 0, len(srcs))
-	for _, src := range srcs {
-		if s := to(src); s != "" {
-			dsts = append(dsts, s)
-		}
-	}
-	return
 }
 
 func gettype(v any) string {

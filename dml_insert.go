@@ -22,7 +22,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -46,7 +45,7 @@ type InsertBuilder struct {
 	values          [][]any
 	returning       []selectedColumn
 	conflictColumns []string
-	conflictSet     []op.Updater
+	conflictSet     []Updater
 	conflictAction  string
 	explicitColumns bool
 	defaults        bool
@@ -130,7 +129,7 @@ func (b *InsertBuilder) OnConflictDoNothing(columns ...string) *InsertBuilder {
 	return b
 }
 
-func (b *InsertBuilder) OnConflictDoUpdate(columns []string, updaters ...op.Updater) *InsertBuilder {
+func (b *InsertBuilder) OnConflictDoUpdate(columns []string, updaters ...Updater) *InsertBuilder {
 	b.conflictAction = "update"
 	b.conflictColumns = append(b.conflictColumns, columns...)
 	b.conflictSet = append(b.conflictSet, updaters...)
@@ -138,7 +137,7 @@ func (b *InsertBuilder) OnConflictDoUpdate(columns []string, updaters ...op.Upda
 }
 
 // OnDuplicateKeyUpdate explicitly selects MySQL's duplicate-key update semantics.
-func (b *InsertBuilder) OnDuplicateKeyUpdate(updaters ...op.Updater) *InsertBuilder {
+func (b *InsertBuilder) OnDuplicateKeyUpdate(updaters ...Updater) *InsertBuilder {
 	b.conflictAction = "duplicate"
 	b.conflictSet = append(b.conflictSet, updaters...)
 	return b
@@ -340,7 +339,7 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 			if len(b.conflictSet) == 0 {
 				panic("conflict update requires assignments")
 			}
-			_, _ = s.WriteString(BuildOper(c, op.Batch(b.conflictSet...)))
+			_, _ = s.WriteString(Batch(b.conflictSet...).BuildUpdate(c))
 		}
 	}
 

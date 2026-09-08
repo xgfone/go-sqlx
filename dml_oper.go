@@ -20,8 +20,6 @@ import (
 	"errors"
 	"slices"
 	"time"
-
-	"github.com/xgfone/go-op"
 )
 
 // Oper is an optional struct-aware operation layer. It has no default ordering,
@@ -30,12 +28,12 @@ import (
 type Oper[T any] struct {
 	Table Table
 
-	Sorter            op.Sorter
-	SoftCondition     op.Condition
-	DeletedCondition  op.Condition
-	SoftDeleteUpdater func(context.Context) op.Updater
+	Sorter            Sorter
+	SoftCondition     Condition
+	DeletedCondition  Condition
+	SoftDeleteUpdater func(context.Context) Updater
 
-	conditions []op.Condition
+	conditions []Condition
 	binder     binder
 }
 
@@ -47,9 +45,9 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 	return Oper[T]{
 		Table: table,
 
-		SoftCondition:     op.IsNull("deleted_at"),
-		DeletedCondition:  op.IsNotNull("deleted_at"),
-		SoftDeleteUpdater: func(context.Context) op.Updater { return op.Set("deleted_at", time.Now()) },
+		SoftCondition:     OnArg("deleted_at", nil),
+		DeletedCondition:  ConditionFunc(func(c *BuildContext) string { return c.Quote("deleted_at") + " IS NOT NULL" }),
+		SoftDeleteUpdater: func(context.Context) Updater { return Set("deleted_at", time.Now()) },
 
 		binder: binder{
 			rowscap: DefaultRowsCap,
@@ -62,10 +60,10 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 func (o *Oper[T]) SetDB(db *DB) { o.Table.SetDB(db) }
 func (o Oper[T]) GetDB() *DB    { return o.Table.GetDB() }
 
-func (o Oper[T]) WithDB(db *DB) Oper[T]          { o.Table.SetDB(db); return o }
-func (o Oper[T]) WithTable(t Table) Oper[T]      { o.Table = t; return o }
-func (o Oper[T]) WithSorter(s op.Sorter) Oper[T] { o.Sorter = s; return o }
-func (o Oper[T]) WithRowsCap(n int) Oper[T]      { o.binder.rowscap = n; return o }
+func (o Oper[T]) WithDB(db *DB) Oper[T]       { o.Table.SetDB(db); return o }
+func (o Oper[T]) WithTable(t Table) Oper[T]   { o.Table = t; return o }
+func (o Oper[T]) WithSorter(s Sorter) Oper[T] { o.Sorter = s; return o }
+func (o Oper[T]) WithRowsCap(n int) Oper[T]   { o.binder.rowscap = n; return o }
 
 func (o Oper[T]) WithRowsBinder(b RowsBinder) Oper[T]               { o.binder.binder = b; return o }
 func (o Oper[T]) WithRowScannerWrapper(w RowScannerWrapper) Oper[T] { o.binder.wrapper = w; return o }
@@ -76,15 +74,15 @@ func (o Oper[T]) AppendRowsBinders(bs ...RowsBinder) Oper[T] {
 	return o
 }
 
-func (o Oper[T]) WithSoftCondition(c op.Condition) Oper[T]    { o.SoftCondition = c; return o }
-func (o Oper[T]) WithDeletedCondition(c op.Condition) Oper[T] { o.DeletedCondition = c; return o }
-func (o Oper[T]) WithSoftDeleteUpdater(f func(context.Context) op.Updater) Oper[T] {
+func (o Oper[T]) WithSoftCondition(c Condition) Oper[T]    { o.SoftCondition = c; return o }
+func (o Oper[T]) WithDeletedCondition(c Condition) Oper[T] { o.DeletedCondition = c; return o }
+func (o Oper[T]) WithSoftDeleteUpdater(f func(context.Context) Updater) Oper[T] {
 	o.SoftDeleteUpdater = f
 	return o
 }
 
 // Where returns an independent operation scope. Existing scope conditions remain.
-func (o Oper[T]) Where(cs ...op.Condition) Oper[T] {
+func (o Oper[T]) Where(cs ...Condition) Oper[T] {
 	o.conditions = append(slices.Clone(o.conditions), cs...)
 	return o
 }
@@ -109,49 +107,49 @@ func (o Oper[T]) Add(ctx context.Context, v T) (sql.Result, error) {
 	return o.Table.Insert().Struct(v).ExecContext(ctx)
 }
 
-func (o Oper[T]) Update(ctx context.Context, u op.Updater, cs ...op.Condition) (sql.Result, error) {
+func (o Oper[T]) Update(ctx context.Context, u Updater, cs ...Condition) (sql.Result, error) {
 	return o.Table.Update().Set(u).Where(o.conditions...).Where(cs...).ExecContext(ctx)
 }
 
-func (o Oper[T]) Delete(ctx context.Context, cs ...op.Condition) (sql.Result, error) {
+func (o Oper[T]) Delete(ctx context.Context, cs ...Condition) (sql.Result, error) {
 	return o.Table.Delete().Where(o.conditions...).Where(cs...).ExecContext(ctx)
 }
 
-func (o Oper[T]) SoftDelete(ctx context.Context, cs ...op.Condition) (sql.Result, error) {
+func (o Oper[T]) SoftDelete(ctx context.Context, cs ...Condition) (sql.Result, error) {
 	if o.SoftDeleteUpdater == nil {
 		return nil, errors.New("sqlx: no soft-delete updater")
 	}
 	return o.Active().Update(ctx, o.SoftDeleteUpdater(ctx), cs...)
 }
 
-func (o Oper[T]) Get(ctx context.Context, cs ...op.Condition) (v T, ok bool, err error) {
+func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err error) {
 	ok, err = o.SelectStruct().Where(cs...).QueryRowContext(ctx).Bind(&v)
 	return
 }
 
-func (o Oper[T]) Gets(ctx context.Context, p op.Pagination, cs ...op.Condition) (vs []T, err error) {
+func (o Oper[T]) Gets(ctx context.Context, p Pagination, cs ...Condition) (vs []T, err error) {
 	err = o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(&vs)
 	return
 }
 
-func (o Oper[T]) Count(ctx context.Context, cs ...op.Condition) (n int64, err error) {
+func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error) {
 	err = o.Select().ClearOrderBy().SelectExpr(Count("*")).Where(cs...).QueryRowContext(ctx).Scan(&n)
 	return
 }
 
-func (o Oper[T]) CountGets(ctx context.Context, p op.Pagination, cs ...op.Condition) (n int64, vs []T, err error) {
+func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
 	n, err = o.Count(ctx, cs...)
 	if err == nil && n > 0 {
 		vs, err = o.Gets(ctx, p, cs...)
 	}
 	return
 }
-func (o Oper[T]) Exist(ctx context.Context, cs ...op.Condition) (bool, error) {
+func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 	var n int
 	return o.Select().ClearOrderBy().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
 }
 
 // Aggregate scans an aggregate expression into a caller-selected type.
-func (o Oper[T]) Aggregate(ctx context.Context, e Expression, dst any, cs ...op.Condition) error {
+func (o Oper[T]) Aggregate(ctx context.Context, e Expression, dst any, cs ...Condition) error {
 	return o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx).Scan(dst)
 }

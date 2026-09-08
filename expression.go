@@ -17,8 +17,6 @@ package sqlx
 import (
 	"fmt"
 	"strings"
-
-	"github.com/xgfone/go-op"
 )
 
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
@@ -32,9 +30,54 @@ type Expression struct {
 	custom   func(*BuildContext) string
 }
 
-// Expr represents trusted SQL. When args are present, unquoted ? tokens bind
-// values or render nested Expressions; ?? escapes a literal question mark.
-// Without args the SQL is copied verbatim. Identifiers are never inferred.
+// Expr represents trusted SQL with optional arguments. With arguments, sql is
+// a template using sqlx's own markers, independent of the database's parameter
+// syntax. Build interprets the template using the statement's dialect:
+//
+//   - ? consumes the next argument. An Expression (including Ident, Value and
+//     Subquery) is rendered in the same build context. Any other value is bound
+//     through BuildContext.Add, which obtains its placeholder from the dialect
+//     (for example, ? for MySQL or $1, $2, ... for PostgreSQL).
+//   - ?? emits a literal ? without consuming an argument. This escapes SQL
+//     operators containing ?, such as PostgreSQL's JSON operators: ??, ??| and
+//     ??& emit ?, ?| and ?& respectively. It does not quote an identifier;
+//     use ? with Ident for column or table references.
+//
+// These are the only template markers. Native placeholders such as $1, :name
+// and @name are copied unchanged; they do not consume args and are not rebound.
+// To supply a named value, pass sql.Named(name, value) as an argument to ?;
+// BuildContext.Add handles the dialect's named-parameter support.
+//
+// Both markers are ignored inside single-quoted strings, double-quoted or
+// backtick-quoted text, -- line comments, /* ... */ comments (including nested
+// comments), and PostgreSQL dollar-quoted strings ($$...$$ or $tag$...$tag$).
+// Such regions are copied unchanged. Quoted text recognizes doubled delimiters
+// and backslash escapes. Other SQL syntax and operators are not translated
+// between dialects; the caller must supply SQL valid for the target database.
+//
+// Each unescaped ? outside those regions consumes exactly one argument. An
+// identifier consumes no bound-parameter number; nested expressions share the
+// whole statement's parameter numbering. Ordinary strings are bound as data,
+// never inferred to be identifiers. For example:
+//
+//	Expr("? + 1", Ident("version"))
+//	// MySQL: `version` + 1; PostgreSQL: "version" + 1; no bound values.
+//
+//	Expr("? + ?", Ident("version"), 1)
+//	// MySQL: `version` + ?; PostgreSQL: "version" + $1; bound values: [1].
+//	// The PostgreSQL number assumes no earlier bound values in the statement.
+//
+//	Expr("? ?? ?", Ident("document"), "key")
+//	// PostgreSQL: "document" ? $1; bound values: ["key"].
+//
+// Without arguments, sql is copied verbatim: neither ? nor ?? is interpreted
+// or unescaped. For example, Expr("document ? 'key'") preserves the JSON
+// operator as written, and Expr("??") preserves both question marks.
+//
+// When arguments are present, mismatched argument counts or unterminated quoted
+// regions or block comments cause rendering to panic; statement Build returns
+// that failure as an error. Raw SQL must be trusted: supply untrusted values
+// through arguments instead of concatenating them into sql.
 func Expr(sql string, args ...any) Expression {
 	return Expression{sql: sql, args: append([]any(nil), args...)}
 }
@@ -143,15 +186,9 @@ func (e Expression) render(ctx *BuildContext) string {
 	return e.build(ctx.Dialect())
 }
 
-// Condition adapts an expression to go-op predicates for WHERE, HAVING and JOIN ON.
-func (e Expression) Condition() op.Condition {
-	return op.New("sqlx.expression", "", e).Condition()
-}
-
-func init() {
-	RegisterOpBuilder("sqlx.expression", OpBuilderFunc(func(ctx *BuildContext, o op.Op) string {
-		return "(" + o.Val.(Expression).render(ctx) + ")"
-	}))
+// Condition adapts an expression to a grouped WHERE, HAVING or JOIN predicate.
+func (e Expression) Condition() Condition {
+	return ConditionFunc(func(c *BuildContext) string { return "(" + e.render(c) + ")" })
 }
 
 // Subquery renders a parenthesized query in the parent's dialect and binding context.
@@ -169,12 +206,12 @@ func Subquery(q *SelectBuilder) Expression {
 }
 
 // Exists builds an EXISTS predicate.
-func Exists(q *SelectBuilder) op.Condition {
+func Exists(q *SelectBuilder) Condition {
 	return Expr("EXISTS ?", Subquery(q)).Condition()
 }
 
 // NotExists builds an "NOT EXISTS" predicate.
-func NotExists(q *SelectBuilder) op.Condition {
+func NotExists(q *SelectBuilder) Condition {
 	return Expr("NOT EXISTS ?", Subquery(q)).Condition()
 }
 
@@ -316,17 +353,19 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 	return out.String()
 }
 
-// InQuery compares a column to a one-column subquery.
-func InQuery(column string, q *SelectBuilder) op.Condition {
-	if q != nil {
-		q = q.Clone()
-	}
-	return op.New(op.CondOpIn, column, q).Condition()
+// InQuery compares a column to a one-column subquery, snapshotted at this call.
+func InQuery(column string, q *SelectBuilder) Condition {
+	return inQuery(column, q, " IN ")
 }
 
-func NotInQuery(column string, q *SelectBuilder) op.Condition {
-	if q != nil {
-		q = q.Clone()
-	}
-	return op.New(op.CondOpNotIn, column, q).Condition()
+// NotInQuery compares a column to a one-column subquery using NOT IN.
+func NotInQuery(column string, q *SelectBuilder) Condition {
+	return inQuery(column, q, " NOT IN ")
+}
+
+func inQuery(column string, q *SelectBuilder, operator string) Condition {
+	query := Subquery(q)
+	return ConditionFunc(func(c *BuildContext) string {
+		return c.Quote(column) + operator + query.render(c)
+	})
 }

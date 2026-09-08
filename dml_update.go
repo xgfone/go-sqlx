@@ -21,7 +21,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -31,8 +30,8 @@ type UpdateBuilder struct {
 	utables   []sqlTable
 	ftables   []sqlTable
 	jtables   []joinTable
-	setters   []op.Updater
-	wheres    []op.Condition
+	setters   []Updater
+	wheres    []Condition
 	returning []selectedColumn
 }
 
@@ -64,7 +63,7 @@ func (b *UpdateBuilder) FromAlias(table, alias string) *UpdateBuilder {
 	return b
 }
 
-func (b *UpdateBuilder) Set(updaters ...op.Updater) *UpdateBuilder {
+func (b *UpdateBuilder) Set(updaters ...Updater) *UpdateBuilder {
 	for _, u := range updaters {
 		if u != nil {
 			b.setters = append(b.setters, u)
@@ -74,7 +73,7 @@ func (b *UpdateBuilder) Set(updaters ...op.Updater) *UpdateBuilder {
 }
 
 func (b *UpdateBuilder) SetExpr(column string, e Expression) *UpdateBuilder {
-	return b.Set(op.Set(column, e))
+	return b.Set(Set(column, e))
 }
 
 func (b *UpdateBuilder) ClearSet() *UpdateBuilder       { b.setters = nil; return b }
@@ -137,7 +136,7 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 		}
 	}
 
-	set := BuildOper(c, op.Batch(b.setters...))
+	set := Batch(b.setters...).BuildUpdate(c)
 	if set == "" {
 		panic("empty SET")
 	}
@@ -207,43 +206,43 @@ func (b *UpdateBuilder) QueryRowContext(ctx context.Context) Row {
 	return NewRow(queryStatement(ctx, b, &b.builderBase))
 }
 
-func (b *UpdateBuilder) Where(conds ...op.Condition) *UpdateBuilder {
+func (b *UpdateBuilder) Where(conds ...Condition) *UpdateBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b
 }
 
-func (b *UpdateBuilder) Join(table, alias string, ons ...op.Condition) *UpdateBuilder {
+func (b *UpdateBuilder) Join(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "INNER",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...op.Condition) *UpdateBuilder {
+func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "LEFT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *UpdateBuilder) JoinRight(table, alias string, ons ...op.Condition) *UpdateBuilder {
+func (b *UpdateBuilder) JoinRight(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "RIGHT",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }
 
-func (b *UpdateBuilder) JoinFull(table, alias string, ons ...op.Condition) *UpdateBuilder {
+func (b *UpdateBuilder) JoinFull(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "FULL",
 		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]op.Condition(nil), ons...),
+		Ons:   append([]Condition(nil), ons...),
 	})
 	return b
 }

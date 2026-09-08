@@ -19,7 +19,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/xgfone/go-op"
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
@@ -71,7 +70,7 @@ func TestBuilderLimitPresenceAndBounds(t *testing.T) {
 
 func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
 	update := Update().Table("t").Join("u", "", OnArg("u.kind", "kind")).
-		Set(op.Set("t.value", 7)).Where(op.Eq("t.id", 1))
+		Set(Set("t.value", 7)).Where(OnArg("t.id", 1))
 	q, args := update.MustBuild()
 	want := "UPDATE `t` INNER JOIN `u` ON `u`.`kind`=? SET `t`.`value`=? WHERE `t`.`id`=?"
 	if q != want || !reflect.DeepEqual(args, []any{"kind", 7, 1}) {
@@ -79,7 +78,7 @@ func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
 	}
 
 	mustPanic(t, func() { update.SetDB(&DB{Dialect: dialect.Postgres}).MustBuild() })
-	from := Update().Table("t").From("u").Set(op.Set("value", 7)).SetDB(&DB{Dialect: dialect.Postgres})
+	from := Update().Table("t").From("u").Set(Set("value", 7)).SetDB(&DB{Dialect: dialect.Postgres})
 	if q, _ := from.MustBuild(); q != `UPDATE "t" SET "value"=$1 FROM "u"` {
 		t.Fatal(q)
 	}
@@ -97,30 +96,22 @@ func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
 }
 
 func TestBuildConvertsFailure(t *testing.T) {
-	const name = "test.panic.context"
-
 	failure := &struct{}{}
-	RegisterOpBuilder(name, OpBuilderFunc(func(c *BuildContext, _ op.Op) string {
+	condition := ConditionFunc(func(c *BuildContext) string {
 		c.Add(7)
 		panic(failure)
-	}))
-
-	defer delete(opbuilders, name)
-
-	// Exercise the helper that allocates a context lazily for WHERE.
-	condition := op.Eq("id", 1).Op()
-	condition.Op = name
+	})
 	for _, builder := range []Statement{
-		Select("*").From("t").Where(condition.Condition()),
-		Update().Table("t").Set(op.Set("value", 1)).Where(condition.Condition()),
-		Delete().From("t").Where(condition.Condition()),
+		Select("*").From("t").Where(condition),
+		Update().Table("t").Set(Set("value", 1)).Where(condition),
+		Delete().From("t").Where(condition),
 	} {
 		if q, a, e := builder.Build(); e == nil || q != "" || a != nil {
 			t.Fatalf("failed build: %q %v %v", q, a, e)
 		}
 	}
 
-	q, args := Select("id").From("t").Where(op.Eq("id", 9)).MustBuild()
+	q, args := Select("id").From("t").Where(OnArg("id", 9)).MustBuild()
 	if q != "SELECT `id` FROM `t` WHERE `id`=?" || !reflect.DeepEqual(args, []any{9}) {
 		t.Fatalf("failed build affected subsequent query: %q %#v", q, args)
 	}

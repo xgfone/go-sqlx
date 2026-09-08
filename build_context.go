@@ -31,8 +31,8 @@ var buildContextPool = sync.Pool{New: func() any {
 	return &BuildContext{args: make([]any, 0, defaultArgsCap)}
 }}
 
-// BuildContext renders identifiers and collects arguments for an OpBuilder.
-// Contexts passed to OpBuilder.Build are borrowed for that call only: do not
+// BuildContext renders identifiers and collects arguments for SQL renderers.
+// Contexts passed to clause renderers are borrowed for that call only: do not
 // retain them or use them concurrently. Pool ownership is internal to sqlx.
 type BuildContext struct {
 	dialect Dialect
@@ -40,7 +40,7 @@ type BuildContext struct {
 	named   map[string]int
 }
 
-// NewBuildContext creates an independently owned context for BuildOp/BuildOper.
+// NewBuildContext creates an independently owned context for standalone SQL rendering.
 // A nil dialect uses the current default. It does not require releasing.
 func NewBuildContext(d Dialect) *BuildContext {
 	return &BuildContext{
@@ -153,3 +153,8 @@ func validParameterName(name string) bool {
 	}
 	return name != ""
 }
+
+// Value renders an Expression in this context or binds any other value. Adapters
+// should use Value for operands that may contain expressions or subqueries and
+// Add when a value must always be bound as data.
+func (a *BuildContext) Value(value any) string { return renderValue(a, value) }
