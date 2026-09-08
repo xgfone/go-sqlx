@@ -198,11 +198,35 @@ and expression aliases work. Unknown result labels are ignored; duplicate labels
 mapping to one field require explicit aliases. Nested pointers are allocated
 when scanning their selected fields. Nil struct destinations return errors.
 
-`Struct` and `Structs` use the same omission rules: `omitempty`/`omitzero` omit
-zero-valued leaf fields. Rows with different resulting column sets fail; they
-are not silently realigned to unrelated columns. Explicit `Columns` selects a
-fixed field set and includes its zero values, useful for batching. Nil leaf
-pointers bind NULL; nil top-level rows fail. `Structs` accepts structs or pointers.
+Without explicit `Columns`, `Struct` omits zero-valued leaf fields tagged
+`omitempty`/`omitzero`. `Structs` keeps all mapped columns and emits SQL `DEFAULT`
+for those fields instead, so rows can have different zero-valued fields in one
+batch. Nonzero tagged fields and all untagged fields use their actual values.
+This requires MySQL/PostgreSQL support for `DEFAULT` in VALUES when defaults are
+needed; SQLite rejects such batches at Build. `Structs` accepts structs or pointers.
+
+```go
+type User struct {
+    Name string `sql:"name"`
+    Age  int    `sql:"age,omitempty"`
+}
+
+builder := db.Insert().Into("users").Structs([]User{
+    {Name: "A"},
+    {Name: "B", Age: 20},
+})
+// MySQL: INSERT INTO `users` (`name`, `age`) VALUES (?, DEFAULT), (?, ?)
+// Args: ["A", "B", 20]. A uses the database's default age; B stores 20.
+```
+
+Explicit `Columns` overrides omission tags for both `Struct` and `Structs`: fields
+are selected in that order and their actual zero values are included. Use
+`Columns("name", "age").Structs(...)` to store A's age as 0 instead of DEFAULT.
+`sql:"-"` always excludes a field. Nil leaf pointers bind NULL unless an omission
+tag omits them (`Struct`) or replaces them with DEFAULT (`Structs`); non-nil
+pointers to zero retain their values. Nil top-level rows fail. Every appended row
+must match the builder's column set; mixing inferred `Struct` and `Structs` rows
+can still fail if the single-row call omitted columns.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
 Get/Gets, Add/Update/Delete, Count/CountGets, Exist, and Aggregate. Mutations

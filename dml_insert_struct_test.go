@@ -78,3 +78,21 @@ func ExampleInsertBuilder_Structs() {
 	// INSERT INTO `table` (`field`, `time`, `ZeroField`) VALUES (?, ?, ?), (?, ?, ?)
 	// [ 2025-01-02/03:04:05  v3 0001-01-01/00:00:00 v4]
 }
+
+func ExampleInsertBuilder_Structs_defaults() {
+	type User struct {
+		Name string `sql:"name"`
+		Age  int    `sql:"age,omitempty"`
+	}
+
+	query, args := Insert().Into("users").Structs([]User{
+		{Name: "A"},
+		{Name: "B", Age: 20},
+	}).MustBuild()
+	fmt.Println(query)
+	fmt.Println(args)
+
+	// Output:
+	// INSERT INTO `users` (`name`, `age`) VALUES (?, DEFAULT), (?, ?)
+	// [A B 20]
+}

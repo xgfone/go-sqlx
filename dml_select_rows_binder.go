@@ -53,7 +53,7 @@ func (f RowsBinderFunc) BindRows(scanner RowScanner, dst any) error { return f(s
 
 var (
 	// DefaultRowsCap is the default capacity to allocate a map or slice for scanned rows.
-	DefaultRowsCap = 16
+	DefaultRowsCap = 20
 
 	// DefaultSliceCap is the default mixed rows binder to bind the rows to a map or slice.
 	//

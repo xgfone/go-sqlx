@@ -24,8 +24,8 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-const defaultArgsCap = 32
-const maxPooledArgsCap = 4096
+const defaultArgsCap = 24
+const maxPooledArgsCap = 64
 
 var buildContextPool = sync.Pool{New: func() any {
 	return &BuildContext{args: make([]any, 0, defaultArgsCap)}

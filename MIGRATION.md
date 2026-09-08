@@ -68,11 +68,20 @@ fields are excluded. Nested pointers are supported; recursive relationships and
 duplicate field mappings return errors. Unknown result labels remain ignored;
 duplicate labels targeting the same struct field require explicit aliases.
 
-Structs accepts slices of structs or pointers. Without explicit Columns, omission
-tags apply per row and all rows must have the same resulting field set. With
-Columns, fields are selected in that order and zero values are included. This
-replaces the previous batch behavior that unconditionally excluded omit-tagged
-fields. Named rows align by column name and reject missing/extra/duplicate names.
+Structs accepts slices of structs or pointers. Without explicit Columns, it keeps
+all mapped columns and replaces zero-valued fields tagged omitempty/omitzero with
+SQL DEFAULT; nonzero tagged values are retained. This replaces v0.51.1's batch
+behavior that unconditionally excluded omit-tagged fields, and the earlier branch
+behavior that rejected rows with different omitted columns. Defaults are evaluated
+by the database, not bound as NULL or Go zero values. MySQL/PostgreSQL support this;
+SQLite rejects batches that need DEFAULT in VALUES.
+
+Single-row Struct still omits zero-valued tagged fields. Explicit Columns selects
+fields in that order and includes actual zero values for both Struct and Structs;
+omission tags do not replace explicitly selected values with DEFAULT. Exclude
+database-generated columns from an explicit column list to leave them to the
+database. Named rows still reject missing/extra/duplicate names; mixing Struct
+and Structs calls requires matching column sets.
 
 Binding uses driver result labels rather than inferred SelectedColumns, fixing
 wildcards, computed columns and aliases. SelectedColumns and SelectedFullColumns

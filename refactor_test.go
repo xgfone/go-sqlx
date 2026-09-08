@@ -239,7 +239,8 @@ func TestStructFieldConsistencyAndPointers(t *testing.T) {
 		B int `sql:"b,omitempty"`
 	}
 
-	checkBuildError(t, Insert().Into("t").Structs([]Omit{{A: 1}, {B: 2}}))
+	checkSQL(t, Insert().Into("t").Structs([]Omit{{A: 1}, {B: 2}}),
+		"INSERT INTO `t` (`a`, `b`) VALUES (?, DEFAULT), (DEFAULT, ?)", 1, 2)
 	checkSQL(t, Insert().Into("t").Columns("b", "a").Structs([]*Omit{{A: 1}, {B: 2}}),
 		"INSERT INTO `t` (`b`, `a`) VALUES (?, ?), (?, ?)", 0, 1, 2, 0)
 

@@ -92,8 +92,8 @@ func (b *SelectBuilder) SelectAlias(column, alias string) *SelectBuilder {
 }
 
 func (b *SelectBuilder) SelectExpr(exprs ...Expression) *SelectBuilder {
-	for _, e := range exprs {
-		e := e
+	for i := range exprs {
+		e := exprs[i]
 		b.columns = append(b.columns, selectedColumn{Column: e.String(), Expr: &e})
 	}
 	return b
@@ -121,6 +121,7 @@ func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return
 func (b *SelectBuilder) ClearUnion() *SelectBuilder   { b.unions = nil; return b }
 func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b }
 func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
+func (b *SelectBuilder) ClearWith() *SelectBuilder    { b.ctes = nil; return b }
 func (b *SelectBuilder) ClearPagination() *SelectBuilder {
 	b.hasLimit = false
 	b.limit = 0
@@ -133,7 +134,6 @@ func (b *SelectBuilder) ClearLock() *SelectBuilder {
 	b.lockWait = ""
 	return b
 }
-func (b *SelectBuilder) ClearWith() *SelectBuilder { b.ctes = nil; return b }
 
 func (b *SelectBuilder) From(tables ...string) *SelectBuilder {
 	for _, t := range tables {

@@ -22,6 +22,10 @@ import (
 // Struct appends one row. Explicit Columns select fields and include zero values.
 // Otherwise omission tags are honored and every row must have the same column set.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
+	return b.appendStruct(s, false)
+}
+
+func (b *InsertBuilder) appendStruct(s any, defaultZeros bool) *InsertBuilder {
 	b.mutate(func() {
 		v, e := structValue(s)
 		if e != nil {
@@ -57,6 +61,9 @@ func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 				}
 
 				if f.IgnoreZero && (!fv.IsValid() || isZero(fv)) {
+					if defaultZeros {
+						row = append(row, ColValue(f.Column, Default()))
+					}
 					continue
 				}
 
@@ -94,7 +101,10 @@ func insertField(v reflect.Value) any {
 	return v.Interface()
 }
 
-// Structs appends a slice of structs or pointers using exactly the Struct rules.
+// Structs appends a slice of structs or pointers using a fixed set of mapped columns.
+// Without explicit Columns, zero fields tagged omitempty or omitzero use SQL DEFAULT
+// instead of being omitted. The dialect must support DEFAULT in VALUES when needed.
+// Explicit Columns select fields in that order and include their actual zero values.
 // Empty slices append no rows; an otherwise empty insert still fails Build.
 func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 	b.mutate(func() {
@@ -104,7 +114,7 @@ func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 		}
 
 		for i := 0; i < v.Len(); i++ {
-			b.Struct(v.Index(i).Interface())
+			b.appendStruct(v.Index(i).Interface(), true)
 			if b.err != nil {
 				return
 			}
