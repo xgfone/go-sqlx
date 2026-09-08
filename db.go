@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/xgfone/go-sqlx/dialect"
-	"github.com/xgfone/go-toolkit/timex"
 )
 
 // DefaultDB is the default global DB.
@@ -37,9 +36,7 @@ var DefaultDB = &DB{Dialect: dialect.MySQL}
 // If loc is nil, use Location instead.
 func SetConnURLLocation(connURL string, loc *time.Location) string {
 	if loc == nil {
-		if loc = timex.Location; loc == nil {
-			return connURL
-		}
+		return connURL
 	}
 
 	if index := strings.IndexByte(connURL, '?') + 1; index > 0 {

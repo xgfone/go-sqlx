@@ -19,9 +19,9 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"time"
 
 	"github.com/xgfone/go-op"
-	"github.com/xgfone/go-toolkit/timex"
 )
 
 // Oper is an optional struct-aware operation layer. It has no default ordering,
@@ -49,7 +49,7 @@ func NewOperWithTable[T any](table Table) Oper[T] {
 
 		SoftCondition:     op.IsNull("deleted_at"),
 		DeletedCondition:  op.IsNotNull("deleted_at"),
-		SoftDeleteUpdater: func(context.Context) op.Updater { return op.Set("deleted_at", timex.Now()) },
+		SoftDeleteUpdater: func(context.Context) op.Updater { return op.Set("deleted_at", time.Now()) },
 
 		binder: binder{
 			rowscap: DefaultRowsCap,
