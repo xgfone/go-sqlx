@@ -18,11 +18,14 @@ type MixRowsBinder struct{ types sync.Map }
 
 func NewMixRowsBinder() *MixRowsBinder { return &MixRowsBinder{} }
 
-// DefaultMixRowsBinder is the shared default for collection binding. Common
-// scalar slices are registered at initialization; NewRegisteredOper registers
-// its model slice unless the exact destination is already registered. Register
-// custom map semantics explicitly. Configure this variable before use; use the
-// registry methods for concurrent changes rather than reassigning it.
+// DefaultMixRowsBinder is the shared default for collection binding.
+//
+// Common scalar slices, two-column maps and map sets are registered at
+// initialization; NewRegisteredOper registers its model slice unless the exact
+// destination is already registered. Register custom map semantics explicitly.
+//
+// Configure this variable before use; use the registry methods for concurrent
+// changes rather than reassigning it.
 var DefaultMixRowsBinder = newDefaultMixRowsBinder()
 
 var builtinSliceBinders = map[reflect.Type]RowsBinder{
@@ -44,6 +47,32 @@ var builtinSliceBinders = map[reflect.Type]RowsBinder{
 func newDefaultMixRowsBinder() *MixRowsBinder {
 	b := NewMixRowsBinder()
 	for t, binder := range builtinSliceBinders {
+		b.types.Store(t, binder)
+	}
+
+	// Map defaults are registrations only: removing one restores the slice
+	// fallback, which does not infer map semantics.
+	for t, binder := range map[reflect.Type]RowsBinder{
+		reflect.TypeFor[*map[int]int]():    NewMapPairsBinder[map[int]int](),
+		reflect.TypeFor[*map[int]int32]():  NewMapPairsBinder[map[int]int32](),
+		reflect.TypeFor[*map[int]int64]():  NewMapPairsBinder[map[int]int64](),
+		reflect.TypeFor[*map[int]string](): NewMapPairsBinder[map[int]string](),
+
+		reflect.TypeFor[*map[int64]int]():    NewMapPairsBinder[map[int64]int](),
+		reflect.TypeFor[*map[int64]int32]():  NewMapPairsBinder[map[int64]int32](),
+		reflect.TypeFor[*map[int64]int64]():  NewMapPairsBinder[map[int64]int64](),
+		reflect.TypeFor[*map[int64]string](): NewMapPairsBinder[map[int64]string](),
+
+		reflect.TypeFor[*map[string]int]():    NewMapPairsBinder[map[string]int](),
+		reflect.TypeFor[*map[string]int32]():  NewMapPairsBinder[map[string]int32](),
+		reflect.TypeFor[*map[string]int64]():  NewMapPairsBinder[map[string]int64](),
+		reflect.TypeFor[*map[string]string](): NewMapPairsBinder[map[string]string](),
+
+		reflect.TypeFor[*map[int]struct{}]():    NewMapSetBinder[map[int]struct{}](),
+		reflect.TypeFor[*map[int32]struct{}]():  NewMapSetBinder[map[int32]struct{}](),
+		reflect.TypeFor[*map[int64]struct{}]():  NewMapSetBinder[map[int64]struct{}](),
+		reflect.TypeFor[*map[string]struct{}](): NewMapSetBinder[map[string]struct{}](),
+	} {
 		b.types.Store(t, binder)
 	}
 	return b

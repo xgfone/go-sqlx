@@ -25,13 +25,13 @@ can implement them without inheriting an Op operation tree.
 Use native clauses or implement the exported clause interfaces in an application
 adapter. No go-op adapter is distributed by this module.
 
-| Previous use | Native replacement |
-| --- | --- |
-| `Where(op.Eq("id", id))` | `Where(sqlx.OnArg("id", id))` |
-| `Set(op.Set("name", value))` | `Set(sqlx.Set("name", value))` |
-| `Sort(sorter)` | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
-| `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` |
-| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly |
+| Previous use                                                | Native replacement                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
+| `Where(op.Eq("id", id))`                                    | `Where(sqlx.OnArg("id", id))`                           |
+| `Set(op.Set("name", value))`                                | `Set(sqlx.Set("name", value))`                          |
+| `Sort(sorter)`                                              | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
+| `Pagination(op.PageSize(page, size))`                       | `Pagination(sqlx.PageSize(page, size))`                 |
+| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly                |
 
 `Expression.Condition`, `On`, `OnArg`, `Exists`, `NotExists`, `InQuery`, and
 `NotInQuery` return native `sqlx.Condition` values. Combine conditions with
@@ -41,30 +41,30 @@ The main module has no requirement or replace directive pointing to an adapter.
 
 ## Builder and execution APIs
 
-| Previous API | Replacement |
-| --- | --- |
-| `Build() (string, []any)` | `Build() (string, []any, error)`; use `MustBuild` only to assert initialization invariants |
-| `NewSelectBuilder`, `NewInsertBuilder`, etc.; `db.SelectBuilder`, etc. | `Select()`, `Insert()`, `Update()`, `Delete()` on the package or DB |
-| `Selects`, `Froms`, `Sorts` | Variadic `Select`, `From`, `Sort` |
-| Package/DB/Table `SelectAlias`, `SelectExpr`, `SelectExprAlias` | Call `Select()` then the corresponding builder method |
-| Package/DB `SelectStruct`; `SelectStructWithTable` | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)` |
-| Builder `Sum`, `SelectCount`, `SelectCountDistinct` | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc. |
-| `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter` | `Join`, `JoinLeft`, `JoinRight`, `JoinFull` |
-| `JoinOn` | `sqlx.Condition`; On/OnArg remain helpers and accept arbitrary bound values |
-| `Having(string...)` | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition |
-| `IgnoreColumns`, `ForceOrderBy` | Removed; choose projection explicitly and specify ordering intentionally |
-| `WhereNamedArgs`, `SetNamedArg` | `Where(OnArg(...))`, `Set(sqlx.Set(...))` |
-| `Insert.NamedValues`, `Insert.Ops` | `Row(ColValue(column,value),...)`, or positional Columns/Values |
-| `ValuesFromStructs` | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit |
-| `GrowValues`, `DefaultBufferCap` | Removed internal allocation controls |
-| `IgnoreInto(table)`, `ReplaceInto(table)` | `Into(table).Ignore()`, `Into(table).Replace()` |
-| `Exec`, `QueryRow`, `QueryRows`, `QueryRowOne` | Corresponding Context methods; no context-free execution helpers |
-| `Database` interface | Removed; depend on Executor and optional TxBeginner separately |
-| `DB{Database: ...}` | `DB{Executor: ...}`; accepts `*sql.DB`, `*sql.Tx`, `*sql.Conn` |
-| Anonymous `Table.DB` | Private reference; `GetDB`, `SetDB`, `WithDB` |
-| `Table.InsertInto`, `Table.DeleteFrom` | `Table.Insert()`, `Table.Delete().Where(...)` |
-| `Table.Update(updaters...)` | `Table.Update().Set(updaters...)` |
-| Mutable `Sep` | Fixed `_` nested-field separator |
+| Previous API                                                           | Replacement                                                                                |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `Build() (string, []any)`                                              | `Build() (string, []any, error)`; use `MustBuild` only to assert initialization invariants |
+| `NewSelectBuilder`, `NewInsertBuilder`, etc.; `db.SelectBuilder`, etc. | `Select()`, `Insert()`, `Update()`, `Delete()` on the package or DB                        |
+| `Selects`, `Froms`, `Sorts`                                            | Variadic `Select`, `From`, `Sort`                                                          |
+| Package/DB/Table `SelectAlias`, `SelectExpr`, `SelectExprAlias`        | Call `Select()` then the corresponding builder method                                      |
+| Package/DB `SelectStruct`; `SelectStructWithTable`                     | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)`               |
+| Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc.                                     |
+| `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                                |
+| `JoinOn`                                                               | `sqlx.Condition`; On/OnArg remain helpers and accept arbitrary bound values                |
+| `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition                         |
+| `IgnoreColumns`, `ForceOrderBy`                                        | Removed; choose projection explicitly and specify ordering intentionally                   |
+| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(OnArg(...))`, `Set(sqlx.Set(...))`                                                  |
+| `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column,value),...)`, or positional Columns/Values                            |
+| `ValuesFromStructs`                                                    | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit              |
+| `GrowValues`, `DefaultBufferCap`                                       | Removed internal allocation controls                                                       |
+| `IgnoreInto(table)`, `ReplaceInto(table)`                              | `Into(table).Ignore()`, `Into(table).Replace()`                                            |
+| `Exec`, `QueryRow`, `QueryRows`, `QueryRowOne`                         | Corresponding Context methods; no context-free execution helpers                           |
+| `Database` interface                                                   | Removed; depend on Executor and optional TxBeginner separately                             |
+| `DB{Database: ...}`                                                    | `DB{Executor: ...}`; accepts `*sql.DB`, `*sql.Tx`, `*sql.Conn`                             |
+| Anonymous `Table.DB`                                                   | Private reference; `GetDB`, `SetDB`, `WithDB`                                              |
+| `Table.InsertInto`, `Table.DeleteFrom`                                 | `Table.Insert()`, `Table.Delete().Where(...)`                                              |
+| `Table.Update(updaters...)`                                            | `Table.Update().Set(updaters...)`                                                          |
+| Mutable `Sep`                                                          | Fixed `_` nested-field separator                                                           |
 
 Table no longer inherits DB methods. SetDB remains on Table, Oper, and builders;
 it supports initialization without reassigning a WithDB result. Mutating these
@@ -131,20 +131,20 @@ Oper stays in the root package for convenient use but has no role in builder
 execution. Default id ordering and fixed-id helpers were removed. Set a sorter
 explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
 
-| Previous Oper API | Replacement |
-| --- | --- |
-| SoftGet/SoftGets/SoftCount/SoftExist and similar | `Active().Get/Gets/Count/Exist` |
-| SoftSelect | `Active().Select` or `Active().SelectStruct` |
-| SoftUpdate | `Active().Update` |
-| Query, CountQuery | Gets, CountGets with sqlx.PageSize |
-| GetAll | Gets with nil pagination |
-| Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with Sum expression and typed destination |
-| CountDistinct | Aggregate with CountDistinct expression |
-| AddWithId | Add returns sql.Result, or use an INSERT RETURNING builder |
-| ById helpers | Explicit conditions on the application's key column |
-| Select(columns any, conditions...) | Typed `Select(columns ...string).Where(...)` or `SelectStruct()` |
-| GetRow/GetRows | Select builder with QueryRowContext/QueryRowsContext |
-| IgnoredColumns/WithIgnoredColumns/MakeSlice | Explicit projections and application-owned slices |
+| Previous Oper API                                        | Replacement                                                      |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| SoftGet/SoftGets/SoftCount/SoftExist and similar         | `Active().Get/Gets/Count/Exist`                                  |
+| SoftSelect                                               | `Active().Select` or `Active().SelectStruct`                     |
+| SoftUpdate                                               | `Active().Update`                                                |
+| Query, CountQuery                                        | Gets, CountGets with sqlx.PageSize                               |
+| GetAll                                                   | Gets with nil pagination                                         |
+| Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with Sum expression and typed destination              |
+| CountDistinct                                            | Aggregate with CountDistinct expression                          |
+| AddWithId                                                | Add returns sql.Result, or use an INSERT RETURNING builder       |
+| ById helpers                                             | Explicit conditions on the application's key column              |
+| Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()` |
+| GetRow/GetRows                                           | Select builder with QueryRowContext/QueryRowsContext             |
+| IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                |
 
 Add/Update/Delete/SoftDelete now return sql.Result and error. Count/CountGets use
 int64 counts. CountGets does not modify the page size based on the count.
@@ -231,11 +231,22 @@ do not mutate the parent. `WithExecutor` retains the configuration.
 `DefaultMixRowsBinder`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
 or independent concurrent registry. Register the exact pointer destination type
 with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar
-slices are registered in the default registry; `NewRegisteredOper`
-registers its model slice only if absent. `NewOper` does not register a binder.
-User registrations take precedence, including registrations made
-after an Oper was created. Unregistered slices retain a general fallback; map
-semantics require an explicit registration or local binder.
+slices and the following maps are registered in the default registry:
+
+- Two-column key/value maps (`NewMapPairsBinder`): keys are `int`, `int64`, or
+  `string`; values are `int`, `int32`, `int64`, or `string` (all 12 combinations).
+- Single-column sets (`NewMapSetBinder`): `map[K]struct{}` with `K` equal to
+  `int`, `int32`, `int64`, or `string`.
+
+`NewRegisteredOper` registers its model slice only if absent.
+`NewOper` does not register a binder.
+User registrations take precedence, including registrations made after an Oper
+was created. Unregistered slices retain a general fallback; other maps, including
+defined map types and model indexes, require an explicit registration or local
+binder. `map[K]bool` is not registered by default. `NewMixRowsBinder()` starts
+with no registrations and only the slice fallback. Removing a default map
+registration makes that destination unsupported until it is registered again
+or a local binder is supplied.
 
 `DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` preserve the remaining
 configuration while selecting a shared binder. Passing nil restores the default
@@ -245,21 +256,21 @@ and does not retry another binder after an error. A prepared binding retains its
 own state when the registration later changes. Single-row Row.Bind continues to
 use row scanning, not RowsBinder.
 
-| Removed API | Replacement |
-| --- | --- |
-| `DefaultRowsCap` | Immutable `DefaultRowsCapacity`; override `BindConfig.Capacity` |
-| `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or a custom `RowsBinder` |
-| `RegisterMapRowsBinder` | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))` |
-| `CommonSliceRowsBinder` | `SliceRowsBinder{}` |
-| `NewDegradedSliceRowsBinder` | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)` |
-| `WithRowsCap`, `RowsCap` | `BindConfig.Capacity` (an allocation hint, not result length) |
-| `Oper.WithRowsBinder`, `RowsBinder`, `AppendRowsBinders` | `WithBinder` or `WithBindConfig`; compose explicitly when fallback is needed |
-| `NewMapRowsBinderForKeyValue` | `NewMapPairsBinder` |
-| `NewMapRowsBinderForValue` | `NewMapIndexBinder` |
-| `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue` | `NewMapSetBinder` for sets; custom binders for other derived/fixed values |
-| `RowsBinder.BindRows` | `Prepare(dst, BindOptions) (RowsBinding, error)` |
-| `RowsBinding{Scan: scan, Commit: commit}` | `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`, or a state pointer implementing `RowsBinding` |
-| `Row.Next` | Removed: Row no longer implements the iterator interface |
+| Removed API                                                                          | Replacement                                                                                           |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `DefaultRowsCap`                                                                     | Immutable `DefaultRowsCapacity`; override `BindConfig.Capacity`                                       |
+| `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or a custom `RowsBinder`                                         |
+| `RegisterMapRowsBinder`                                                              | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))`                                    |
+| `CommonSliceRowsBinder`                                                              | `SliceRowsBinder{}`                                                                                   |
+| `NewDegradedSliceRowsBinder`                                                         | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)`                                               |
+| `WithRowsCap`, `RowsCap`                                                             | `BindConfig.Capacity` (an allocation hint, not result length)                                         |
+| `Oper.WithRowsBinder`, `RowsBinder`, `AppendRowsBinders`                             | `WithBinder` or `WithBindConfig`; compose explicitly when fallback is needed                          |
+| `NewMapRowsBinderForKeyValue`                                                        | `NewMapPairsBinder`                                                                                   |
+| `NewMapRowsBinderForValue`                                                           | `NewMapIndexBinder`                                                                                   |
+| `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue`                      | `NewMapSetBinder` for sets; custom binders for other derived/fixed values                             |
+| `RowsBinder.BindRows`                                                                | `Prepare(dst, BindOptions) (RowsBinding, error)`                                                      |
+| `RowsBinding{Scan: scan, Commit: commit}`                                            | `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`, or a state pointer implementing `RowsBinding` |
+| `Row.Next`                                                                           | Removed: Row no longer implements the iterator interface                                              |
 
 `RowScanner` now contains only Columns and Scan. `RowsScanner` adds Next and Err.
 `RowsBinderFunc` is a preparation function, not a scanning function. Prepare
@@ -268,14 +279,41 @@ Both value and pointer forms of `UnsupportedTypeError` are recognized, including
 wrapped errors. Empty compositions report an unsupported destination.
 
 Built-in `Rows.Bind` replaces; use `Append` for slices and `Merge` for maps.
-Only pointers to maps are supported. Existing map contents and slice backing
-arrays are never modified during scanning: conversion, iteration, and Close
-errors leave the destination unchanged. Empty replacement results are non-nil
-empty collections. Append/Merge copy existing elements shallowly; pointed-to
-objects are not cloned. Map pairs and indexes reject duplicate keys by default,
-including collisions with existing keys during Merge. Configure
-`DuplicateKeyFirst` or `DuplicateKeyLast` to choose a winner; map sets deliberately
-deduplicate. `map[K]bool` no longer implicitly means a set.
+
+**Map destination migration:** v0.51.1 accepted both a pointer to a map whose
+underlying value could be nil (`var m map[K]V; Bind(&m)`) and an initialized map
+passed by value (`m := make(map[K]V); Bind(m)`). The new built-in map binders
+accept only a **non-nil `*map`**. Passing a map directly is unsupported whether
+it is nil or already initialized with `make`. A non-nil pointer to a nil map
+remains supported; callers do not need to allocate the map first.
+
+```go
+// Each example below assumes a fresh query result in rows.
+// Still supported: the binder creates the map on success.
+var names map[int64]string
+err := rows.Bind(&names)
+
+// Migration for an initialized map:
+names = make(map[int64]string)
+// Old: rows.Bind(names)
+err = rows.Bind(&names) // Replaces contents on success.
+// Use rows.Merge(&names) instead to preserve existing entries.
+```
+
+A nil pointer (`var p *map[int64]string; rows.Bind(p)`) is invalid. Apply this
+change to both `Bind` and `Merge` destinations; registering a map binder does
+not enable passing maps by value. To retain v0.51.1's merge-and-overwrite
+behavior, use `Merge(&m)` with `DuplicateKeyLast` in the bind configuration.
+The pointer lets the binder publish replacement storage only after scanning
+and closing succeed. Other aliases of the old map retain their old contents.
+
+Existing map contents and slice backing arrays are never modified during scanning:
+conversion, iteration, and Close errors leave the destination unchanged. Empty
+replacement results are non-nil empty collections. Append/Merge copy existing
+elements shallowly; pointed-to objects are not cloned. Map pairs and indexes
+reject duplicate keys by default, including collisions with existing keys during
+Merge. Configure `DuplicateKeyFirst` or `DuplicateKeyLast` to choose a winner;
+map sets deliberately deduplicate. `map[K]bool` no longer implicitly means a set.
 
 Pointer chains now use GeneralScanner recursively: nullable duration/time fields
 have the same units, parsing, range checks, and byte ownership as value fields.

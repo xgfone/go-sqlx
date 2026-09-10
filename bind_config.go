@@ -88,10 +88,13 @@ func (o BindOptions) capacity() int {
 	return o.Capacity
 }
 
-// BindConfig is query binding configuration. A nil Binder uses DefaultMixRowsBinder;
-// map semantics must be selected explicitly. Configure a DB with WithBindConfig,
-// override a builder/Oper, or customize an individual result. Configurations
-// copy TimeLayouts; custom Binder implementations must be safe to share.
+// BindConfig is query binding configuration.
+//
+// A nil Binder uses DefaultMixRowsBinder; map types without a default
+// registration require an explicit binder or registration. Configure a DB
+// with WithBindConfig, override a builder/Oper, or customize an individual
+// result. Configurations copy TimeLayouts; custom Binder implementations
+// must be safe to share.
 type BindConfig struct {
 	Scan   ScanOptions
 	Binder RowsBinder

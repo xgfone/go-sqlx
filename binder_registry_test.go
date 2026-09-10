@@ -19,6 +19,142 @@ type countingRowsBinder struct {
 	calls    atomic.Int64
 }
 
+func TestDefaultMapRegistrations(t *testing.T) {
+	for _, want := range []any{
+		map[int]int{7: 9},
+		map[int]int32{7: 9},
+		map[int]int64{7: 9},
+		map[int]string{7: "9"},
+		map[int64]int{7: 9},
+		map[int64]int32{7: 9},
+		map[int64]int64{7: 9},
+		map[int64]string{7: "9"},
+		map[string]int{"7": 9},
+		map[string]int32{"7": 9},
+		map[string]int64{"7": 9},
+		map[string]string{"7": "9"},
+		map[int]struct{}{7: {}},
+		map[int32]struct{}{7: {}},
+		map[int64]struct{}{7: {}},
+		map[string]struct{}{"7": {}},
+	} {
+		t.Run(reflect.TypeOf(want).String(), func(t *testing.T) {
+			f := &bindFixture{
+				columns: []string{"key", "value"},
+				values:  [][]driver.Value{{"7", "9"}},
+			}
+			if reflect.TypeOf(want).Elem() == reflect.TypeFor[struct{}]() {
+				// Sets must deduplicate repeated rows under the default policy.
+				f.columns, f.values = []string{"key"}, [][]driver.Value{{"7"}, {"7"}}
+			}
+
+			dst := reflect.New(reflect.TypeOf(want)) // Pointer to an unallocated map.
+			err := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").Bind(dst.Interface())
+			if err != nil || !reflect.DeepEqual(dst.Elem().Interface(), want) {
+				t.Fatalf("got %v, error %v; want %v", dst.Elem().Interface(), err, want)
+			}
+
+			for _, value := range []any{reflect.Zero(reflect.TypeOf(want)).Interface(), want} {
+				_, err := DefaultMixRowsBinder.Prepare(value, BindOptions{})
+				if !IsUnsupportedTypeError(err) {
+					t.Fatalf("map by value must be unsupported: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultMapDestinationAndCommit(t *testing.T) {
+	query := func(values ...[]driver.Value) Rows {
+		return bindTestDB(t, &bindFixture{
+			columns: []string{"key", "value"},
+			values:  values,
+		}).QueryRowsContext(context.Background(), "q")
+	}
+
+	got := map[string]int64{"old": 1}
+	alias := got
+	if err := query([]driver.Value{"new", int64(2)}).Bind(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, map[string]int64{"new": 2}) ||
+		!reflect.DeepEqual(alias, map[string]int64{"old": 1}) {
+		t.Fatal("replacement changed old storage", got, alias)
+	}
+	if err := query([]driver.Value{"added", int64(3)}).Merge(&got); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]int64{"new": 2, "added": 3}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("merge lost entries", got)
+	}
+
+	for _, merge := range []bool{false, true} {
+		rows := query([]driver.Value{"new", int64(4)}, []driver.Value{"new", int64(5)})
+		var err error
+		if merge {
+			err = rows.Merge(&got)
+		} else {
+			err = rows.Bind(&got)
+		}
+
+		var duplicate *DuplicateKeyError
+		if !errors.As(err, &duplicate) || !reflect.DeepEqual(got, want) {
+			t.Fatal("duplicate keys must fail without publishing", got, err)
+		}
+	}
+
+	var nilMap map[string]int64
+	var nilPointer *map[string]int64
+	for _, dst := range []any{nilMap, make(map[string]int64), nilPointer} {
+		f := &bindFixture{
+			columns: []string{"key", "value"},
+			values:  [][]driver.Value{{"k", int64(1)}},
+		}
+		err := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").Bind(dst)
+		if err == nil || f.next.Load() != 0 || f.closed.Load() != 1 {
+			t.Fatal("invalid map destination must fail before iteration and close rows", err)
+		}
+	}
+}
+
+func TestDefaultMapRegistrationBoundaries(t *testing.T) {
+	registry := newDefaultMixRowsBinder()
+	type namedMap map[string]int64
+	for _, dst := range []any{
+		new(map[string]bool),
+		new(namedMap),
+		new(map[int64]struct{ ID int64 }),
+	} {
+		_, err := registry.Prepare(dst, BindOptions{})
+		if !IsUnsupportedTypeError(err) {
+			t.Fatal("unexpected implicit map semantics", err)
+		}
+	}
+
+	var got map[string]int64
+	_, err := NewMixRowsBinder().Prepare(&got, BindOptions{})
+	if !IsUnsupportedTypeError(err) {
+		t.Fatal("independent registry must start without map defaults", err)
+	}
+
+	rejected := errors.New("custom map binder")
+	binder := func(any, BindOptions) (RowsBinding, error) { return nil, rejected }
+	if registry.RegisterType[*map[string]int64](RowsBinderFunc(binder)) == nil {
+		t.Fatal("missing default registration")
+	}
+
+	if _, err := registry.Prepare(&got, BindOptions{}); !errors.Is(err, rejected) {
+		t.Fatal("custom registration must win", err)
+	}
+
+	registry.Unregister(reflect.TypeFor[*map[string]int64]())
+	if _, err := registry.Prepare(&got, BindOptions{}); !IsUnsupportedTypeError(err) {
+		t.Fatal("unregistered map must not fall back to a built-in binder", err)
+	}
+}
+
 func (b *countingRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error) {
 	b.calls.Add(1)
 	return b.delegate.Prepare(dst, options)

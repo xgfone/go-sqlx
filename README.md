@@ -64,7 +64,15 @@ An error leaves the original collection and its backing storage unchanged.
 Successful replacement of an empty result produces a non-nil empty collection.
 Existing pointer elements are shallow-copied when appending or merging.
 
-Map semantics are explicit, including for named map types:
+The default registry supports two-column key/value maps with keys of `int`,
+`int64`, or `string` and values of `int`, `int32`, `int64`, or `string` (all 12
+combinations). It also supports single-column `map[K]struct{}` sets with keys of
+`int`, `int32`, `int64`, or `string`. These can be passed directly to
+`Rows.Bind(&m)` or `Rows.Merge(&m)`. `map[K]bool` has no implicit set semantics
+and is not registered by default.
+
+Other maps, including defined map types and model indexes, require registration
+or an explicit binder. Explicit binders can also override the defaults:
 
 ```go
 type User struct {
@@ -96,15 +104,16 @@ err = db.Select("id").From("users").QueryRowsContext(ctx).
 ```
 
 Map destinations must be non-nil pointers; their underlying maps may be nil.
+Passing a map by value is unsupported, even after `make`; always pass `&m`.
 Pairs and indexes reject duplicate keys by default. `DuplicateKeyFirst` and
 `DuplicateKeyLast` select which value survives. The policy also applies to
 collisions with existing entries during `Merge`.
 
 The shared `DefaultMixRowsBinder` is used when no binder is explicitly selected.
-It registers common scalar slice binders at initialization; `NewRegisteredOper[T]`
-registers the typed `[]T` binder once unless a registration already exists.
-Other slices use the reflection fallback. Applications can register a reusable
-binder for the exact destination type, including named slice and map types:
+It registers common scalar slices and the maps listed above at initialization;
+`NewRegisteredOper[T]` registers the typed `[]T` binder once unless a registration
+already exists. Other slices use the reflection fallback. Applications can register
+a reusable binder for the exact destination type, including named slice and map types:
 
 ```go
 func init() {
@@ -121,7 +130,9 @@ Registry operations are concurrent safe; replacing a registration affects
 subsequent preparation, not bindings already prepared. The latest explicit
 registration wins, and `NewRegisteredOper` never overwrites it. A selected registration's
 errors are returned without retrying the general slice fallback. An independent
-`NewMixRowsBinder()` can be selected through `WithBinder`.
+`NewMixRowsBinder()` can be selected through `WithBinder`; it starts with no
+registrations and only the general slice fallback. Unregistering a default map
+binder makes that destination unsupported unless a local binder is selected.
 
 `DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` share the supplied
 binder while preserving the other options. A nil binder restores the shared
