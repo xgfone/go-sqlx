@@ -1,3 +1,6 @@
+// Copyright 2026 xgfone
+// SPDX-License-Identifier: Apache-2.0
+
 package sqlx
 
 import (
