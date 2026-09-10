@@ -98,7 +98,9 @@ func (b *InsertBuilder) Row(values ...ColumnValue) *InsertBuilder {
 		row[i] = v
 	}
 
-	return b.Values(row...)
+	// The row is owned by this builder; Values would copy it a second time.
+	b.values = append(b.values, row)
+	return b
 }
 
 func (b *InsertBuilder) FromSelect(q *SelectBuilder) *InsertBuilder {

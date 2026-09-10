@@ -13,10 +13,6 @@ import (
 // Struct appends one row. Explicit Columns select fields and include zero values.
 // Otherwise omission tags are honored and every row must have the same column set.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
-	return b.appendStruct(s, false)
-}
-
-func (b *InsertBuilder) appendStruct(s any, defaultZeros bool) *InsertBuilder {
 	b.mutate(func() {
 		v, e := rowbind.StructValue(s)
 		if e != nil {
@@ -51,9 +47,6 @@ func (b *InsertBuilder) appendStruct(s any, defaultZeros bool) *InsertBuilder {
 				}
 
 				if f.IgnoreZero && (!fv.IsValid() || isZero(fv)) {
-					if defaultZeros {
-						row = append(row, ColValue(f.Column, Default()))
-					}
 					continue
 				}
 
@@ -102,13 +95,123 @@ func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 		if !v.IsValid() || v.Kind() != reflect.Slice {
 			panic("Structs requires a slice")
 		}
+		if v.Len() == 0 {
+			return
+		}
 
+		// Resolve field order once for a homogeneous batch. Interface slices
+		// may contain different models, so refresh it when the model changes.
+		var model reflect.Type
+		// Small projections stay on the stack; larger ones grow once per batch.
+		var storage [16]structInsertField
+		fields := storage[:0]
+		columnIndexes := make(map[string]int)
 		for i := 0; i < v.Len(); i++ {
-			b.appendStruct(v.Index(i).Interface(), true)
+			v, err := rowbind.StructValue(v.Index(i).Interface())
+			if err != nil {
+				panic(err)
+			}
+
+			if v.Type() != model {
+				fields = b.structInsertFields(v.Type(), fields, columnIndexes)
+				model = v.Type()
+			}
+
+			// Store the final argument row directly, without named-value
+			// intermediates, a per-row map, or a second argument-slice copy.
+			row := make([]any, len(fields))
+			for _, entry := range fields {
+				field := entry.field
+				fv, err := rowbind.FieldValue(v, field.Indexes, false)
+				if err != nil {
+					panic(err)
+				}
+
+				if !b.explicitColumns && field.IgnoreZero && (!fv.IsValid() || isZero(fv)) {
+					row[entry.column] = Default()
+				} else {
+					row[entry.column] = insertField(fv)
+				}
+			}
+
+			if len(b.columns) == 0 {
+				b.columns = make([]string, len(fields))
+				for j, entry := range fields {
+					b.columns[j] = entry.field.Column
+				}
+			}
+
+			b.values = append(b.values, row)
 			if b.err != nil {
 				return
 			}
 		}
 	})
 	return b
+}
+
+// Keep field references in evaluation order and write directly to their target columns.
+type structInsertField struct {
+	field  *rowbind.Field
+	column int
+}
+
+// Reuse projection storage across model changes. Column indexes are initialized
+// once per batch; neither the projection nor the index retains source values.
+func (b *InsertBuilder) structInsertFields(t reflect.Type, projection []structInsertField, columns map[string]int) []structInsertField {
+	meta, err := rowbind.Describe(t)
+	if err != nil {
+		panic(err)
+	}
+	fields := meta.Fields()
+	n := len(fields)
+	if b.explicitColumns {
+		n = len(b.columns)
+	}
+	if n == 0 {
+		panic("empty named row; use DefaultValues explicitly")
+	}
+	if !b.explicitColumns && len(b.columns) != 0 && n != len(b.columns) {
+		panic("named row columns do not match")
+	}
+	if cap(projection) < n {
+		projection = make([]structInsertField, n)
+	} else {
+		projection = projection[:n]
+	}
+
+	// The first implicit model already has the desired column order.
+	if len(b.columns) == 0 {
+		for i := range fields {
+			projection[i] = structInsertField{&fields[i], i}
+		}
+		return projection
+	}
+	initializeColumns := len(columns) == 0
+	// Validate using target order, preserving the missing-column diagnostic.
+	for i, column := range b.columns {
+		field := meta.Field(column)
+		if field == nil {
+			if !b.explicitColumns {
+				panic(fmt.Sprintf("missing column %q", column))
+			}
+			panic(fmt.Sprintf("unknown struct column %q", column))
+		}
+		if initializeColumns {
+			if _, exists := columns[column]; exists {
+				panic(fmt.Sprintf("duplicate column %q", column))
+			}
+			columns[column] = i
+		}
+		if b.explicitColumns {
+			projection[i] = structInsertField{field, i}
+		}
+	}
+	if !b.explicitColumns {
+		// IsZero may be user-defined: evaluate implicit fields in declaration order.
+		for i := range fields {
+			projection[i] = structInsertField{&fields[i], columns[fields[i].Column]}
+		}
+	}
+	return projection
 }
