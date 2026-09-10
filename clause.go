@@ -218,9 +218,9 @@ func clauseCondition(c *BuildContext, name string, conds []Condition) string {
 func writeClause(buf *strings.Builder, c *BuildContext, name string, conds []Condition) {
 	if len(conds) != 0 {
 		s := clauseCondition(c, name, conds)
-		buf.WriteByte(' ')
-		buf.WriteString(name)
-		buf.WriteByte(' ')
-		buf.WriteString(s)
+		_ = buf.WriteByte(' ')
+		_, _ = buf.WriteString(name)
+		_ = buf.WriteByte(' ')
+		_, _ = buf.WriteString(s)
 	}
 }

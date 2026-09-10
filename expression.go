@@ -145,28 +145,28 @@ func (e Expression) build(d Dialect) string {
 	var buf strings.Builder
 	buf.Grow(size)
 	if e.function != "" {
-		buf.WriteString(e.function)
-		buf.WriteByte('(')
+		_, _ = buf.WriteString(e.function)
+		_ = buf.WriteByte('(')
 	}
 	if e.distinct {
-		buf.WriteString("DISTINCT ")
+		_, _ = buf.WriteString("DISTINCT ")
 	}
 
 	if e.parts != nil {
 		for i, part := range e.parts {
 			if i > 0 {
-				buf.WriteByte('.')
+				_ = buf.WriteByte('.')
 			}
-			buf.WriteString(d.QuoteIdent(part))
+			_, _ = buf.WriteString(d.QuoteIdent(part))
 		}
 	} else if e.function != "" {
 		writeQuotedPath(&buf, d, e.sql)
 	} else {
-		buf.WriteString(e.sql)
+		_, _ = buf.WriteString(e.sql)
 	}
 
 	if e.function != "" {
-		buf.WriteByte(')')
+		_ = buf.WriteByte(')')
 	}
 
 	return buf.String()
@@ -192,13 +192,13 @@ func (e Expression) writeTo(buf *strings.Builder, ctx *BuildContext) {
 	if e.parts != nil && e.custom == nil && len(e.args) == 0 && e.function == "" && !e.distinct {
 		for i, part := range e.parts {
 			if i != 0 {
-				buf.WriteByte('.')
+				_ = buf.WriteByte('.')
 			}
 			dialect.WriteIdent(buf, ctx.Dialect(), part)
 		}
 		return
 	}
-	buf.WriteString(e.render(ctx))
+	_, _ = buf.WriteString(e.render(ctx))
 }
 
 // Condition adapts an expression to a grouped WHERE, HAVING or JOIN predicate.

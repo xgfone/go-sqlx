@@ -101,16 +101,16 @@ func (b *DeleteBuilder) render(c *BuildContext) string {
 		requireFeature(c, dialect.MultiTableDelete, "multi-table DELETE")
 		for i, t := range b.ftables {
 			if i > 0 {
-				s.WriteString(", ")
+				_, _ = s.WriteString(", ")
 			}
 
 			if t.Alias != "" {
-				s.WriteString(c.Dialect().QuoteIdent(t.Alias))
+				_, _ = s.WriteString(c.Dialect().QuoteIdent(t.Alias))
 			} else {
-				s.WriteString(c.Quote(t.Table))
+				_, _ = s.WriteString(c.Quote(t.Table))
 			}
 		}
-		s.WriteByte(' ')
+		_ = s.WriteByte(' ')
 	}
 
 	_, _ = s.WriteString("FROM " + renderTables(c, b.ftables))

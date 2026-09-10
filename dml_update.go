@@ -132,7 +132,7 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 
 	if before {
 		for _, j := range b.jtables {
-			s.WriteString(j.render(c))
+			_, _ = s.WriteString(j.render(c))
 		}
 	}
 
@@ -152,9 +152,9 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 		}
 	}
 
-	s.WriteString(clause(c, "WHERE", b.wheres))
-	s.WriteString(renderReturning(c, b.returning))
-	s.WriteString(commentSQL(b.comment))
+	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
+	_, _ = s.WriteString(renderReturning(c, b.returning))
+	_, _ = s.WriteString(commentSQL(b.comment))
 	return s.String()
 }
 

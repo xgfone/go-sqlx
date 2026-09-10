@@ -203,7 +203,7 @@ func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn
 
 	for i, c := range cols {
 		if i != 0 {
-			buf.WriteString(", ")
+			_, _ = buf.WriteString(", ")
 		}
 
 		if c.Expr != nil {
@@ -213,7 +213,7 @@ func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn
 		}
 
 		if c.Alias != "" {
-			buf.WriteString(" AS ")
+			_, _ = buf.WriteString(" AS ")
 			dialect.WriteIdent(buf, ctx.Dialect(), c.Alias)
 		}
 	}

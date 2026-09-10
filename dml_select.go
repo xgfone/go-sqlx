@@ -388,14 +388,14 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 		_, _ = s.WriteString(" FROM ")
 		for i, table := range b.ftables {
 			if i != 0 {
-				s.WriteString(", ")
+				_, _ = s.WriteString(", ")
 			}
 			if table.Query != nil {
-				s.WriteString(table.render(c))
+				_, _ = s.WriteString(table.render(c))
 			} else {
 				writeQuotedPath(&s, c.Dialect(), table.Table)
 				if table.Alias != "" {
-					s.WriteString(" AS ")
+					_, _ = s.WriteString(" AS ")
 					dialect.WriteIdent(&s, c.Dialect(), table.Alias)
 				}
 			}

@@ -180,18 +180,18 @@ func WriteIdent(buf *strings.Builder, d Dialect, name string) {
 		quote = '`'
 	}
 
-	buf.WriteByte(quote)
+	_ = buf.WriteByte(quote)
 	for {
 		i := strings.IndexByte(name, quote)
 		if i < 0 {
-			buf.WriteString(name)
+			_, _ = buf.WriteString(name)
 			break
 		}
-		buf.WriteString(name[:i+1])
-		buf.WriteByte(quote)
+		_, _ = buf.WriteString(name[:i+1])
+		_ = buf.WriteByte(quote)
 		name = name[i+1:]
 	}
-	buf.WriteByte(quote)
+	_ = buf.WriteByte(quote)
 }
 
 func (d builtin) LimitOffset(p Pagination) string {
