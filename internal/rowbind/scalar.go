@@ -109,6 +109,86 @@ func (s GeneralScanner) Scan(src any) error {
 			return nil
 		}
 
+	case **int:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **int8:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **int16:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **int32:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **int64:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **uint:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **uint8:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **uint16:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **uint32:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **uint64:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **float32:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **float64:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **bool:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **string:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **[]byte:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
+	case **any:
+		if dst != nil {
+			return scanPointerValue(s, dst, src)
+		}
+
 	case **time.Duration:
 		if dst != nil {
 			return scanPointerValue(s, dst, src)
@@ -193,7 +273,7 @@ func (s GeneralScanner) Scan(src any) error {
 	return nil
 }
 
-// Known nullable time types need no reflective pointer construction. Conversion
+// Known nullable scalar types need no reflective pointer construction. Conversion
 // still happens in fresh storage before the caller's pointer is replaced.
 func scanPointerValue[T any](s GeneralScanner, dst **T, src any) error {
 	if src == nil {
