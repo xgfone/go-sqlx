@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 )
 
 // EncodeJSON encodes a complete JSON value, including zero values and null.
@@ -20,32 +19,36 @@ func EncodeJSON(v any) (string, error) {
 // DecodeJSON replaces dst from a string or []byte containing one JSON value.
 // SQL NULL resets dst to its zero value. Empty text is invalid JSON. Decoding
 // is transactional: errors leave dst unchanged, and maps/structs are not merged.
-func DecodeJSON(dst any, src any) error {
-	v := reflect.ValueOf(dst)
-	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
+// dst must be a non-nil *T; the destination type is inferred from the pointer.
+func DecodeJSON[T any](dst *T, src any) error {
+	if dst == nil {
 		return errors.New("sqltype.DecodeJSON: destination must be a non-nil pointer")
 	}
 
-	value := reflect.New(v.Elem().Type())
-	if src != nil {
-		var data []byte
-		switch s := src.(type) {
-		case string:
-			data = []byte(s)
-
-		case []byte:
-			data = s
-
-		default:
-			return fmt.Errorf("sqltype.DecodeJSON: unsupported source %T", src)
-		}
-
-		if err := json.Unmarshal(data, value.Interface()); err != nil {
-			return err
-		}
+	if src == nil {
+		var zero T
+		*dst = zero
+		return nil
 	}
 
-	v.Elem().Set(value.Elem())
+	var data []byte
+	switch s := src.(type) {
+	case string:
+		data = []byte(s)
+
+	case []byte:
+		data = s
+
+	default:
+		return fmt.Errorf("sqltype.DecodeJSON: unsupported source %T", src)
+	}
+
+	var value T
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	*dst = value
 	return nil
 }
 
