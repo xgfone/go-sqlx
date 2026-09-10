@@ -16,6 +16,7 @@ package sqlx
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -27,36 +28,75 @@ type ColumnProvider interface {
 	Columns(qualifier string) []Namer
 }
 
+var columnProviderType = reflect.TypeFor[ColumnProvider]()
+
 // SelectStruct appends mapped columns. qualifier is optional and qualifies columns;
 // it never sets FROM. sql:"-" excludes fields; omission tags do not affect SELECT.
-func (b *SelectBuilder) SelectStruct(s any, qualifier ...string) *SelectBuilder {
+func (b *SelectBuilder) SelectStruct[T any](s T, qualifier ...string) *SelectBuilder {
 	b.mutate(func() {
-		if len(qualifier) > 1 {
-			panic("SelectStruct accepts at most one qualifier")
+		q := selectQualifier(qualifier)
+		t := reflect.TypeFor[T]()
+		if t.Kind() == reflect.Interface {
+			t = reflect.TypeOf(s)
 		}
 
-		q := ""
-		if len(qualifier) > 0 {
-			q = qualifier[0]
-		}
-
-		if provider, ok := s.(ColumnProvider); ok {
-			b.SelectNamers(provider.Columns(q)...)
+		// Box an instance only when its dynamic Columns implementation is
+		// actually needed. Ordinary models use type metadata directly.
+		if t != nil && t.Implements(columnProviderType) {
+			b.SelectNamers(any(s).(ColumnProvider).Columns(q)...)
 			return
 		}
-
-		fields, e := fieldsFor(reflect.TypeOf(s))
-		if e != nil {
-			panic(e)
-		}
-
-		for _, f := range fields {
-			parts := []string{f.Column}
-			if q != "" {
-				parts = append(strings.Split(q, "."), f.Column)
-			}
-			b.SelectExpr(Ident(parts...))
-		}
+		b.selectStructType(t, q)
 	})
 	return b
+}
+
+// SelectType appends the mapped fields of T without requiring an instance.
+// It deliberately uses type metadata, not per-instance ColumnProvider output.
+// Use SelectStruct(value) when the model supplies dynamic columns.
+func (b *SelectBuilder) SelectType[T any](qualifier ...string) *SelectBuilder {
+	b.mutate(func() {
+		b.selectStructType(reflect.TypeFor[T](), selectQualifier(qualifier))
+	})
+	return b
+}
+
+func selectQualifier(qualifier []string) string {
+	if len(qualifier) > 1 {
+		panic("SelectStruct/SelectType accepts at most one qualifier")
+	}
+	if len(qualifier) != 0 {
+		return qualifier[0]
+	}
+	return ""
+}
+
+func (b *SelectBuilder) selectStructType(t reflect.Type, qualifier string) {
+	m, err := projectionFor(t)
+	if err != nil {
+		panic(err)
+	}
+
+	if qualifier == "" {
+		b.columns = append(b.columns, m.columns...)
+		return
+	}
+
+	// Qualifiers belong to the query. Allocate their expression storage in
+	// batches instead of allocating one expression and prefix slice per field.
+	prefix := strings.Split(qualifier, ".")
+	width := len(prefix) + 1
+	parts := make([]string, len(m.meta.Fields())*width)
+	exprs := make([]Expression, len(m.meta.Fields()))
+	b.columns = slices.Grow(b.columns, len(m.meta.Fields()))
+	for i, f := range m.meta.Fields() {
+		names := parts[i*width : (i+1)*width : (i+1)*width]
+		copy(names, prefix)
+		names[len(prefix)] = f.Column
+		exprs[i].parts = names
+		b.columns = append(b.columns, selectedColumn{
+			Column: exprs[i].String(),
+			Expr:   &exprs[i],
+		})
+	}
 }

@@ -112,20 +112,35 @@ func Or(conditions ...Condition) Condition {
 }
 
 func (g conditionGroup) BuildCondition(c *BuildContext) string {
-	var parts []string
+	count := 0
+	var first string
+	var buf strings.Builder
 	for _, condition := range g.conditions {
 		if condition == nil {
 			continue
 		}
 		if s := condition.BuildCondition(c); s != "" {
-			parts = append(parts, s)
+			if count == 0 {
+				first = s
+			} else {
+				if count == 1 {
+					buf.Grow(len(first) + len(s) + len(g.separator) + 2)
+					_ = buf.WriteByte('(')
+					_, _ = buf.WriteString(first)
+				}
+				_, _ = buf.WriteString(g.separator)
+				_, _ = buf.WriteString(s)
+			}
+			count++
 		}
 	}
 
-	if len(parts) > 1 {
-		return "(" + strings.Join(parts, g.separator) + ")"
+	if count > 1 {
+		_ = buf.WriteByte(')')
+		return buf.String()
 	}
-	return strings.Join(parts, "")
+
+	return first
 }
 
 func appendWheres(dst []Condition, conditions ...Condition) []Condition {
@@ -175,4 +190,37 @@ func Batch(updaters ...Updater) Updater {
 		}
 		return strings.Join(parts, ", ")
 	})
+}
+
+func clause(c *BuildContext, name string, conds []Condition) string {
+	if len(conds) == 0 {
+		return ""
+	}
+
+	return " " + name + " " + clauseCondition(c, name, conds)
+}
+
+func clauseCondition(c *BuildContext, name string, conds []Condition) string {
+	var s string
+	if len(conds) == 1 {
+		if conds[0] != nil {
+			s = conds[0].BuildCondition(c)
+		}
+	} else {
+		s = And(conds...).BuildCondition(c)
+	}
+	if s == "" {
+		panic(name + " contains no effective conditions")
+	}
+	return s
+}
+
+func writeClause(buf *strings.Builder, c *BuildContext, name string, conds []Condition) {
+	if len(conds) != 0 {
+		s := clauseCondition(c, name, conds)
+		buf.WriteByte(' ')
+		buf.WriteString(name)
+		buf.WriteByte(' ')
+		buf.WriteString(s)
+	}
 }

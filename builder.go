@@ -26,6 +26,7 @@ type builderBase struct {
 
 	dialect  Dialect
 	executor Executor
+	bconfig  *BindConfig
 
 	comment string
 	err     error
@@ -190,23 +191,32 @@ type selectedColumn struct {
 }
 
 func renderColumns(ctx *BuildContext, cols []selectedColumn) string {
+	var buf strings.Builder
+	writeColumns(&buf, ctx, cols)
+	return buf.String()
+}
+
+func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
 	if len(cols) == 0 {
 		panic("no selected columns")
 	}
 
-	ss := make([]string, len(cols))
 	for i, c := range cols {
+		if i != 0 {
+			buf.WriteString(", ")
+		}
+
 		if c.Expr != nil {
-			ss[i] = c.Expr.render(ctx)
+			c.Expr.writeTo(buf, ctx)
 		} else {
-			ss[i] = ctx.Quote(c.Column)
+			writeQuotedPath(buf, ctx.Dialect(), c.Column)
 		}
 
 		if c.Alias != "" {
-			ss[i] += " AS " + ctx.Dialect().QuoteIdent(c.Alias)
+			buf.WriteString(" AS ")
+			dialect.WriteIdent(buf, ctx.Dialect(), c.Alias)
 		}
 	}
-	return strings.Join(ss, ", ")
 }
 
 func cloneColumns(cols []selectedColumn) []selectedColumn {

@@ -17,6 +17,8 @@ package sqlx
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
 // Struct appends one row. Explicit Columns select fields and include zero values.
@@ -27,26 +29,25 @@ func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 
 func (b *InsertBuilder) appendStruct(s any, defaultZeros bool) *InsertBuilder {
 	b.mutate(func() {
-		v, e := structValue(s)
+		v, e := rowbind.StructValue(s)
 		if e != nil {
 			panic(e)
 		}
 
-		fields, e := fieldsFor(v.Type())
+		meta, e := rowbind.Describe(v.Type())
 		if e != nil {
 			panic(e)
 		}
 
 		var row []ColumnValue
 		if b.explicitColumns {
-			byName, _ := fieldMapFor(v.Type())
 			for _, col := range b.columns {
-				f, ok := byName[col]
-				if !ok {
+				f := meta.Field(col)
+				if f == nil {
 					panic(fmt.Sprintf("unknown struct column %q", col))
 				}
 
-				fv, e := fieldValue(v, f.Indexes, false)
+				fv, e := rowbind.FieldValue(v, f.Indexes, false)
 				if e != nil {
 					panic(e)
 				}
@@ -54,8 +55,8 @@ func (b *InsertBuilder) appendStruct(s any, defaultZeros bool) *InsertBuilder {
 				row = append(row, ColValue(col, insertField(fv)))
 			}
 		} else {
-			for _, f := range fields {
-				fv, e := fieldValue(v, f.Indexes, false)
+			for _, f := range meta.Fields() {
+				fv, e := rowbind.FieldValue(v, f.Indexes, false)
 				if e != nil {
 					panic(e)
 				}

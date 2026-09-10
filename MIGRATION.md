@@ -3,6 +3,18 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## Go 1.27 and generic model selection
+
+The minimum Go version is now 1.27. `SelectBuilder.SelectStruct[T]` and
+`Table.SelectStruct[T]` infer T from the model argument, so ordinary calls stay
+the same. Their function values require instantiation, such as
+`builder.SelectStruct[Model]`. For type-only selection use
+`builder.SelectType[Model]()` or `table.SelectType[Model]()`. An untyped nil has
+no inferable model type; use SelectType or a typed nil pointer instead.
+
+SelectStruct still honors dynamic ColumnProvider output, including when the
+argument is an interface. SelectType intentionally uses only mapped type fields.
+
 ## Removing the go-op dependency
 
 The root module no longer imports or requires go-op, including in its tests.
@@ -10,34 +22,22 @@ Builder and Oper signatures now use local `Condition`, `Updater`, `Sorter` and
 `Pagination` interfaces. They contain only exported methods; application types
 can implement them without inheriting an Op operation tree.
 
-The `opadapter` examples below describe the extracted adapter's API. That
-adapter is being prepared for a dedicated repository and is not included in
-this repository or published yet.
+Use native clauses or implement the exported clause interfaces in an application
+adapter. No go-op adapter is distributed by this module.
 
-| Previous use | Native replacement | Keep using go-op |
-| --- | --- | --- |
-| `Where(op.Eq("id", id))` | `Where(sqlx.OnArg("id", id))` | `Where(opadapter.Condition(op.Eq("id", id)))` |
-| `Set(op.Set("name", value))` | `Set(sqlx.Set("name", value))` | `Set(opadapter.Updater(op.Set("name", value)))` |
-| `Sort(sorter)` | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` | `Sort(opadapter.Sorter(sorter))` |
-| `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` | `Pagination(opadapter.Pagination(op.PageSize(page, size)))` |
-| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly | Same names in `opadapter` |
+| Previous use | Native replacement |
+| --- | --- |
+| `Where(op.Eq("id", id))` | `Where(sqlx.OnArg("id", id))` |
+| `Set(op.Set("name", value))` | `Set(sqlx.Set("name", value))` |
+| `Sort(sorter)` | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
+| `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` |
+| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly |
 
 `Expression.Condition`, `On`, `OnArg`, `Exists`, `NotExists`, `InQuery`, and
-`NotInQuery` return native `sqlx.Condition` values. Combine native and adapted
-conditions with `sqlx.And`/`sqlx.Or`. To put native predicates inside an existing
-Op tree, use `opadapter.ToOpCondition(native)`; `ToOpUpdater` works for Op batches.
-`opadapter.Condition(conditions...)` and `Updater(updaters...)` accept existing
-Op slices directly and combine them as AND/batch respectively. Go does not allow
-`[]op.Condition` to be expanded as `...sqlx.Condition` or covariant function
-returns: soft-delete callbacks must return `sqlx.Updater` explicitly.
-
-The old `op*.go` translation code and its tests have been removed from this
-repository for use in an independent adapter depending on both libraries.
-The main module has no requirement or replace directive pointing back to it.
-The extracted adapter preserves SQL rendering,
-tags, lazy values and custom Op builders. Explicitly adapted empty predicates
-(for example `Condition(op.And())`) fail when they leave WHERE/HAVING/ON empty;
-`Condition(nil)` remains nil. JOIN also rejects an empty effective ON clause.
+`NotInQuery` return native `sqlx.Condition` values. Combine conditions with
+`sqlx.And`/`sqlx.Or`. A `[]op.Condition` cannot be expanded as `...sqlx.Condition`;
+adapt its elements explicitly. Soft-delete callbacks must return `sqlx.Updater`.
+The main module has no requirement or replace directive pointing to an adapter.
 
 ## Builder and execution APIs
 
@@ -55,12 +55,12 @@ tags, lazy values and custom Op builders. Explicitly adapted empty predicates
 | `IgnoreColumns`, `ForceOrderBy` | Removed; choose projection explicitly and specify ordering intentionally |
 | `WhereNamedArgs`, `SetNamedArg` | `Where(OnArg(...))`, `Set(sqlx.Set(...))` |
 | `Insert.NamedValues`, `Insert.Ops` | `Row(ColValue(column,value),...)`, or positional Columns/Values |
-| `ValuesFromStructs` | `Structs`; matches single-row Struct semantics |
+| `ValuesFromStructs` | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit |
 | `GrowValues`, `DefaultBufferCap` | Removed internal allocation controls |
 | `IgnoreInto(table)`, `ReplaceInto(table)` | `Into(table).Ignore()`, `Into(table).Replace()` |
 | `Exec`, `QueryRow`, `QueryRows`, `QueryRowOne` | Corresponding Context methods; no context-free execution helpers |
 | `Database` interface | Removed; depend on Executor and optional TxBeginner separately |
-| `DB{Database: ...}` | `DB{Executor: ...}`; accepts sql.DB, sql.Tx, sql.Conn |
+| `DB{Database: ...}` | `DB{Executor: ...}`; accepts `*sql.DB`, `*sql.Tx`, `*sql.Conn` |
 | Anonymous `Table.DB` | Private reference; `GetDB`, `SetDB`, `WithDB` |
 | `Table.InsertInto`, `Table.DeleteFrom` | `Table.Insert()`, `Table.Delete().Where(...)` |
 | `Table.Update(updaters...)` | `Table.Update().Set(updaters...)` |
@@ -86,24 +86,24 @@ ORDER BY is emitted regardless of the projection. HAVING is emitted without
 requiring GROUP BY. FROM aliases for the same table are preserved. Raw expression
 conditions are parenthesized before combination with other conditions.
 
-Set(column,nil) writes NULL instead of dropping the setter. Eq(column,nil) and
-NotEq(column,nil) produce IS NULL/IS NOT NULL; other nil comparisons return an
-error. Empty NOT IN now evaluates true. Optional application filters should be
-conditionally appended by the application, not encoded using nil operands.
+Set(column,nil) writes NULL instead of dropping the setter. OnArg(column,nil)
+produces IS NULL. Use an explicit native expression or a custom Condition for
+other predicates; the root package no longer exposes go-op comparison helpers.
+Append optional application filters conditionally.
 
 String() returns a diagnostic on invalid builders; execution must use Build or
 the context methods to retain structured errors. Custom clause renderer panics
 are contained at the statement build boundary.
-The adapter's low-level BuildOp/BuildOper and invalid startup registration retain
-their existing assertive contracts.
+Invalid dialect registration through MustRegister still panics at startup.
 
 ## Struct mapping
 
 Query, insert and scan use one cached metadata model. SQL Scanner/Valuer fields
 are scalar, including implementations on pointer receivers. Unexported ordinary
 fields are excluded. Nested pointers are supported; recursive relationships and
-duplicate field mappings return errors. Unknown result labels remain ignored;
-duplicate labels targeting the same struct field require explicit aliases.
+duplicate field mappings return errors. Unknown result labels now return errors;
+set `ScanOptions.IgnoreUnknownColumns` to opt out. Duplicate labels targeting
+the same struct field require explicit aliases.
 
 Structs accepts slices of structs or pointers. Without explicit Columns, it keeps
 all mapped columns and replaces zero-valued fields tagged omitempty/omitzero with
@@ -150,8 +150,8 @@ Add/Update/Delete/SoftDelete now return sql.Result and error. Count/CountGets us
 int64 counts. CountGets does not modify the page size based on the count.
 Soft-delete defaults use NULL and current time, independently of go-op's legacy
 zero-date constants. Configure WithSoftCondition, WithDeletedCondition and
-WithSoftDeleteUpdater for boolean flags, timestamps, numeric markers or future
-go-op conventions. Active/Deleted/Where scopes return independent Oper values.
+WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers.
+Active/Deleted/Where scopes return independent Oper values.
 
 ## New SQL capabilities
 
@@ -217,3 +217,107 @@ default. Text without a zone uses UTC unless `Location` is set. Existing
 `time.Time` values retain their location unless one is requested explicitly.
 Time-to-string conversion uses RFC3339Nano to retain fractions and offsets.
 MySQL zero dates require `AllowZeroDate: true`; empty time strings remain invalid.
+
+## Binding APIs and commit semantics
+
+Binding configuration is now explicit and inherited from DB through raw queries,
+Table, Oper, builders, and RETURNING. Use `DB.WithBindConfig`,
+`Oper.WithBindConfig`, a builder's `SetBindConfig`, or `Rows.WithBindConfig`.
+`Row.WithScanOptions` and `Rows.WithScanOptions` override conversion/mapping
+options. A local configuration replaces the entire inherited configuration.
+Configure before concurrent use; configuration setters copy layout slices and
+do not mutate the parent. `WithExecutor` retains the configuration.
+
+`DefaultMixRowsBinder`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
+or independent concurrent registry. Register the exact pointer destination type
+with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar
+slices are registered in the default registry; NewOper registers its model slice
+only if absent. User registrations take precedence, including registrations made
+after an Oper was created. Unregistered slices retain a general fallback; map
+semantics require an explicit registration or local binder.
+
+`DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` preserve the remaining
+configuration while selecting a shared binder. Passing nil restores the default
+registry. Explicit binders replace the default; use ComposeRowsBinders when an
+ordered preparation fallback is intended. Registration lookup is authoritative
+and does not retry another binder after an error. A prepared binding retains its
+own state when the registration later changes. Single-row Row.Bind continues to
+use row scanning, not RowsBinder.
+
+| Removed API | Replacement |
+| --- | --- |
+| `DefaultRowsCap` | Immutable `DefaultRowsCapacity`; override `BindConfig.Capacity` |
+| `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or a custom `RowsBinder` |
+| `RegisterMapRowsBinder` | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))` |
+| `CommonSliceRowsBinder` | `SliceRowsBinder{}` |
+| `NewDegradedSliceRowsBinder` | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)` |
+| `WithRowsCap`, `RowsCap` | `BindConfig.Capacity` (an allocation hint, not result length) |
+| `Oper.WithRowsBinder`, `RowsBinder`, `AppendRowsBinders` | `WithBinder` or `WithBindConfig`; compose explicitly when fallback is needed |
+| `NewMapRowsBinderForKeyValue` | `NewMapPairsBinder` |
+| `NewMapRowsBinderForValue` | `NewMapIndexBinder` |
+| `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue` | `NewMapSetBinder` for sets; custom binders for other derived/fixed values |
+| `RowsBinder.BindRows` | `Prepare(dst, BindOptions) (RowsBinding, error)` |
+| `RowsBinding{Scan: scan, Commit: commit}` | `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`, or a state pointer implementing `RowsBinding` |
+| `Row.Next` | Removed: Row no longer implements the iterator interface |
+
+`RowScanner` now contains only Columns and Scan. `RowsScanner` adds Next and Err.
+`RowsBinderFunc` is a preparation function, not a scanning function. Prepare
+receives no cursor, so unsupported-type fallback cannot skip already-read rows.
+Both value and pointer forms of `UnsupportedTypeError` are recognized, including
+wrapped errors. Empty compositions report an unsupported destination.
+
+Built-in `Rows.Bind` replaces; use `Append` for slices and `Merge` for maps.
+Only pointers to maps are supported. Existing map contents and slice backing
+arrays are never modified during scanning: conversion, iteration, and Close
+errors leave the destination unchanged. Empty replacement results are non-nil
+empty collections. Append/Merge copy existing elements shallowly; pointed-to
+objects are not cloned. Map pairs and indexes reject duplicate keys by default,
+including collisions with existing keys during Merge. Configure
+`DuplicateKeyFirst` or `DuplicateKeyLast` to choose a winner; map sets deliberately
+deduplicate. `map[K]bool` no longer implicitly means a set.
+
+Pointer chains now use GeneralScanner recursively: nullable duration/time fields
+have the same units, parsing, range checks, and byte ownership as value fields.
+NULL leaves pointer destinations nil. Non-pointer custom scanners still receive
+NULL directly; nullable pointers to custom scanners remain nil on NULL.
+`NullError` can reject NULL for non-nullable scalar destinations. Unknown struct
+columns fail by default. `NilNullNestedPointers` makes all-NULL selected nested
+structs nil, instead of allocating zero-valued nested objects.
+
+Collection binders reuse immutable column/field mappings across results, keep
+mutable scanning state per result, then commit only after successful finalization.
+Mappings are keyed by model type, ordered labels, and mapping policies; scalar
+conversion options are applied independently on each query. Dynamic mapping
+caches are bounded (32 shapes per model, at most 256 columns and 16 KiB of labels
+per retained shape). Type metadata remains cached independently of those limits.
+`BindError` adds a one-based row number and preserves errors.Is/errors.As.
+Custom scanner/key-function panics
+propagate instead of being converted into ordinary binding errors; owning
+results are still closed. Custom binders must stage their writes and make Commit
+non-failing. `Row.Scan` and manual `Rows.Scan` retain database/sql-style partial
+row writes on conversion errors.
+
+`ScanColumnsToStruct` remains a low-level field-address mapper with strict label
+validation. It does not perform scalar conversion. Use `PrepareScan` for raw
+`*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
+for single-use results. Result labels and WithColumns inputs are copied.
+
+Struct metadata, column layouts, compiled setters and scan plans now live in
+`internal/rowbind`, together with the shared scalar conversion rules. The root
+package owns SQL expression caching, result lifetimes and collection commits.
+Binding alone no longer creates SQL projection expressions. `ScanOptions`,
+`NullPolicy`, `NestedPointerPolicy` and `GeneralScanner` remain available from
+`sqlx` as type aliases; their fields, constants and ordinary usage are unchanged.
+Their defining package reported by reflection is now `internal/rowbind`.
+No metadata cache, setter or scan-plan API is exported from the root package.
+
+`RowsBinding` is now an interface with `Scan(RowsScanner) error` and `Commit()`
+methods. Successful Prepare calls must return an independent, non-nil operation;
+error returns should use `nil, err`. Nil underlying pointers are also rejected
+before scanning. `RowsBindingFuncs.Scan` validates both callbacks before invoking
+the scan callback. Direct callers must still call Commit only after successful
+scanning and finalization.
+
+Built-in typed slices, general slices and maps implement the public interface
+with state pointers. Wrappers can return a delegated Prepare result directly,
+with no additional per-result callback allocation.

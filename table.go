@@ -38,6 +38,11 @@ func (t Table) Select(columns ...string) *SelectBuilder {
 	return t.GetDB().Select(columns...).From(t.Name)
 }
 
-func (t Table) SelectStruct(s any) *SelectBuilder {
+func (t Table) SelectStruct[T any](s T) *SelectBuilder {
 	return t.Select().SelectStruct(s)
+}
+
+// SelectType selects mapped model fields without constructing a model value.
+func (t Table) SelectType[T any]() *SelectBuilder {
+	return t.Select().SelectType[T]()
 }

@@ -134,6 +134,11 @@ func FuzzQuoteIdent(f *testing.F) {
 		}
 		for _, d := range []Dialect{MySQL, Postgres, SQLite} {
 			got := d.QuoteIdent(s)
+			var buf strings.Builder
+			WriteIdent(&buf, d, s)
+			if buf.String() != got {
+				t.Fatalf("streamed identifier differs: %q, %q", buf.String(), got)
+			}
 			quote := got[:1]
 			decoded := strings.ReplaceAll(got[1:len(got)-1], quote+quote, quote)
 			if decoded != s {

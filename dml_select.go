@@ -59,7 +59,6 @@ type SelectBuilder struct {
 	lockWait   string
 	lock       string
 
-	binder binder
 	offset int64
 	limit  int64
 
@@ -304,7 +303,7 @@ func (b *SelectBuilder) Reset() *SelectBuilder {
 	base := b.builderBase
 	base.err = nil
 	base.comment = ""
-	*b = SelectBuilder{builderBase: base, binder: b.binder}
+	*b = SelectBuilder{builderBase: base}
 	return b
 }
 
@@ -348,6 +347,7 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 	}
 
 	var s strings.Builder
+	s.Grow(b.renderSizeHint())
 	if len(b.ctes) > 0 {
 		requireFeature(c, dialect.CTE, "CTE")
 		_, _ = s.WriteString("WITH ")
@@ -383,10 +383,23 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 		_, _ = s.WriteString("DISTINCT ")
 	}
 
-	_, _ = s.WriteString(renderColumns(c, b.columns))
+	writeColumns(&s, c, b.columns)
 	if len(b.ftables) > 0 {
 		_, _ = s.WriteString(" FROM ")
-		_, _ = s.WriteString(renderTables(c, b.ftables))
+		for i, table := range b.ftables {
+			if i != 0 {
+				s.WriteString(", ")
+			}
+			if table.Query != nil {
+				s.WriteString(table.render(c))
+			} else {
+				writeQuotedPath(&s, c.Dialect(), table.Table)
+				if table.Alias != "" {
+					s.WriteString(" AS ")
+					dialect.WriteIdent(&s, c.Dialect(), table.Alias)
+				}
+			}
+		}
 	} else if len(b.jtables) > 0 {
 		panic("JOIN requires FROM")
 	}
@@ -395,18 +408,18 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 		_, _ = s.WriteString(j.render(c))
 	}
 
-	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
+	writeClause(&s, c, "WHERE", b.wheres)
 	if len(b.groups) > 0 {
 		_, _ = s.WriteString(" GROUP BY ")
 		for i, e := range b.groups {
 			if i > 0 {
 				_, _ = s.WriteString(", ")
 			}
-			_, _ = s.WriteString(e.render(c))
+			e.writeTo(&s, c)
 		}
 	}
 
-	_, _ = s.WriteString(clause(c, "HAVING", b.havings))
+	writeClause(&s, c, "HAVING", b.havings)
 	for _, u := range b.unions {
 		q := u.Query
 		if len(q.ctes) > 0 || len(q.orderbys) > 0 || q.hasLimit ||
@@ -433,9 +446,9 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 			}
 
 			if o.Expr != nil {
-				_, _ = s.WriteString(o.Expr.render(c))
+				o.Expr.writeTo(&s, c)
 			} else {
-				_, _ = s.WriteString(c.Quote(o.Column))
+				writeQuotedPath(&s, c.Dialect(), o.Column)
 			}
 
 			if o.Order != "" {
@@ -492,6 +505,28 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 
 	_, _ = s.WriteString(commentSQL(b.comment))
 	return s.String()
+}
+
+// Estimate from immutable query descriptions only; never evaluate custom
+// expressions or conditions twice just to determine a buffer size.
+func (b *SelectBuilder) renderSizeHint() int {
+	n := 32 + 24*(len(b.wheres)+len(b.havings))
+	for _, col := range b.columns {
+		n += quotedPathSize(col.Column) + 2
+		if col.Alias != "" {
+			n += len(col.Alias) + 6
+		}
+	}
+	for _, table := range b.ftables {
+		n += quotedPathSize(table.Table) + len(table.Alias) + 8
+	}
+	for _, order := range b.orderbys {
+		n += quotedPathSize(order.Column) + len(order.Order) + 12
+	}
+	if b.hasLimit || b.offset != 0 {
+		n += 24
+	}
+	return n
 }
 
 func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }

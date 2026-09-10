@@ -1,16 +1,5 @@
-// Copyright 2025 xgfone
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2026 xgfone
+// SPDX-License-Identifier: Apache-2.0
 
 package sqlx
 
@@ -18,133 +7,122 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
+	"slices"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
 func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) Rows {
-	return NewRows(db.queryRowsContext(ctx, nil, query, args...))
+	return db.binding().rows(db.queryRowsContext(ctx, query, args...))
 }
 
-func (db *DB) queryRowsContext(ctx context.Context, columns []string, query string, args ...any) (
-	*sql.Rows, []string, error,
-) {
+func (db *DB) queryRowsContext(ctx context.Context, query string, args ...any) (*sql.Rows, []string, error) {
 	if db == nil || db.Executor == nil {
 		return nil, nil, errors.New("sqlx: no executor configured")
 	}
 
-	rows, e := db.QueryContext(ctx, query, args...)
-	if e != nil {
-		return nil, nil, e
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	if len(columns) == 0 {
-		columns, e = rows.Columns()
-		if e != nil {
-			_ = rows.Close()
-			return nil, nil, e
-		}
+	if rows == nil {
+		return nil, nil, errors.New("sqlx: executor returned nil rows")
+	}
+
+	columns, err := rows.Columns()
+	if err != nil {
+		_ = rows.Close()
+		return nil, nil, err
 	}
 
 	return rows, columns, nil
 }
 
 func (b *SelectBuilder) QueryRowsContext(ctx context.Context) Rows {
-	return b.binder.Rows(queryStatement(ctx, b, &b.builderBase))
+	return b.binding().rows(queryStatement(ctx, b, &b.builderBase))
 }
 
-/// ---------------------------------------------------------------------- ///
+func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) Rows {
+	// Internal configurations already own their layout slices and are immutable.
+	return Rows{
+		Rows: rows,
+		err:  err,
 
-var defaultbinder = binder{
-	rowscap: DefaultRowsCap,
-	wrapper: DefaultRowScanWrapper,
-	binder:  DefaultMixRowsBinder,
-}
-
-type binder struct {
-	rowscap int
-	wrapper RowScannerWrapper
-	binder  RowsBinder
-}
-
-func (b *binder) Rows(rows *sql.Rows, columns []string, err error) Rows {
-	v := *b
-	if v.rowscap <= 0 {
-		v.rowscap = DefaultRowsCap
+		columns: slices.Clone(columns),
+		config:  c,
+		state:   &rowScanState{},
 	}
-	if v.wrapper == nil {
-		v.wrapper = defaultbinder.wrapper
-	}
-	if v.binder == nil {
-		v.binder = defaultbinder.binder
-	}
-	return Rows{Rows: rows, err: err, columns: columns, binder: v}
 }
 
-// Rows is the same as sql.Rows to scan the rows to a map or slice.
+// The indirection keeps plan assignments visible across value-receiver Scan
+// calls and Rows copies, without allocating a plan before manual scanning.
+type rowScanState struct {
+	plan *rowbind.Plan
+}
+
+// Rows owns a forward-only SQL result. Bind/Append/Merge close it automatically.
+// For manual iteration defer Close, then check Err after Next returns false.
+// Copies and With methods share the SQL cursor; they are not independent results
+// and must not be scanned concurrently.
 type Rows struct {
 	*sql.Rows
-	err error
 
+	err     error
 	columns []string
-	binder  binder
+	config  BindConfig
+	state   *rowScanState
+
+	validateColumns bool
 }
 
-// NewRows returns a new Rows.
+// NewRows takes ownership of rows and uses zero BindConfig. Nil columns use the
+// driver's metadata. The result should be closed even when err is non-nil.
 func NewRows(rows *sql.Rows, columns []string, err error) Rows {
-	return defaultbinder.Rows(rows, columns, err)
+	r := (BindConfig{}).rows(rows, columns, err)
+	r.validateColumns = columns != nil
+	return r
 }
 
-// RowsCap returns the capacity of the rows.
-func (r Rows) RowsCap() int {
-	return r.binder.rowscap
-}
-
-// Columns returns the names of the selected columns.
 func (r Rows) Columns() ([]string, error) {
-	if r.err != nil {
-		return nil, r.err
+	if err := r.Err(); err != nil {
+		return nil, err
 	}
-	if r.Rows == nil {
-		return nil, errors.New("sqlx: nil rows")
-	}
-	if len(r.columns) > 0 {
-		return r.columns, nil
+	if r.columns != nil {
+		return slices.Clone(r.columns), nil
 	}
 	return r.Rows.Columns()
 }
 
-// WithRowsCap resets the capacity of the rows and returns a new Rows.
-func (r Rows) WithRowsCap(cap int) Rows {
-	r.binder.rowscap = cap
-	return r
-}
-
-// WithColumns resets the names of the selected columns and returns a new Rows.
+// WithColumns overrides result labels. Labels are copied and validated against
+// the driver column count when a scan plan is prepared.
 func (r Rows) WithColumns(columns ...string) Rows {
-	r.columns = columns
+	r.columns = slices.Clone(columns)
+	r.validateColumns = true
+	r.state = &rowScanState{}
 	return r
 }
 
-// WithScanner resets the row scanner wrapper and returns a new Rows.
-func (r Rows) WithScanner(wrapper RowScannerWrapper) Rows {
-	if wrapper == nil {
-		r.binder.wrapper = defaultbinder.wrapper
-	} else {
-		r.binder.wrapper = wrapper
-	}
+func (r Rows) WithBindConfig(config BindConfig) Rows {
+	r.config = config.clone()
+	r.state = &rowScanState{}
 	return r
 }
 
-// WithBinder resets the rows binder and returns a new Rows.
+func (r Rows) WithScanOptions(options ScanOptions) Rows {
+	r.config.Scan = cloneScanOptions(options)
+	r.state = &rowScanState{}
+	return r
+}
+
+// WithBinder selects an explicit binder, preserving all other options. A nil
+// binder restores DefaultMixRowsBinder. The binder itself is shared, not cloned.
 func (r Rows) WithBinder(binder RowsBinder) Rows {
-	if binder == nil {
-		r.binder.binder = defaultbinder.binder
-	} else {
-		r.binder.binder = binder
-	}
+	r.config.Binder = binder
 	return r
 }
 
-// Err returns the error.
 func (r Rows) Err() error {
 	if r.err != nil {
 		return r.err
@@ -155,34 +133,130 @@ func (r Rows) Err() error {
 	return r.Rows.Err()
 }
 
-// Bind binds the rows to dst that may be a map or slice
-func (r Rows) Bind(dst any) (err error) {
-	defer recoverBinding(&err)
+// Bind replaces a collection. Built-in binders publish a non-nil empty
+// collection for an empty result. Errors leave the original destination intact.
+func (r Rows) Bind(dst any) error { return r.bind(dst, BindReplace) }
 
-	if err := r.Err(); err != nil {
-		return err
-	}
+// Append appends to a slice using independent storage, preserving aliases to
+// the original backing array. Errors leave the original destination intact.
+func (r Rows) Append(dst any) error { return r.bind(dst, BindAppend) }
 
+// Merge merges into a map using independent storage. DuplicateKeys controls
+// collisions with existing entries as well as duplicates in the result.
+func (r Rows) Merge(dst any) error { return r.bind(dst, BindMerge) }
+
+func (r Rows) bind(dst any, mode BindMode) (err error) {
 	defer func() {
 		if e := r.Close(); err == nil {
 			err = e
 		}
 	}()
 
-	if err := r.binder.binder.BindRows(r, dst); err != nil {
+	if err = r.Err(); err != nil {
+		return err
+	}
+	if err = validateScanOptions(r.config.Scan); err != nil {
 		return err
 	}
 
-	return r.Err()
+	options := r.config.options(mode)
+	if err = options.validate(); err != nil {
+		return err
+	}
+
+	binder := r.config.Binder
+	if binder == nil {
+		binder = DefaultMixRowsBinder
+	}
+
+	if nilBindingValue(binder) {
+		return errors.New("sqlx: nil rows binder")
+	}
+
+	// Resolve only our concrete dispatchers. User wrappers still receive their
+	// public Prepare call and remain authoritative, including on failure.
+	binder = resolveRowsBinder(binder, reflect.TypeOf(dst))
+	binding, err := binder.Prepare(dst, options)
+	if err != nil {
+		return err
+	}
+	if nilBindingValue(binding) {
+		return errors.New("sqlx: nil rows binding")
+	}
+	if err = binding.Scan(r); err != nil {
+		return err
+	}
+
+	if err = r.Err(); err != nil {
+		return err
+	}
+
+	// Finalization may report driver errors. Commit only after it succeeds.
+	if err = r.Close(); err != nil {
+		return err
+	}
+
+	binding.Commit()
+
+	return nil
 }
 
-// Scan implements the interface sql.Scanner, which is the same as sql.Rows.Scan
-// but supports that the sql value is NULL.
-func (r Rows) Scan(dsts ...any) (err error) {
-	if e := r.Err(); e != nil {
-		return e
+// Scan scans the current row, caching a plan for the destination types. Like
+// database/sql.Rows.Scan, individual columns may have been written on error.
+// Custom scanner panics propagate; collection helpers still close the result.
+func (r Rows) Scan(dst ...any) error {
+	if err := r.Err(); err != nil {
+		return err
 	}
-	return r.binder.wrapper(newrowscanner(r, r.Rows.Scan), dsts...)
+
+	state := r.state
+	if state == nil {
+		state = &rowScanState{}
+	}
+
+	if state.plan == nil || !state.plan.Matches(dst) {
+		columns, err := r.scanColumns()
+		if err != nil {
+			return err
+		}
+
+		types := make([]reflect.Type, len(dst))
+		for i, d := range dst {
+			types[i] = reflect.TypeOf(d)
+		}
+
+		p, err := rowbind.NewPlan(columns, types, r.config.Scan)
+		if err != nil {
+			return err
+		}
+
+		state.plan = p
+	}
+
+	return state.plan.ScanValues(r.Rows.Scan, dst)
+}
+
+func (r Rows) scanColumns() ([]string, error) {
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+
+	if r.columns != nil && !r.validateColumns {
+		return r.columns, nil
+	}
+
+	columns, err := r.Rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	if r.columns == nil {
+		return columns, nil
+	}
+	if len(columns) != len(r.columns) {
+		return nil, errors.New("sqlx: result label count differs from driver columns")
+	}
+
+	return r.columns, nil
 }
 
 func (r Rows) Next() bool {
@@ -190,6 +264,9 @@ func (r Rows) Next() bool {
 }
 
 func (r Rows) Close() error {
+	if r.state != nil {
+		r.state.plan = nil
+	}
 	if r.Rows == nil {
 		return nil
 	}

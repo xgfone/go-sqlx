@@ -22,14 +22,9 @@ import (
 )
 
 var (
-	_timetype    = reflect.TypeFor[time.Time]()
-	_valuertype  = reflect.TypeFor[driver.Valuer]()
-	_scannertype = reflect.TypeFor[sql.Scanner]()
+	_timetype   = reflect.TypeFor[time.Time]()
+	_valuertype = reflect.TypeFor[driver.Valuer]()
 )
-
-func implementValuerOrScanner(t reflect.Type) bool {
-	return t.Implements(_valuertype) || t.Implements(_scannertype)
-}
 
 // IsPointerToStruct returns true if v is a pointer to struct, else false.
 //

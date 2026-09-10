@@ -167,14 +167,14 @@ func (b *DeleteBuilder) QueryRowsContext(ctx context.Context) Rows {
 	if len(b.returning) == 0 {
 		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
-	return NewRows(queryStatement(ctx, b, &b.builderBase))
+	return b.binding().rows(queryStatement(ctx, b, &b.builderBase))
 }
 
 func (b *DeleteBuilder) QueryRowContext(ctx context.Context) Row {
 	if len(b.returning) == 0 {
 		return NewRow(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
-	return NewRow(queryStatement(ctx, b, &b.builderBase))
+	return b.binding().row(queryStatement(ctx, b, &b.builderBase))
 }
 
 func (b *DeleteBuilder) Where(conds ...Condition) *DeleteBuilder {

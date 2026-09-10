@@ -1,163 +1,134 @@
-// Copyright 2025 xgfone
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2026 xgfone
+// SPDX-License-Identifier: Apache-2.0
 
 package sqlx
 
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"reflect"
-	"slices"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-var (
-	_ RowScanner = (*sql.Rows)(nil)
-	_ RowScanner = Rows{}
-	_ RowScanner = Row{}
-)
-
-// DefaultRowScanWrapper is the default wrapper for RowScanner.
-var DefaultRowScanWrapper RowScannerWrapper = defaultRowScanWrapper
-
-// RowScannerWrapper is used to wrap the row scanner to customize to scan the row.
-type RowScannerWrapper func(scanner RowScanner, dsts ...any) (err error)
-
-// RowScanner is an interface to scan the row.
-//
-// All of *sql.Rows, Rows and Row have implement the interface.
+// RowScanner exposes column metadata and row scanning without iteration methods.
+// Row.Scan reads its single row; Rows.Scan scans the current iterator row.
 type RowScanner interface {
 	Columns() ([]string, error)
-	Scan(dst ...any) error
+	Scan(...any) error
+}
+
+// RowsScanner is a forward-only result iterator. Row deliberately does not
+// implement this interface. Callers own Close when passing an iterator directly.
+type RowsScanner interface {
+	RowScanner
 	Next() bool
 	Err() error
 }
 
-type rowscanner struct {
-	RowScanner
-	scan func(dst ...any) error
-}
+var (
+	_ RowScanner  = Row{}
+	_ RowsScanner = Rows{}
+	_ RowsScanner = (*sql.Rows)(nil)
+)
 
-func (r rowscanner) Unwrap() RowScanner    { return r.RowScanner }
-func (r rowscanner) Scan(dst ...any) error { return ScanRow(r.scan, dst...) }
-func newrowscanner(scanner RowScanner, scan func(...any) error) rowscanner {
-	return rowscanner{RowScanner: scanner, scan: scan}
-}
+// RowScanFunc scans the current row into destinations of the types supplied to
+// PrepareScan. It and its scratch storage must not be used concurrently.
+type RowScanFunc func(...any) error
 
-func getrowscap(scanner RowScanner, defaultcap int) int {
-	type (
-		RowCaper interface {
-			RowsCap() int
-		}
-
-		RowScannerUnwraper interface {
-			Unwrap() RowScanner
-		}
-	)
-
-	for {
-		switch v := scanner.(type) {
-		case RowCaper:
-			return v.RowsCap()
-
-		case RowScannerUnwraper:
-			scanner = v.Unwrap()
-
-		default:
-			return defaultcap
-		}
-	}
-}
-
-func defaultRowScanWrapper(scanner RowScanner, dsts ...any) error {
-	return scanrow(scanner, dsts...)
-}
-
-func scanrow(scanner RowScanner, dsts ...any) (err error) {
-	if len(dsts) == 1 && dsts[0] != nil {
-		v := reflect.ValueOf(dsts[0])
-		t := v.Type()
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-
-		if t.Kind() == reflect.Struct && t != _timetype && !v.Type().Implements(_scannertype) {
-			if v.Kind() != reflect.Pointer || v.IsNil() {
-				return errors.New("sqlx: nil or non-pointer struct destination")
-			}
-
-			for v.Elem().Kind() == reflect.Pointer {
-				if v.Elem().IsNil() {
-					v.Elem().Set(reflect.New(v.Elem().Type().Elem()))
-				}
-				v = v.Elem()
-			}
-
-			if !v.Type().Implements(_scannertype) {
-				return scanStruct(scanner, v.Interface())
-			}
-		}
-	}
-	return scanner.Scan(dsts...)
-}
-
-func scanStruct(scanner RowScanner, dst any) (err error) {
-	columns, err := scanner.Columns()
+// PrepareScan validates the result shape before Next and compiles one reusable
+// scan plan. It accepts raw [*sql.Rows] as well as [Rows] and [*Rows], but not
+// the single-use [Row] (use [Row.Scan] directly). [Rows] supplies its configured
+// conversion policies; other scanners use zero [ScanOptions]. Destination
+// pointers may change between calls but their types must stay the same.
+func PrepareScan(scanner RowScanner, types ...reflect.Type) (RowScanFunc, error) {
+	source, columns, options, _, err := scanSource(scanner)
 	if err != nil {
-		return
+		return nil, err
 	}
-	return ScanColumnsToStruct(scanner.Scan, columns, dst)
+
+	plan, err := rowbind.NewPlan(columns, types, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(dst ...any) error { return plan.Scan(source, dst) }, nil
 }
 
-func needScannerWrapper(v any) bool {
+// Select the underlying scan function before creating a method value. Wrapping
+// [Rows.Scan] here would repeat adaptation and retain an unnecessary [Rows] copy.
+func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, bool, error) {
+	if nilBindingValue(scanner) {
+		return nil, nil, ScanOptions{}, false, errors.New("sqlx: nil row scanner")
+	}
+
+	var rows Rows
+	switch v := scanner.(type) {
+	case Rows:
+		rows = v
+
+	case *Rows:
+		rows = *v
+
+	case Row, *Row:
+		return nil, nil, ScanOptions{}, false, errors.New("sqlx: use Row.Scan for a single-use result")
+
+	default:
+		columns, err := scanner.Columns()
+		_, native := scanner.(*sql.Rows)
+		return scanner.Scan, columns, ScanOptions{}, native, err
+	}
+
+	columns, err := rows.scanColumns()
+	if err != nil {
+		return nil, nil, ScanOptions{}, false, err
+	}
+
+	return rows.Rows.Scan, columns, rows.config.Scan, true, nil
+}
+
+// Internal collection scans have a definite end, so their scratch storage can
+// be borrowed. Public PrepareScan functions have caller-controlled lifetimes.
+func prepareBindingScan(scanner RowScanner, types ...reflect.Type) (*rowbind.Plan, error) {
+	source, columns, options, native, err := scanSource(scanner)
+	if err != nil {
+		return nil, err
+	}
+	return rowbind.BorrowPlan(source, columns, types, options, native)
+}
+
+// ScanRow adapts positional scalar destinations, including pointer chains.
+// For repeated scanning or struct mapping use PrepareScan or [Rows.Scan].
+func ScanRow(scan func(...any) error, dst ...any) error {
+	return rowbind.ScanScalarRow(scan, dst, ScanOptions{})
+}
+
+func scanSingleStruct(rows Rows, dst []any) error {
+	columns, err := rows.scanColumns()
+	if err != nil {
+		return err
+	}
+	return rowbind.ScanStruct(rows.Rows.Scan, columns, dst, rows.config.Scan)
+}
+
+func nilBindingValue(v any) bool {
 	if v == nil {
-		return false
+		return true
 	}
 
-	t := reflect.TypeOf(v)
-	if t.Implements(_scannertype) {
-		return false
+	switch r := reflect.ValueOf(v); r.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func,
+		reflect.Chan, reflect.Interface:
+		return r.IsNil()
 	}
 
-	return t.Kind() == reflect.Pointer && supportedScanType(t.Elem())
+	return false
 }
 
-// ScanRow uses the function scan to scan the sql row into dests,
-// which may be used as a proxy of the function sql.Row.Scan or sql.Rows.Scan.
-//
-// For the pointers to the built-in types, it will use GeneralScanner to wrap them.
-func ScanRow(scan func(dests ...any) error, dests ...any) error {
-	if slices.ContainsFunc(dests, needScannerWrapper) {
-		newdests := make([]any, len(dests))
-		for i, dest := range dests {
-			if needScannerWrapper(dest) {
-				newdests[i] = GeneralScanner{Value: dest}
-			} else {
-				newdests[i] = dest
-			}
-		}
-		dests = newdests
-	}
-	return scan(dests...)
-}
-
-func recoverBinding(err *error) {
-	if r := recover(); r != nil {
-		if e, ok := r.(error); ok {
-			*err = fmt.Errorf("sqlx: binding: %w", e)
-		} else {
-			*err = fmt.Errorf("sqlx: binding: %v", r)
-		}
-	}
+// ScanColumnsToStruct is a low-level field mapper: it supplies field addresses
+// to scan without adapting scalar conversions. Unknown/duplicate columns are
+// errors. Use [Rows.Scan] or [PrepareScan] for conversion policies and cached
+// plans.
+func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
+	return rowbind.ScanColumnsToStruct(scan, columns, dst)
 }

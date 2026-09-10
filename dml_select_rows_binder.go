@@ -1,28 +1,20 @@
-// Copyright 2025 xgfone
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2026 xgfone
+// SPDX-License-Identifier: Apache-2.0
 
 package sqlx
 
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
-	"sync"
-	"time"
+	"slices"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-// UnsupportedTypeError represents the error that the type is not supported.
+// UnsupportedTypeError is returned by Prepare when a binder does not recognize
+// a destination type. A recognized but invalid destination returns another error.
 type UnsupportedTypeError struct {
 	Name string
 	Type string
@@ -34,426 +26,522 @@ func (e UnsupportedTypeError) Error() string {
 
 // IsUnsupportedTypeError checks if the error is a UnsupportedTypeError.
 func IsUnsupportedTypeError(err error) bool {
-	if _, ok := err.(UnsupportedTypeError); ok {
+	if _, ok := errors.AsType[UnsupportedTypeError](err); ok {
 		return true
 	}
-	return errors.As(err, new(UnsupportedTypeError))
+
+	_, ok := errors.AsType[*UnsupportedTypeError](err)
+	return ok
 }
 
-// RowsBinder is an interface to bind the rows to dst that may be a map or slice.
+// RowsBinder selects a destination without access to a cursor. Prepare must not
+// mutate dst. Once it succeeds, no fallback is attempted, whatever Scan returns.
+// Implementations may be shared by concurrent queries; each prepared binding
+// must own its state and scratch storage.
 type RowsBinder interface {
-	BindRows(scanner RowScanner, dst any) error
+	Prepare(dst any, options BindOptions) (RowsBinding, error)
 }
 
-// RowsBinderFunc is a function to bind the rows to dst that may be a map or slice.
-type RowsBinderFunc func(scanner RowScanner, dst any) (err error)
+type RowsBinderFunc func(any, BindOptions) (RowsBinding, error)
 
-// BindRows implements the interface RowsBinder.
-func (f RowsBinderFunc) BindRows(scanner RowScanner, dst any) error { return f(scanner, dst) }
-
-var (
-	// DefaultRowsCap is the default capacity to allocate a map or slice for scanned rows.
-	DefaultRowsCap = 20
-
-	// DefaultSliceCap is the default mixed rows binder to bind the rows to a map or slice.
-	//
-	// It has registered some rows binders for specific-types, such as
-	//   []struct
-	//   []int, []int64, []string
-	//   map[string]int, map[string]string
-	//   map[string]bool, map[string]struct{}
-	DefaultMixRowsBinder = NewMixRowsBinder()
-
-	// CommonSliceRowsBinder is the common rows binder to bind the rows to a slice.
-	//
-	// Notice: it uses the reflect package for the default implementation.
-	CommonSliceRowsBinder RowsBinder = RowsBinderFunc(commonSliceRowsBinder)
-)
-
-// MixRowsBinder is a mixed rows binder based on the reflected type.
-type MixRowsBinder struct {
-	mu    sync.RWMutex
-	types map[reflect.Type]RowsBinder
-}
-
-// NewMixRowsBinder returns a new MixRowsBinder.
-func NewMixRowsBinder() *MixRowsBinder {
-	return &MixRowsBinder{types: make(map[reflect.Type]RowsBinder, 64)}
-}
-
-// RegisterMapRowsBinder is a convenient function to register a rows binder,
-// which binds the row to the value and maps the value to the key,
-// for a specific map type, that's, map[K]V and *map[K]V.
-//
-// If b is nil, use DefaultMixRowsBinder instead.
-func RegisterMapRowsBinder[K comparable, V any](b *MixRowsBinder, keyf func(V) K) {
-	if b == nil {
-		b = DefaultMixRowsBinder
+func (f RowsBinderFunc) Prepare(dst any, options BindOptions) (RowsBinding, error) {
+	if f == nil {
+		return nil, errors.New("sqlx: nil rows binder function")
 	}
-
-	binder := NewMapRowsBinderForValue[map[K]V](keyf)
-	b.Register(reflect.TypeFor[map[K]V](), binder)
-	b.Register(reflect.TypeFor[*map[K]V](), binder)
+	return f(dst, options)
 }
 
-// Get returns the rows binder for a specific type.
-//
-// Return nil if the type has been not registered.
-func (b *MixRowsBinder) Get(vtype reflect.Type) RowsBinder {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return b.types[vtype]
+// RowsBinding is a single-use staged operation. Scan reads into independent
+// storage, validates the result and returns iteration errors. Commit publishes
+// it and must not fail or perform I/O. Call Commit only after Scan and any owning
+// result's Close have succeeded. Custom side effects are the binder's responsibility.
+type RowsBinding interface {
+	Scan(RowsScanner) error
+	Commit()
 }
 
-// Register registers a rows binder for a specific type.
-func (b *MixRowsBinder) Register(vtype reflect.Type, binder RowsBinder) (old RowsBinder) {
-	if binder == nil {
-		panic("sqlx.MixRowsBinder: binder-typed must not be nil")
+// RowsBindingFuncs adapts callbacks to a RowsBinding. Scan rejects missing
+// callbacks before consuming rows. Commit may be called only after Scan succeeds.
+// For allocation-sensitive binders, let the per-result state implement
+// RowsBinding directly instead of creating method-value callbacks.
+type RowsBindingFuncs struct {
+	ScanFunc   func(RowsScanner) error
+	CommitFunc func()
+}
+
+func (b RowsBindingFuncs) Scan(rows RowsScanner) error {
+	if b.ScanFunc == nil || b.CommitFunc == nil {
+		return errors.New("sqlx: incomplete rows binding")
 	}
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	old = b.types[vtype]
-	b.types[vtype] = binder
-	return
+	return b.ScanFunc(rows)
 }
 
-// BindRows implements the interface RowsBinder.
-func (b *MixRowsBinder) BindRows(scanner RowScanner, dst any) (err error) {
-	defer recoverBinding(&err)
-	vtype := reflect.TypeOf(dst)
-	if binder := b.Get(vtype); binder != nil {
-		return binder.BindRows(scanner, dst)
-	}
+func (b RowsBindingFuncs) Commit() { b.CommitFunc() }
 
-	if vtype != nil && vtype.Kind() == reflect.Pointer && vtype.Elem().Kind() == reflect.Slice {
-		return CommonSliceRowsBinder.BindRows(scanner, dst)
-	}
-
-	return UnsupportedTypeError{Name: "sqlx.MixRowsBinder.BindRows", Type: gettype(dst)}
+// BindError adds the one-based row number to a conversion, duplicate-key, or
+// iteration error. Iterator failures refer to the next row being requested.
+type BindError struct {
+	Row int
+	Err error
 }
 
-func init() {
-	// []int, []uint, []int32, []uint32, []int64, []uint64, []string, []time.Time
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int](), NewSliceRowsBinder[[]int]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint](), NewSliceRowsBinder[[]uint]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int32](), NewSliceRowsBinder[[]int32]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint32](), NewSliceRowsBinder[[]uint32]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]int64](), NewSliceRowsBinder[[]int64]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]uint64](), NewSliceRowsBinder[[]uint64]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]string](), NewSliceRowsBinder[[]string]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*[]time.Time](), NewSliceRowsBinder[[]time.Time]())
+func (e *BindError) Error() string { return fmt.Sprintf("sqlx: row %d: %v", e.Row, e.Err) }
+func (e *BindError) Unwrap() error { return e.Err }
 
-	/// ------------------------------------- map[K]bool -------------------------------------- ///
+// DuplicateKeyError reports a collision under the DuplicateKeyReject policy.
+type DuplicateKeyError struct{ Key any }
 
-	// map[int]bool
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]bool](), NewMapRowsBinderForKey[map[int]bool](fixedvaluebooltrue[int]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]bool](), NewMapRowsBinderForKey[map[int]bool](fixedvaluebooltrue[int]))
-
-	// map[int32]bool
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int32]bool](), NewMapRowsBinderForKey[map[int32]bool](fixedvaluebooltrue[int32]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int32]bool](), NewMapRowsBinderForKey[map[int32]bool](fixedvaluebooltrue[int32]))
-
-	// map[int64]bool
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]bool](), NewMapRowsBinderForKey[map[int64]bool](fixedvaluebooltrue[int64]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]bool](), NewMapRowsBinderForKey[map[int64]bool](fixedvaluebooltrue[int64]))
-
-	// map[string]bool
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]bool](), NewMapRowsBinderForKey[map[string]bool](fixedvaluebooltrue[string]))
-
-	/// ----------------------------------- map[K]struct{} ------------------------------------ ///
-
-	// map[int]struct{}
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]struct{}](), NewMapRowsBinderForKey[map[int]struct{}](fixedvaluestructempty[int]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]struct{}](), NewMapRowsBinderForKey[map[int]struct{}](fixedvaluestructempty[int]))
-
-	// map[int32]struct{}
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int32]struct{}](), NewMapRowsBinderForKey[map[int32]struct{}](fixedvaluestructempty[int32]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int32]struct{}](), NewMapRowsBinderForKey[map[int32]struct{}](fixedvaluestructempty[int32]))
-
-	// map[int64]struct{}
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]struct{}](), NewMapRowsBinderForKey[map[int64]struct{}](fixedvaluestructempty[int64]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]struct{}](), NewMapRowsBinderForKey[map[int64]struct{}](fixedvaluestructempty[int64]))
-
-	// map[string]struct{}
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]struct{}](), NewMapRowsBinderForKey[map[string]struct{}](fixedvaluestructempty[string]))
-
-	/// -------------------------------------- map[int]V -------------------------------------- ///
-
-	// map[int]int
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int](), NewMapRowsBinderForKeyValue[map[int]int]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int](), NewMapRowsBinderForKeyValue[map[int]int]())
-
-	// map[int]int32
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int32](), NewMapRowsBinderForKeyValue[map[int]int32]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int32](), NewMapRowsBinderForKeyValue[map[int]int32]())
-
-	// map[int]int64
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]int64](), NewMapRowsBinderForKeyValue[map[int]int64]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]int64](), NewMapRowsBinderForKeyValue[map[int]int64]())
-
-	// map[int]string
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int]string](), NewMapRowsBinderForKeyValue[map[int]string]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int]string](), NewMapRowsBinderForKeyValue[map[int]string]())
-
-	/// ------------------------------------- map[int64]V ------------------------------------- ///
-
-	// map[int64]int
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int](), NewMapRowsBinderForKeyValue[map[int64]int]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int](), NewMapRowsBinderForKeyValue[map[int64]int]())
-
-	// map[int64]int32
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int32](), NewMapRowsBinderForKeyValue[map[int64]int32]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int32](), NewMapRowsBinderForKeyValue[map[int64]int32]())
-
-	// map[int64]int64
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]int64](), NewMapRowsBinderForKeyValue[map[int64]int64]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]int64](), NewMapRowsBinderForKeyValue[map[int64]int64]())
-
-	// map[int64]string
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[int64]string](), NewMapRowsBinderForKeyValue[map[int64]string]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[int64]string](), NewMapRowsBinderForKeyValue[map[int64]string]())
-
-	/// ------------------------------------ map[string]V ------------------------------------- ///
-
-	// map[string]int
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int](), NewMapRowsBinderForKeyValue[map[string]int]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]int](), NewMapRowsBinderForKeyValue[map[string]int]())
-
-	// map[string]int32
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int32](), NewMapRowsBinderForKeyValue[map[string]int32]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]int32](), NewMapRowsBinderForKeyValue[map[string]int32]())
-
-	// map[string]int64
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]int64](), NewMapRowsBinderForKeyValue[map[string]int64]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]int64](), NewMapRowsBinderForKeyValue[map[string]int64]())
-
-	// map[string]string
-	DefaultMixRowsBinder.Register(reflect.TypeFor[map[string]string](), NewMapRowsBinderForKeyValue[map[string]string]())
-	DefaultMixRowsBinder.Register(reflect.TypeFor[*map[string]string](), NewMapRowsBinderForKeyValue[map[string]string]())
+func (e *DuplicateKeyError) Error() string {
+	return fmt.Sprintf("sqlx: duplicate map key %v", e.Key)
 }
 
-func fixedvaluebooltrue[K comparable](K) bool        { return true }
-func fixedvaluestructempty[K comparable](K) struct{} { return struct{}{} }
-
-// NewMapRowsBinderForKeyAndFixedValue is short for NewMapRowsBinderForKey, which is equal to
-//
-//	NewMapRowsBinderForKey[M](func(K) V { return value })
-func NewMapRowsBinderForKeyAndFixedValue[M ~map[K]V, K comparable, V any](value V) RowsBinder {
-	return NewMapRowsBinderForKey[M](func(K) V { return value })
+func unsupportedBinder(name string, dst any) (RowsBinding, error) {
+	return nil, UnsupportedTypeError{Name: name, Type: gettype(dst)}
 }
 
-// NewMapRowsBinderForKey returns a rows binder which binds the rows as the map keys
-// and extracts the map values from the keys.
-func NewMapRowsBinderForKey[M ~map[K]V, K comparable, V any](valuef func(K) V) RowsBinder {
-	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		defer recoverBinding(&err)
-
-		var m M
-		switch v := dst.(type) {
-		case M:
-			if v == nil {
-				panic("sqlx.NewMapRowsBinderForKey: map value must not be nil")
-			}
-			m = v
-
-		case *M:
-			if *v == nil {
-				*v = make(M, getrowscap(scanner, DefaultRowsCap))
-			}
-			m = *v
-
-		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKey", Type: gettype(dst)}
-		}
-
-		for scanner.Next() {
-			var key K
-			if err = scanner.Scan(&key); err != nil {
-				return
-			}
-			m[key] = valuef(key)
-		}
-
-		return scanner.Err()
-	})
-}
-
-// NewMapRowsBinderForValue returns a rows binder which binds the rows as the map values
-// and extracts the map keys from the values.
-func NewMapRowsBinderForValue[M ~map[K]V, K comparable, V any](keyf func(V) K) RowsBinder {
-	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		defer recoverBinding(&err)
-
-		var m M
-		switch v := dst.(type) {
-		case M:
-			if v == nil {
-				panic("sqlx.NewMapRowsBinderForValue: map value must not be nil")
-			}
-			m = v
-
-		case *M:
-			if *v == nil {
-				*v = make(M, getrowscap(scanner, DefaultRowsCap))
-			}
-			m = *v
-
-		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForValue", Type: gettype(dst)}
-		}
-
-		for scanner.Next() {
-			var value V
-			if err = scanner.Scan(&value); err != nil {
-				return
-			}
-			m[keyf(value)] = value
-		}
-
-		return scanner.Err()
-	})
-}
-
-// NewMapRowsBinderForKeyValue returns a rows binder which binds the rows as the map keys and values.
-//
-// Notice: each row must have two columns as key and value from front to back.
-func NewMapRowsBinderForKeyValue[M ~map[K]V, K comparable, V any]() RowsBinder {
-	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		defer recoverBinding(&err)
-
-		var m M
-		switch v := dst.(type) {
-		case M:
-			if v == nil {
-				panic("sqlx.NewMapRowsBinderForKeyValue: map value must not be nil")
-			}
-			m = v
-
-		case *M:
-			if *v == nil {
-				*v = make(M, getrowscap(scanner, DefaultRowsCap))
-			}
-			m = *v
-
-		default:
-			return UnsupportedTypeError{Name: "sqlx.NewMapRowsBinderForKeyValue", Type: gettype(dst)}
-		}
-
-		for scanner.Next() {
-			var key K
-			var value V
-			if err = scanner.Scan(&key, &value); err != nil {
-				return
-			}
-			m[key] = value
-		}
-
-		return scanner.Err()
-	})
-}
-
-// NewSliceRowsBinder returns a rows binder which binds the rows as the slice.
-//
-// It does not use the reflect package.
-func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder {
-	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		defer recoverBinding(&err)
-
-		dstps, ok := dst.(*S)
-		if !ok {
-			return UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: gettype(dst)}
-		}
-
-		dsts := *dstps
-		if cap(dsts) == 0 {
-			dsts = make(S, 0, getrowscap(scanner, DefaultRowsCap))
-		}
-
-		for scanner.Next() {
-			var value T
-			if err := scanner.Scan(&value); err != nil {
-				return err
-			}
-			dsts = append(dsts, value)
-		}
-
-		if err = scanner.Err(); err != nil {
-			return
-		}
-
-		*dstps = dsts
-		return
-	})
-}
-
-func commonSliceRowsBinder(scanner RowScanner, dst any) (err error) {
-	defer recoverBinding(&err)
-
-	oldvf := reflect.ValueOf(dst)
-	if oldvf.Kind() != reflect.Pointer {
-		panic("sqlx.CommonSliceRowsBinder: the value must be a pointer to a slice")
-	}
-
-	vf := oldvf.Elem()
-	if vf.Kind() != reflect.Slice {
-		panic("sqlx.CommonSliceRowsBinder: the value must be a pointer to a slice")
-	}
-
-	vt := vf.Type()
-	if vf.Cap() == 0 {
-		vf.Set(reflect.MakeSlice(vt, 0, getrowscap(scanner, DefaultRowsCap)))
-	}
-
-	et := vt.Elem()
-	for scanner.Next() {
-		e := reflect.New(et)
-		if err := scanner.Scan(e.Interface()); err != nil {
-			return err
-		}
-		vf = reflect.Append(vf, e.Elem())
-	}
-
-	if err = scanner.Err(); err != nil {
-		return
-	}
-
-	oldvf.Elem().Set(vf)
-	return
-}
-
-// NewDegradedSliceRowsBinder returns a rows binder which prefers to try to
-// bind *S to the rows, or use the degraded rows binder to bind the rows.
-func NewDegradedSliceRowsBinder[S ~[]T, T any](degraded RowsBinder) RowsBinder {
-	binder := NewSliceRowsBinder[S]()
-	return RowsBinderFunc(func(scanner RowScanner, dst any) error {
-		if dstps, ok := dst.(*S); ok {
-			return binder.BindRows(scanner, dstps)
-		}
-		return degraded.BindRows(scanner, dst)
-	})
-}
-
-// ComposeRowsBinders returns a composed rows binder which tries each binder in order.
-//
-// If the binder returns an UnsupportedTypeError, the next binder is tried.
+// ComposeRowsBinders tries Prepare in order. Unsupported destinations fall
+// through; validation errors stop selection. Empty/all-nil chains return an
+// UnsupportedTypeError. Put SliceRowsBinder last when a general fallback is wanted.
 func ComposeRowsBinders(binders ...RowsBinder) RowsBinder {
-	binders = append([]RowsBinder(nil), binders...)
-	return RowsBinderFunc(func(scanner RowScanner, dst any) (err error) {
-		defer recoverBinding(&err)
+	binders = slices.Clone(binders)
+	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
+		if err := options.validate(); err != nil {
+			return nil, err
+		}
 
 		for _, binder := range binders {
-			if binder == nil {
+			if nilBindingValue(binder) {
 				continue
 			}
 
-			err = binder.BindRows(scanner, dst)
+			binding, err := binder.Prepare(dst, options)
 			if err == nil || !IsUnsupportedTypeError(err) {
-				return err
+				return binding, err
 			}
 		}
-		return
+
+		return unsupportedBinder("sqlx.ComposeRowsBinders", dst)
 	})
+}
+
+// SliceRowsBinder binds any pointer to a slice. It uses typed paths for common
+// scalars and reflection for other element types. It never guesses map semantics.
+type SliceRowsBinder struct{}
+
+func (SliceRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error) {
+	if binder := builtinSliceBinders[reflect.TypeOf(dst)]; binder != nil {
+		return binder.Prepare(dst, options)
+	}
+
+	v := reflect.ValueOf(dst)
+	if !v.IsValid() || v.Kind() != reflect.Pointer || v.Type().Elem().Kind() != reflect.Slice {
+		return unsupportedBinder("sqlx.SliceRowsBinder", dst)
+	}
+
+	if v.IsNil() {
+		return nil, errors.New("sqlx: nil slice destination")
+	}
+
+	if err := validateSliceOptions(options); err != nil {
+		return nil, err
+	}
+
+	return &sliceRowsBinding{
+		pointer:  v,
+		capacity: options.capacity(),
+		mode:     options.Mode,
+	}, nil
+}
+
+type sliceRowsBinding struct {
+	pointer  reflect.Value
+	staged   reflect.Value
+	capacity int
+	mode     BindMode
+}
+
+func (b *sliceRowsBinding) Commit() {
+	b.pointer.Elem().Set(b.staged)
+}
+
+func (b *sliceRowsBinding) Scan(scanner RowsScanner) error {
+	t := b.pointer.Elem().Type()
+	scan, err := prepareBindingScan(scanner, reflect.PointerTo(t.Elem()))
+	if err != nil {
+		return err
+	}
+	defer rowbind.Release(scan)
+
+	base := 0
+	if b.mode == BindAppend {
+		base = b.pointer.Elem().Len()
+	}
+	if base > int(^uint(0)>>1)-b.capacity {
+		return errors.New("sqlx: slice capacity overflow")
+	}
+
+	// The plan copies the destinations, so this argument vector can stay local.
+	args := []any{nil}
+	staged := reflect.New(t).Elem()
+
+	row := 0
+	for scanner.Next() {
+		row++
+		if row == 1 {
+			staged.Set(reflect.MakeSlice(t, base+b.capacity, base+b.capacity))
+			if base > 0 {
+				reflect.Copy(staged, b.pointer.Elem())
+			}
+		}
+
+		// Expose allocated slots once per growth; publish the actual length
+		// only after successful scanning. No per-row Grow/SetLen is needed.
+		if base+row > staged.Len() {
+			staged.Grow(1)
+			staged.SetLen(staged.Cap())
+		}
+
+		args[0] = staged.Index(base + row - 1).Addr().Interface()
+		if err := scan.ScanCurrent(args...); err != nil {
+			return &BindError{row, err}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return &BindError{row + 1, err}
+	}
+
+	if row == 0 {
+		if b.mode == BindAppend {
+			staged.Set(b.pointer.Elem())
+		} else {
+			staged.Set(reflect.MakeSlice(t, 0, 0))
+		}
+	} else {
+		staged.SetLen(base + row)
+	}
+
+	b.staged = staged
+	return nil
+}
+
+func validateSliceOptions(options BindOptions) error {
+	if err := options.validate(); err != nil {
+		return err
+	}
+	if options.Mode == BindMerge {
+		return errors.New("sqlx: Merge requires a map destination")
+	}
+	return nil
+}
+
+// NewSliceRowsBinder avoids reflection for slice growth and element storage.
+// Element conversion and struct field mapping still use the shared scan engine.
+func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder { return typedSliceRowsBinder[S, T]{} }
+
+type typedSliceRowsBinder[S ~[]T, T any] struct{}
+
+func (b typedSliceRowsBinder[S, T]) Prepare(dst any, options BindOptions) (RowsBinding, error) {
+	state, err := b.prepare(dst, options)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedSliceBinding[S, T], error) {
+	pointer, ok := dst.(*S)
+	if !ok {
+		return nil, UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: gettype(dst)}
+	}
+	if pointer == nil {
+		return nil, errors.New("sqlx: nil slice destination")
+	}
+	if err := validateSliceOptions(options); err != nil {
+		return nil, err
+	}
+	return &typedSliceBinding[S, T]{
+		pointer:  pointer,
+		capacity: options.capacity(),
+		mode:     options.Mode,
+	}, nil
+}
+
+type typedSliceBinding[S ~[]T, T any] struct {
+	pointer  *S
+	staged   S
+	args     [1]any
+	capacity int
+	mode     BindMode
+}
+
+func (b *typedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
+
+func (b *typedSliceBinding[S, T]) Scan(scanner RowsScanner) error {
+	scan, err := prepareBindingScan(scanner, reflect.TypeFor[*T]())
+	if err != nil {
+		return err
+	}
+
+	defer rowbind.Release(scan)
+	defer clear(b.args[:])
+
+	b.staged = make(S, 0)
+	base := 0
+	if b.mode == BindAppend {
+		base = len(*b.pointer)
+	}
+	if base > int(^uint(0)>>1)-b.capacity {
+		return errors.New("sqlx: slice capacity overflow")
+	}
+
+	var zero T
+	row := 0
+	for scanner.Next() {
+		row++
+		if row == 1 {
+			b.staged = make(S, base, base+b.capacity)
+			copy(b.staged, (*b.pointer)[:base])
+		}
+
+		b.staged = append(b.staged, zero)
+		b.args[0] = &b.staged[len(b.staged)-1]
+		if err := scan.ScanCurrent(b.args[:]...); err != nil {
+			return &BindError{row, err}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return &BindError{row + 1, err}
+	}
+	if row == 0 && b.mode == BindAppend {
+		b.staged = *b.pointer
+	}
+	return nil
+}
+
+// NewMapPairsBinder scans two positional columns as key and value. Duplicate
+// keys fail by default. Only a non-nil pointer to M is accepted.
+func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
+	return mapRowsBinder[M](false, nil, func(scanner RowsScanner) (func() (K, V, error), *rowbind.Plan, error) {
+		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*K](), reflect.TypeFor[*V]())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		args := make([]any, 2)
+		if scan.ReusableMapValues() {
+			var key K
+			var value V
+			args[0], args[1] = &key, &value
+			return func() (K, V, error) {
+				var zeroK K
+				var zeroV V
+				key, value = zeroK, zeroV
+				err := scan.ScanCurrent(args...)
+				return key, value, err
+			}, scan, nil
+		}
+
+		return func() (key K, value V, err error) {
+			args[0], args[1] = &key, &value
+			err = scan.ScanCurrent(args...)
+			return
+		}, scan, nil
+	})
+}
+
+// NewMapIndexBinder scans each row as V and computes its key. A nil key function
+// is a preparation error. Duplicate keys fail by default.
+func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinder {
+	var configError error
+	if key == nil {
+		configError = errors.New("sqlx: nil map key function")
+	}
+
+	return mapRowsBinder[M](false, configError, func(scanner RowsScanner) (func() (K, V, error), *rowbind.Plan, error) {
+		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*V]())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		args := []any{nil}
+		if scan.ReusableMapValues() {
+			var value V
+			args[0] = &value
+			return func() (k K, v V, err error) {
+				var zero V
+				value = zero
+				if err = scan.ScanCurrent(args...); err == nil {
+					k = key(value)
+				}
+				return k, value, err
+			}, scan, nil
+		}
+
+		return func() (k K, value V, err error) {
+			args[0] = &value
+			if err = scan.ScanCurrent(args...); err == nil {
+				k = key(value)
+			}
+			return
+		}, scan, nil
+	})
+}
+
+// NewMapSetBinder scans each row as a set key. Duplicate keys are intentionally
+// deduplicated, including during Merge. Use map[K]struct{} to express a set.
+func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
+	return mapRowsBinder[M](true, nil, func(scanner RowsScanner) (func() (K, struct{}, error), *rowbind.Plan, error) {
+		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*K]())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		args := []any{nil}
+		if scan.ReusableMapValues() {
+			var key K
+			args[0] = &key
+			return func() (K, struct{}, error) {
+				var zero K
+				key = zero
+				err := scan.ScanCurrent(args...)
+				return key, struct{}{}, err
+			}, scan, nil
+		}
+
+		return func() (key K, value struct{}, err error) {
+			args[0] = &key
+			err = scan.ScanCurrent(args...)
+			return
+		}, scan, nil
+	})
+}
+
+func mapRowsBinder[M ~map[K]V, K comparable, V any](set bool, configError error,
+	prepare func(RowsScanner) (func() (K, V, error), *rowbind.Plan, error),
+) RowsBinder {
+	checkKey := dynamicMapKey(reflect.TypeFor[K]())
+	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
+		pointer, ok := dst.(*M)
+
+		if !ok {
+			return unsupportedBinder("sqlx.MapRowsBinder", dst)
+		}
+		if pointer == nil {
+			return nil, errors.New("sqlx: nil map destination")
+		}
+		if err := options.validate(); err != nil {
+			return nil, err
+		}
+		if options.Mode == BindAppend {
+			return nil, errors.New("sqlx: Append requires a slice destination")
+		}
+		if configError != nil {
+			return nil, configError
+		}
+
+		return &mapRowsBinding[M, K, V]{
+			pointer: pointer, prepare: prepare, capacity: options.capacity(), mode: options.Mode,
+			duplicates: options.DuplicateKeys, set: set, checkKey: checkKey,
+		}, nil
+	})
+}
+
+type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
+	pointer    *M
+	staged     M
+	prepare    func(RowsScanner) (func() (K, V, error), *rowbind.Plan, error)
+	capacity   int
+	mode       BindMode
+	duplicates DuplicateKeyPolicy
+	set        bool
+	checkKey   bool
+}
+
+func (b *mapRowsBinding[M, K, V]) Commit() { *b.pointer = b.staged }
+
+func (b *mapRowsBinding[M, K, V]) Scan(scanner RowsScanner) error {
+	scan, plan, err := b.prepare(scanner)
+	if err != nil {
+		return err
+	}
+	defer rowbind.Release(plan)
+
+	base := 0
+	if b.mode == BindMerge {
+		base = len(*b.pointer)
+	}
+	if base > int(^uint(0)>>1)-b.capacity {
+		return errors.New("sqlx: map capacity overflow")
+	}
+
+	row := 0
+	for scanner.Next() {
+		row++
+		if row == 1 {
+			b.staged = make(M, base+b.capacity)
+			if b.mode == BindMerge {
+				maps.Copy(b.staged, *b.pointer)
+			}
+		}
+
+		key, value, err := scan()
+		if err != nil {
+			return &BindError{row, err}
+		}
+
+		if b.checkKey {
+			if v := reflect.ValueOf(key); v.IsValid() && !v.Comparable() {
+				return &BindError{row, fmt.Errorf("sqlx: non-comparable map key %T", key)}
+			}
+		}
+
+		if !b.set && b.duplicates != DuplicateKeyLast {
+			if _, exists := b.staged[key]; exists {
+				if b.duplicates == DuplicateKeyReject {
+					return &BindError{row, &DuplicateKeyError{key}}
+				}
+				continue
+			}
+		}
+
+		b.staged[key] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+		return &BindError{row + 1, err}
+	}
+
+	if row == 0 {
+		if b.mode == BindMerge {
+			b.staged = *b.pointer
+		}
+		if b.staged == nil {
+			b.staged = make(M)
+		}
+	}
+
+	return nil
+}
+
+// A comparable type can contain interfaces whose dynamic values are not
+// comparable. Ordinary scalar, pointer and interface-free aggregate keys need
+// no per-row reflection or interface boxing.
+func dynamicMapKey(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Interface:
+		return true
+
+	case reflect.Array:
+		return t.Len() != 0 && dynamicMapKey(t.Elem())
+
+	case reflect.Struct:
+		for field := range t.Fields() {
+			if dynamicMapKey(field.Type) {
+				return true
+			}
+		}
+	}
+	return false
 }

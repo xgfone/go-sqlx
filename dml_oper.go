@@ -18,6 +18,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"reflect"
 	"slices"
 	"time"
 )
@@ -34,7 +35,7 @@ type Oper[T any] struct {
 	SoftDeleteUpdater func(context.Context) Updater
 
 	conditions []Condition
-	binder     binder
+	bindConfig *BindConfig
 }
 
 func NewOper[T any](name string) Oper[T] {
@@ -42,18 +43,17 @@ func NewOper[T any](name string) Oper[T] {
 }
 
 func NewOperWithTable[T any](table Table) Oper[T] {
+	DefaultMixRowsBinder.registerDefault(
+		reflect.TypeFor[*[]T](),
+		NewSliceRowsBinder[[]T](),
+	)
+
 	return Oper[T]{
 		Table: table,
 
 		SoftCondition:     OnArg("deleted_at", nil),
 		DeletedCondition:  ConditionFunc(func(c *BuildContext) string { return c.Quote("deleted_at") + " IS NOT NULL" }),
 		SoftDeleteUpdater: func(context.Context) Updater { return Set("deleted_at", time.Now()) },
-
-		binder: binder{
-			rowscap: DefaultRowsCap,
-			wrapper: defaultbinder.wrapper,
-			binder:  ComposeRowsBinders(NewSliceRowsBinder[[]T](), defaultbinder.binder),
-		},
 	}
 }
 
@@ -63,15 +63,28 @@ func (o Oper[T]) GetDB() *DB    { return o.Table.GetDB() }
 func (o Oper[T]) WithDB(db *DB) Oper[T]       { o.Table.SetDB(db); return o }
 func (o Oper[T]) WithTable(t Table) Oper[T]   { o.Table = t; return o }
 func (o Oper[T]) WithSorter(s Sorter) Oper[T] { o.Sorter = s; return o }
-func (o Oper[T]) WithRowsCap(n int) Oper[T]   { o.binder.rowscap = n; return o }
 
-func (o Oper[T]) WithRowsBinder(b RowsBinder) Oper[T]               { o.binder.binder = b; return o }
-func (o Oper[T]) WithRowScannerWrapper(w RowScannerWrapper) Oper[T] { o.binder.wrapper = w; return o }
-
-func (o Oper[T]) RowsBinder() RowsBinder { return o.binder.binder }
-func (o Oper[T]) AppendRowsBinders(bs ...RowsBinder) Oper[T] {
-	o.binder.binder = ComposeRowsBinders(append([]RowsBinder{o.binder.binder}, bs...)...)
+// WithBindConfig overrides the DB binding configuration for this operation.
+func (o Oper[T]) WithBindConfig(config BindConfig) Oper[T] {
+	config = config.clone()
+	o.bindConfig = &config
 	return o
+}
+
+// WithBinder selects a shared collection binder, preserving inherited scan and
+// capacity options. A nil binder restores the default registry.
+func (o Oper[T]) WithBinder(binder RowsBinder) Oper[T] {
+	config := o.binding()
+	config.Binder = binder
+	o.bindConfig = &config
+	return o
+}
+
+func (o Oper[T]) binding() BindConfig {
+	if o.bindConfig != nil {
+		return *o.bindConfig
+	}
+	return o.GetDB().binding()
 }
 
 func (o Oper[T]) WithSoftCondition(c Condition) Oper[T]    { o.SoftCondition = c; return o }
@@ -94,7 +107,9 @@ func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 // Select creates a column query; typed model fields use SelectStruct instead.
 func (o Oper[T]) Select(columns ...string) *SelectBuilder {
 	q := o.Table.Select(columns...).Where(o.conditions...).Sort(o.Sorter)
-	q.binder = o.binder
+	// Owned configurations are immutable. The default model binder is already
+	// registered by NewOper, so queries need no extra configuration allocation.
+	q.bconfig = o.bindConfig
 	return q
 }
 

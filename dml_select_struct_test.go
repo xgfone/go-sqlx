@@ -20,6 +20,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
 func ExampleSelectBuilder_SelectStruct() {
@@ -145,8 +147,8 @@ func TestSelectStructMetadataCache(t *testing.T) {
 	Select().SelectStruct(SS2{}, "")
 	Select().SelectStruct(SS2{}, "A")
 
-	fields, err := fieldsFor(reflect.TypeFor[SS1]())
-	if err != nil || len(fields) != 2 {
-		t.Fatalf("%v %v", fields, err)
+	meta, err := rowbind.Describe(reflect.TypeFor[SS1]())
+	if err != nil || len(meta.Fields()) != 2 {
+		t.Fatalf("%v %v", meta, err)
 	}
 }

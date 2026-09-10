@@ -60,16 +60,16 @@ func writeQuotedPath(buf *strings.Builder, d Dialect, name string) {
 	for {
 		part, rest, more := strings.Cut(name, ".")
 		if part == "*" && !more {
-			buf.WriteByte('*')
+			_ = buf.WriteByte('*')
 		} else {
-			buf.WriteString(d.QuoteIdent(part))
+			dialect.WriteIdent(buf, d, part)
 		}
 
 		if !more {
 			return
 		}
 
-		buf.WriteByte('.')
+		_ = buf.WriteByte('.')
 		name = rest
 	}
 }

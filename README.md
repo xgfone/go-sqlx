@@ -2,16 +2,16 @@
 
 [![Build Status](https://github.com/xgfone/go-sqlx/actions/workflows/go.yml/badge.svg)](https://github.com/xgfone/go-sqlx/actions/workflows/go.yml)
 [![GoDoc](https://pkg.go.dev/badge/github.com/xgfone/go-sqlx)](https://pkg.go.dev/github.com/xgfone/go-sqlx)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xgfone/go-sqlx/master/LICENSE)
 ![Minimum Go Version](https://img.shields.io/github/go-mod/go-version/xgfone/go-sqlx?label=Go%2B)
 ![Latest SemVer](https://img.shields.io/github/v/tag/xgfone/go-sqlx?sort=semver)
 
 Package `sqlx` provides composable SQL builders and `database/sql` adapters.
 Builders are the foundation; `Oper[T]` is an optional struct-aware convenience
 layer. Dialects live in `dialect`; column value adapters live in `sqltype`.
-The main module has no third-party dependencies. Optional go-op integration
-requires a separate adapter. The extracted adapter is being prepared for a
-dedicated repository and is not included here.
+The main module has no third-party dependencies. Applications can integrate
+other predicate libraries through the exported clause interfaces.
+
+Go 1.27 or newer is required. Model selection uses generic methods.
 
 ```shell
 go get github.com/xgfone/go-sqlx
@@ -34,8 +34,8 @@ or other explicitly asserted invariants. `String()` returns SQL or a diagnostic;
 it must not be used in place of checking `Build` errors.
 
 Builders retain the first error encountered while collecting inputs. `Reset()`
-clears that error and all statement clauses while retaining DB, executor and
-explicit dialect configuration. `ClearXxx()` clears only the named clause.
+clears that error and all statement clauses while retaining DB, executor,
+explicit dialect and binding configuration. `ClearXxx()` clears only the named clause.
 
 All execution helpers require context: `ExecContext`, `QueryRowsContext`,
 `QueryRowContext`. They propagate build failures without executing SQL.
@@ -55,10 +55,139 @@ iteration, check `rows.Err()`, defer `rows.Close()`, iterate with `Next`, and ch
 `Err()` after the loop. An unread `Row` can be explicitly closed. `Row.Bind`
 returns `(found bool, err error)`; `Scan` uses `sql.ErrNoRows`.
 
+## Binding results
+
+`Rows.Bind(&slice)` replaces the slice. Use `Rows.Append(&slice)` to append,
+or `Rows.Merge(&map)` to merge map entries. Built-in binders scan into independent
+storage and publish it only after iteration and closing the result succeed.
+An error leaves the original collection and its backing storage unchanged.
+Successful replacement of an empty result produces a non-nil empty collection.
+Existing pointer elements are shallow-copied when appending or merging.
+
+Map semantics are explicit, including for named map types:
+
+```go
+type User struct {
+    ID   int64  `sql:"id"`
+    Name string `sql:"name"`
+}
+
+// Define reusable binders outside request handlers.
+var (
+    namesBinder = sqlx.NewMapPairsBinder[map[int64]string]()
+    usersBinder = sqlx.NewMapIndexBinder[map[int64]User](func(u User) int64 { return u.ID })
+    idsBinder   = sqlx.NewMapSetBinder[map[int64]struct{}]()
+)
+
+// Two positional columns: key and value.
+var names map[int64]string
+err := db.Select("id", "name").From("users").QueryRowsContext(ctx).
+    WithBinder(namesBinder).Bind(&names)
+
+// Whole rows indexed by a key derived from the scanned value.
+var byID map[int64]User
+err = db.Select("id", "name").From("users").QueryRowsContext(ctx).
+    WithBinder(usersBinder).Bind(&byID)
+
+// A set of scanned keys; repeats are deduplicated.
+var ids map[int64]struct{}
+err = db.Select("id").From("users").QueryRowsContext(ctx).
+    WithBinder(idsBinder).Bind(&ids)
+```
+
+Map destinations must be non-nil pointers; their underlying maps may be nil.
+Pairs and indexes reject duplicate keys by default. `DuplicateKeyFirst` and
+`DuplicateKeyLast` select which value survives. The policy also applies to
+collisions with existing entries during `Merge`.
+
+The shared `DefaultMixRowsBinder` is used when no binder is explicitly selected.
+It registers common scalar slice binders at initialization; `NewOper[T]` also
+registers the typed `[]T` binder once unless a registration already exists.
+Other slices use the reflection fallback. Applications can register a reusable
+binder for the exact destination type, including named slice and map types:
+
+```go
+func init() {
+    sqlx.DefaultMixRowsBinder.RegisterType[*map[int64]User](usersBinder)
+}
+
+// Subsequent queries can use the registration without a local override.
+var byID map[int64]User
+err := db.Select("id", "name").From("users").QueryRowsContext(ctx).Bind(&byID)
+```
+
+`Register(reflect.Type, binder)`, `Get`, and `Unregister` are also available.
+Registry operations are concurrent safe; replacing a registration affects
+subsequent preparation, not bindings already prepared. The latest explicit
+registration wins, and `NewOper` never overwrites it. A selected registration's
+errors are returned without retrying the general slice fallback. An independent
+`NewMixRowsBinder()` can be selected through `WithBinder`.
+
+`DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` share the supplied
+binder while preserving the other options. A nil binder restores the shared
+registry. Applying `Rows.WithBinder` immediately before Bind needs no binder
+clone or configuration allocation. Collection binders are reusable; their
+per-query `RowsBinding` state and destination storage remain independent.
+
+Configure binding on a DB and inherit it through Table, Oper, transactions,
+raw queries, and builders, including INSERT/UPDATE/DELETE RETURNING:
+
+```go
+db = db.WithBindConfig(sqlx.BindConfig{
+    Capacity:      128, // Allocation hint; zero uses DefaultRowsCapacity.
+    DuplicateKeys: sqlx.DuplicateKeyReject,
+    Scan: sqlx.ScanOptions{
+        Nulls:          sqlx.NullToZero,
+        DurationUnit:   time.Millisecond,
+        NestedPointers: sqlx.NilNullNestedPointers,
+    },
+})
+```
+
+Use `SetBindConfig` on a builder, `WithBindConfig` on an Oper or Rows, or
+`WithScanOptions` on Row/Rows for a local override. Configurations replace the
+whole prior configuration and copy `TimeLayouts`. Capacity and scan policies
+remain per-configuration; the binder registry is shared. `WithExecutor` preserves
+the DB configuration. Builder `Clone` and `Reset` preserve its explicit override.
+
+Scalar pointers and values use the same conversions: both `time.Duration` and
+`*time.Duration` interpret numeric sources in the configured unit. NULL clears
+scalar values by default; `NullError` rejects NULL for non-nullable scalars.
+Nullable pointers, byte slices, and empty interfaces can retain NULL. Custom
+`sql.Scanner` value fields receive the original input, including NULL; nullable
+pointers to scanners remain nil on NULL. Custom scanners control their conversion.
+Built-in byte destinations (including `sql.RawBytes` and pointer chains) receive
+owned copies; a custom scanner must copy driver buffers it retains.
+
+`RowScanner` describes scanning a row; `RowsScanner` additionally supplies
+`Next` and `Err`. Row is not an iterator. `PrepareScan` validates column/type
+mapping before iteration and returns a reusable scan function. Struct mappings
+are cached across results by model type, ordered result labels, and mapping
+policies. Collection binders keep mutable scan state per result; manual
+`Rows.Scan` reuses its current destination setup. `Row.Scan`/`Rows.Scan` may
+partially update a row on error, as in
+`database/sql`; collection binding provides the staged commit guarantee.
+Single-row `Row.Bind` uses the row scanner and does not invoke `RowsBinder`;
+customize field conversion with `sql.Scanner` or `WithScanOptions`.
+
+Extensions implement `RowsBinder.Prepare(dst, BindOptions)`, returning
+an independent, non-nil `RowsBinding` with `Scan(RowsScanner) error` and
+`Commit()` methods. Built-in Slice and Map states implement this interface
+directly. Callback implementations can return
+`RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`; both callbacks are required.
+Preparation has no cursor and must not mutate the destination.
+`ComposeRowsBinders` tries preparation in order, falling through
+only on `UnsupportedTypeError`. Once selected, scan errors never trigger another
+binder. Put `SliceRowsBinder{}` last for a general slice fallback. Custom binders
+must stage writes, honor or reject the requested mode, and provide a non-failing
+Commit; their own side effects cannot be rolled back. Custom callback panics
+propagate while the owning result is still closed. `BindError` exposes the
+one-based failing row and unwraps the underlying error.
+
 ## Tables and transactions
 
 `Table` contains a name and a private DB reference. It exposes only table-bound
-`Insert`, `Update`, `Delete`, `Select`, and `SelectStruct` entry points.
+`Insert`, `Update`, `Delete`, `Select`, `SelectStruct`, and `SelectType` entry points.
 `SetDB` supports initializing predeclared tables/operations; `WithDB` returns a
 copy. `GetDB` returns the effective DB, falling back to `DefaultDB`.
 Configure mutable defaults and DB references before concurrent use.
@@ -104,10 +233,10 @@ preserves the wildcard; `Ident("*")` is a literal identifier.
 `Expr(sql, args...)` uses two sqlx template markers when arguments are present.
 The template is independent of the database's parameter syntax:
 
-| Marker | Meaning |
-| --- | --- |
-| `?` | Consumes the next argument. An `Expression`, including `Ident` or `Subquery`, renders in the current context; other values bind through the dialect's placeholder API. |
-| `??` | Emits a literal `?` and consumes no argument. For PostgreSQL JSON operators, `??`, `??\|` and `??&` emit `?`, `?\|` and `?&`. Use `?` with `Ident` for identifiers. |
+| Marker | Meaning                                                                                                                                                                |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `?`    | Consumes the next argument. An `Expression`, including `Ident` or `Subquery`, renders in the current context; other values bind through the dialect's placeholder API. |
+| `??`   | Emits a literal `?` and consumes no argument. For PostgreSQL JSON operators, `??`, `??\|` and `??&` emit `?`, `?\|` and `?&`. Use `?` with `Ident` for identifiers.    |
 
 For example, `Expr("? + 1", Ident("version"))` renders a quoted column plus 1,
 with no bound values. `Expr("? + ?", Ident("version"), 1)` renders that column
@@ -196,7 +325,6 @@ An INSERT requires exactly one source: nonempty Values/Row/Struct(s),
 successful no-op. `Default()` represents a SQL DEFAULT value where supported.
 Nil INSERT/SET values bind SQL NULL. `OnArg(column,nil)` renders IS NULL.
 Other predicates can use `Expr(...).Condition()` or a custom `Condition`.
-The Op adapter retains its NULL comparison and empty IN/NOT IN semantics.
 
 PostgreSQL/SQLite support `OnConflictDoNothing` and `OnConflictDoUpdate`.
 MySQL has explicit `OnDuplicateKeyUpdate`, `Ignore`, and `Replace` modes, which
@@ -218,13 +346,37 @@ Time, sql.Scanner and driver.Valuer types remain scalar fields, including
 pointer-receiver implementations. Duplicate mapped columns and recursive
 embedded models are rejected; exclude recursive relationships with `sql:"-"`.
 
+Type metadata is compiled once on first use, including concurrent first use.
+Binding also caches the ordered field mapping, compiled field setters, and
+nullable-parent groups. Numeric setters are shared across model types. Warm
+mapping lookups do not allocate. Conversion options
+and destination addresses remain local to each scan. Each model retains up to 32
+successful mapping shapes, each with at most 256 columns and 16 KiB of label
+text; excess shapes still bind normally through uncached mapping preparation.
+The first retained shape has a direct comparison path for fixed Oper queries.
+
+The implementation lives in [internal/rowbind](internal/rowbind/doc.go): model
+parsing, scan layouts, setters, scalar conversions and scratch storage are kept
+behind its internal API. The root package handles SQL expression caching,
+result ownership, binder registration and collection commits. SQL projection
+expressions are created only when a model is selected, not when it is only bound.
+
 `SelectStruct(model, qualifier)` only appends columns; qualifier does not set
-FROM. A typed nil pointer is sufficient for selecting a model's type. A custom
+FROM. Its model type is inferred by the generic method. `SelectType[Model](qualifier)`
+selects mapped fields without a model value and deliberately ignores per-instance
+column providers; Table provides corresponding methods without a qualifier. Ordinary model
+projections share immutable cached identifier expressions, while each builder
+owns its column container. A typed nil pointer is also sufficient for selecting
+a model's type with SelectStruct. A custom
 `ColumnProvider.Columns(qualifier)` is evaluated per call and is not cached by
 type. Actual result binding uses driver-reported column labels, so wildcards
-and expression aliases work. Unknown result labels are ignored; duplicate labels
-mapping to one field require explicit aliases. Nested pointers are allocated
-when scanning their selected fields. Nil struct destinations return errors.
+and expression aliases work. Unknown result labels are errors unless
+`ScanOptions.IgnoreUnknownColumns` is true; duplicate labels mapping to one field
+require explicit aliases. Nested pointers are allocated when scanning their
+selected fields by default. `NilNullNestedPointers` instead leaves/resets a
+nested parent to nil when all its selected mapped columns are NULL, which is
+useful for outer joins. Unselected fields are unchanged unless that policy resets
+their parent to nil. Nil struct destinations return errors.
 
 Without explicit `Columns`, `Struct` omits zero-valued leaf fields tagged
 `omitempty`/`omitzero`. `Structs` keeps all mapped columns and emits SQL `DEFAULT`
@@ -304,14 +456,6 @@ the database. An empty renderer result must not add arguments. A clause with
 no effective predicates or assignments is rejected; nil conditions and native
 empty AND groups passed to Where/Having are skipped.
 
-The extracted adapter owns `OpBuilder`, its registry, and `BuildOp`/`BuildOper`.
-Its planned API, `Where(opadapter.Condition(op.Eq("id", 7)))`, uses an existing Op
-predicate without making the core depend on go-op. Native and adapted conditions
-can be combined with `sqlx.And`/`sqlx.Or`.
-
-`go test ./...` and `go test -race ./...` cover building, binding, and transaction
-dispatch in this module. CI runs the main module's tests; the separate adapter
-will maintain its own tests in its dedicated repository.
 A test additionally executes generated SQL with bound parameters in
 Python's SQLite 3.39+ when available. PostgreSQL/MySQL grammar and feature guards
 are tested as generated SQL; tests do not require those database servers.

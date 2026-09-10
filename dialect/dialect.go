@@ -161,6 +161,39 @@ func (d builtin) QuoteIdent(name string) string {
 	return quote + strings.ReplaceAll(name, quote, quote+quote) + quote
 }
 
+// WriteIdent writes one quoted identifier into buf. Built-in dialects avoid
+// an intermediate string; custom dialects retain their QuoteIdent behavior.
+// As with QuoteIdent, name is a single identifier, not a path or wildcard.
+func WriteIdent(buf *strings.Builder, d Dialect, name string) {
+	builtinDialect, ok := d.(builtin)
+	if !ok {
+		_, _ = buf.WriteString(d.QuoteIdent(name))
+		return
+	}
+
+	if name == "" || strings.IndexByte(name, 0) >= 0 {
+		panic("dialect: identifier must be nonempty and contain no NUL")
+	}
+
+	quote := byte('"')
+	if builtinDialect == "mysql" {
+		quote = '`'
+	}
+
+	buf.WriteByte(quote)
+	for {
+		i := strings.IndexByte(name, quote)
+		if i < 0 {
+			buf.WriteString(name)
+			break
+		}
+		buf.WriteString(name[:i+1])
+		buf.WriteByte(quote)
+		name = name[i+1:]
+	}
+	buf.WriteByte(quote)
+}
+
 func (d builtin) LimitOffset(p Pagination) string {
 	if p.Offset < 0 || p.Limit < 0 {
 		panic("dialect: limit and offset must be nonnegative")

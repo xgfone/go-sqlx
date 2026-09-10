@@ -103,16 +103,3 @@ func OnArg(left string, right any) Condition {
 		return c.Quote(left) + "=" + c.Value(right)
 	})
 }
-
-func clause(c *BuildContext, name string, conds []Condition) string {
-	if len(conds) == 0 {
-		return ""
-	}
-
-	s := And(conds...).BuildCondition(c)
-	if s == "" {
-		panic(name + " contains no effective conditions")
-	}
-
-	return " " + name + " " + s
-}

@@ -1,157 +1,106 @@
-// Copyright 2025 xgfone
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright 2026 xgfone
+// SPDX-License-Identifier: Apache-2.0
 
 package sqlx
 
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"reflect"
+	"slices"
+
+	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-// QueryRowOneContext executes raw SQL and returns the library's struct-aware Row.
+// QueryRowOneContext executes raw SQL and returns a struct-aware single row.
 func (db *DB) QueryRowOneContext(ctx context.Context, query string, args ...any) Row {
-	return NewRow(db.queryRowsContext(ctx, nil, query, args...))
+	return db.binding().row(db.queryRowsContext(ctx, query, args...))
 }
 
-// QueryRowContext preserves pagination and only narrows its limit to at most one.
+// QueryRowContext preserves pagination and narrows its limit to at most one.
 func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
-	q := b.Clone()
+	// Only pagination scalars are changed. Rendering is read-only, so the
+	// query can share its column/condition slices with the caller's builder.
+	q := *b
 	if !q.hasLimit || q.limit > 1 {
 		q.Limit(1)
 	}
-	return b.binder.Row(queryStatement(ctx, q, &q.builderBase))
+	return b.binding().row(queryStatement(ctx, &q, &q.builderBase))
 }
 
-/// ---------------------------------------------------------------------- ///
-
-func (b *binder) Row(rows *sql.Rows, columns []string, err error) Row {
-	if b.wrapper == nil {
-		return Row{
-			rows: rows,
-			err:  err,
-
-			columns: columns,
-			wrapper: defaultbinder.wrapper,
-		}
-	}
-
-	return Row{
-		rows: rows,
+func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
+	return Row{result: Rows{
+		Rows: rows,
 		err:  err,
 
-		columns: columns,
-		wrapper: b.wrapper,
-	}
+		columns: slices.Clone(columns),
+		config:  c,
+	}}
 }
 
-// Row is the same as sql.Row to scan the row to the values.
-type Row struct {
-	rows *sql.Rows
-	err  error
+// Row owns a single-use result. Scan and Bind close it automatically. It is not
+// an iterator; close an unread Row explicitly to release the connection.
+type Row struct{ result Rows }
 
-	columns []string
-	wrapper RowScannerWrapper
-}
-
-// NewRow returns a new Row.
 func NewRow(rows *sql.Rows, columns []string, err error) Row {
-	return defaultbinder.Row(rows, columns, err)
+	r := (BindConfig{}).row(rows, columns, err)
+	r.result.validateColumns = columns != nil
+	return r
 }
 
-// Next is always false: Row is a single-use result, not an iterator.
-func (r Row) Next() bool { return false }
-
-// Columns returns the names of the selected columns.
 func (r Row) Columns() ([]string, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	if r.rows == nil {
-		return nil, errors.New("sqlx: nil row")
-	}
-	if len(r.columns) > 0 {
-		return r.columns, nil
-	}
-	return r.rows.Columns()
+	return r.result.Columns()
 }
 
-// WithColumns resets the names of the selected columns and returns a new Row.
 func (r Row) WithColumns(columns ...string) Row {
-	r.columns = columns
+	r.result.columns = slices.Clone(columns)
+	r.result.validateColumns = true
 	return r
 }
 
-// WithScanner resets the row scanner wrapper and returns a new Row.
-func (r Row) WithScanner(wrapper RowScannerWrapper) Row {
-	if wrapper == nil {
-		r.wrapper = defaultbinder.wrapper
-	} else {
-		r.wrapper = wrapper
-	}
+func (r Row) WithScanOptions(options ScanOptions) Row {
+	r.result.config.Scan = cloneScanOptions(options)
 	return r
 }
 
-// Bind binds the row to the dsts, which never return sql.ErrNoRows as err and uses ok instead of it.
-func (r Row) Bind(dsts ...any) (ok bool, err error) {
-	err = r.Scan(dsts...)
-	ok, err = CheckErrNoRows(err)
-	return
+// Bind returns false, nil for an empty result. Conversion errors are preserved.
+func (r Row) Bind(dst ...any) (bool, error) {
+	return CheckErrNoRows(r.Scan(dst...))
 }
 
-// Scan implements the interface sql.Scanner, which is the same as sql.Row.Scan
-// but supports that the sql value is NULL.
-func (r Row) Scan(dsts ...any) (err error) {
-	defer recoverBinding(&err)
-	if r.err != nil {
-		return r.err
-	}
-
-	if r.rows == nil {
-		return errors.New("sqlx: nil row")
-	}
-
+// Scan uses the same conversion rules as Rows.Scan and returns sql.ErrNoRows
+// for an empty result. As with database/sql, row scans are not atomic.
+func (r Row) Scan(dst ...any) (err error) {
 	defer func() {
-		if e := r.rows.Close(); err == nil {
+		if e := r.Close(); err == nil {
 			err = e
 		}
 	}()
 
-	if !r.rows.Next() {
-		if err := r.rows.Err(); err != nil {
+	if err = r.Err(); err != nil {
+		return err
+	}
+	if err = validateScanOptions(r.result.config.Scan); err != nil {
+		return err
+	}
+	if r.result.validateColumns {
+		if _, err = r.result.scanColumns(); err != nil {
+			return err
+		}
+	}
+
+	if !r.result.Next() {
+		if err := r.Err(); err != nil {
 			return err
 		}
 		return sql.ErrNoRows
 	}
 
-	return r.wrapper(newrowscanner(r, r.rows.Scan), dsts...)
+	if len(dst) == 1 && dst[0] != nil && !rowbind.IsScalarDestination(reflect.TypeOf(dst[0])) {
+		return scanSingleStruct(r.result, dst)
+	}
+	return rowbind.ScanScalarRow(r.result.Rows.Scan, dst, r.result.config.Scan)
 }
 
-func (r Row) Err() error {
-	if r.err != nil {
-		return r.err
-	}
-	if r.rows == nil {
-		return errors.New("sqlx: nil row")
-	}
-	return r.rows.Err()
-}
-
-// Close releases an unread row. Scan and Bind close it automatically.
-func (r Row) Close() error {
-	if r.rows == nil {
-		return nil
-	}
-	return r.rows.Close()
-}
+func (r Row) Err() error   { return r.result.Err() }
+func (r Row) Close() error { return r.result.Close() }

@@ -92,6 +92,8 @@ func ConnMaxIdleTime(d time.Duration) Config {
 type DB struct {
 	Dialect
 	Executor
+
+	config BindConfig
 }
 
 // Open opens a database specified by its database driver name

@@ -17,6 +17,8 @@ package sqlx
 import (
 	"fmt"
 	"strings"
+
+	"github.com/xgfone/go-sqlx/dialect"
 )
 
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
@@ -184,6 +186,19 @@ func (e Expression) render(ctx *BuildContext) string {
 		return bindExpression(ctx, e.sql, e.args)
 	}
 	return e.build(ctx.Dialect())
+}
+
+func (e Expression) writeTo(buf *strings.Builder, ctx *BuildContext) {
+	if e.parts != nil && e.custom == nil && len(e.args) == 0 && e.function == "" && !e.distinct {
+		for i, part := range e.parts {
+			if i != 0 {
+				buf.WriteByte('.')
+			}
+			dialect.WriteIdent(buf, ctx.Dialect(), part)
+		}
+		return
+	}
+	buf.WriteString(e.render(ctx))
 }
 
 // Condition adapts an expression to a grouped WHERE, HAVING or JOIN predicate.
