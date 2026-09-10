@@ -101,7 +101,7 @@ Pairs and indexes reject duplicate keys by default. `DuplicateKeyFirst` and
 collisions with existing entries during `Merge`.
 
 The shared `DefaultMixRowsBinder` is used when no binder is explicitly selected.
-It registers common scalar slice binders at initialization; `NewOper[T]` also
+It registers common scalar slice binders at initialization; `NewRegisteredOper[T]`
 registers the typed `[]T` binder once unless a registration already exists.
 Other slices use the reflection fallback. Applications can register a reusable
 binder for the exact destination type, including named slice and map types:
@@ -119,7 +119,7 @@ err := db.Select("id", "name").From("users").QueryRowsContext(ctx).Bind(&byID)
 `Register(reflect.Type, binder)`, `Get`, and `Unregister` are also available.
 Registry operations are concurrent safe; replacing a registration affects
 subsequent preparation, not bindings already prepared. The latest explicit
-registration wins, and `NewOper` never overwrites it. A selected registration's
+registration wins, and `NewRegisteredOper` never overwrites it. A selected registration's
 errors are returned without retrying the general slice fallback. An independent
 `NewMixRowsBinder()` can be selected through `WithBinder`.
 
@@ -407,6 +407,12 @@ tag omits them (`Struct`) or replaces them with DEFAULT (`Structs`); non-nil
 pointers to zero retain their values. Nil top-level rows fail. Every appended row
 must match the builder's column set; mixing inferred `Struct` and `Structs` rows
 can still fail if the single-row call omitted columns.
+
+`NewOper[T](name)` creates an operation without changing the binder registry.
+Use `NewRegisteredOper[T](name)` to opt into shared typed slice binder
+registration. Without a registration, model slices use the reflection fallback.
+For an existing table, use `table.NewOper[T]()` or
+`table.NewRegisteredOper[T]()`; both preserve its database.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
 Get/Gets, Add/Update/Delete, Count/CountGets, Exist, and Aggregate. Mutations

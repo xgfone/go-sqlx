@@ -82,7 +82,7 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 					o := NewOper[operPerformanceRecord]("records").WithDB(db)
 
 					// Prebuilt SQL isolates the result/binding path. Reuse the same
-					// stateless model binder selected for Oper's model slice.
+					// stateless typed model binder for the raw query comparison.
 					sharedBinder := NewSliceRowsBinder[[]operPerformanceRecord]()
 					wrappedBinder := RowsBinderFunc(sharedBinder.Prepare)
 					rawDB := db.WithBindConfig(BindConfig{Binder: sharedBinder})

@@ -231,8 +231,9 @@ do not mutate the parent. `WithExecutor` retains the configuration.
 `DefaultMixRowsBinder`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
 or independent concurrent registry. Register the exact pointer destination type
 with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar
-slices are registered in the default registry; NewOper registers its model slice
-only if absent. User registrations take precedence, including registrations made
+slices are registered in the default registry; `NewRegisteredOper`
+registers its model slice only if absent. `NewOper` does not register a binder.
+User registrations take precedence, including registrations made
 after an Oper was created. Unregistered slices retain a general fallback; map
 semantics require an explicit registration or local binder.
 
@@ -321,3 +322,12 @@ scanning and finalization.
 Built-in typed slices, general slices and maps implement the public interface
 with state pointers. Wrappers can return a delegated Prepare result directly,
 with no additional per-result callback allocation.
+
+### Oper construction and registration
+
+`NewOper[T](name)` no longer registers a model slice binder. Use
+`NewRegisteredOper[T](name)` to retain that shared registration behavior.
+Unregistered model slices continue to work through the reflection fallback.
+Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()` for construction
+without registration, or `table.NewRegisteredOper[T]()` to opt in.
+Both table methods preserve the table name and database.

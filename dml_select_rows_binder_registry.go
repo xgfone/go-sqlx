@@ -19,10 +19,10 @@ type MixRowsBinder struct{ types sync.Map }
 func NewMixRowsBinder() *MixRowsBinder { return &MixRowsBinder{} }
 
 // DefaultMixRowsBinder is the shared default for collection binding. Common
-// scalar slices are registered at initialization; NewOper also registers its
-// model slice unless that exact destination type already has a registration.
-// Register custom map semantics explicitly. Configure this variable before
-// use; use the registry methods for concurrent changes rather than reassigning it.
+// scalar slices are registered at initialization; NewRegisteredOper registers
+// its model slice unless the exact destination is already registered. Register
+// custom map semantics explicitly. Configure this variable before use; use the
+// registry methods for concurrent changes rather than reassigning it.
 var DefaultMixRowsBinder = newDefaultMixRowsBinder()
 
 var builtinSliceBinders = map[reflect.Type]RowsBinder{

@@ -27,23 +27,23 @@ type Oper[T any] struct {
 	bindConfig *BindConfig
 }
 
+// NewOper creates an operation without registering a model binder.
 func NewOper[T any](name string) Oper[T] {
-	return NewOperWithTable[T](NewTable(name))
-}
-
-func NewOperWithTable[T any](table Table) Oper[T] {
-	DefaultMixRowsBinder.registerDefault(
-		reflect.TypeFor[*[]T](),
-		NewSliceRowsBinder[[]T](),
-	)
-
 	return Oper[T]{
-		Table: table,
+		Table: NewTable(name),
 
 		SoftCondition:     OnArg("deleted_at", nil),
 		DeletedCondition:  ConditionFunc(func(c *BuildContext) string { return c.Quote("deleted_at") + " IS NOT NULL" }),
 		SoftDeleteUpdater: func(context.Context) Updater { return Set("deleted_at", time.Now()) },
 	}
+}
+
+// NewRegisteredOper creates an operation and registers the typed []T
+// binder in DefaultMixRowsBinder unless that destination is already registered.
+// The registration is shared by all queries using the default registry.
+func NewRegisteredOper[T any](name string) Oper[T] {
+	DefaultMixRowsBinder.registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
+	return NewOper[T](name)
 }
 
 func (o *Oper[T]) SetDB(db *DB) { o.Table.SetDB(db) }
@@ -96,8 +96,7 @@ func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 // Select creates a column query; typed model fields use SelectStruct instead.
 func (o Oper[T]) Select(columns ...string) *SelectBuilder {
 	q := o.Table.Select(columns...).Where(o.conditions...).Sort(o.Sorter)
-	// Owned configurations are immutable. The default model binder is already
-	// registered by NewOper, so queries need no extra configuration allocation.
+	// Owned configurations are immutable and can be shared with the query.
 	q.bconfig = o.bindConfig
 	return q
 }

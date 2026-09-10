@@ -13,6 +13,18 @@ func NewTable(name string) Table { return Table{Name: name} }
 
 func (db *DB) NewTable(name string) Table { return NewTable(name).WithDB(db) }
 
+// NewOper creates an operation using this table without registering a model binder.
+func (t Table) NewOper[T any]() Oper[T] {
+	return NewOper[T](t.Name).WithTable(t)
+}
+
+// NewRegisteredOper creates an operation using this table and
+// registers its typed []T binder in DefaultMixRowsBinder unless already
+// registered.
+func (t Table) NewRegisteredOper[T any]() Oper[T] {
+	return NewRegisteredOper[T](t.Name).WithTable(t)
+}
+
 func (t Table) String() string      { return t.Name }
 func (t Table) WithDB(db *DB) Table { t.db = db; return t }
 

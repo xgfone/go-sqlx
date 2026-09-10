@@ -126,9 +126,9 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 		Scan:     ScanOptions{DurationUnit: time.Hour},
 	})
 
-	o := NewOper[model]("t").WithDB(db)
+	o := NewRegisteredOper[model]("t").WithDB(db)
 	if DefaultMixRowsBinder.Get(dstType) != global {
-		t.Fatal("NewOper overwrote a user registration")
+		t.Fatal("NewRegisteredOper overwrote a user registration")
 	}
 
 	ctx := context.Background()
@@ -166,19 +166,65 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	}
 }
 
-func TestNewOperRegistersModelSliceOnce(t *testing.T) {
-	type model struct{ ID int64 }
-	dstType := reflect.TypeFor[*[]model]()
-	t.Cleanup(func() { DefaultMixRowsBinder.Unregister(dstType) })
-
-	NewOper[model]("first")
-	if _, ok := DefaultMixRowsBinder.Get(dstType).(typedSliceRowsBinder[[]model, model]); !ok {
-		t.Fatal("missing typed model binder")
+func TestOperConstructorRegistration(t *testing.T) {
+	type model struct {
+		ID int64 `sql:"id"`
 	}
 
-	NewOper[model]("second")
-	if DefaultMixRowsBinder.Get(reflect.TypeFor[*[]int64]()) == nil {
-		t.Fatal("missing built-in scalar registration")
+	dstType := reflect.TypeFor[*[]model]()
+	t.Cleanup(func() { DefaultMixRowsBinder.Unregister(dstType) })
+	db := bindTestDB(t, &bindFixture{
+		columns: []string{"id"},
+		values:  [][]driver.Value{{int64(7)}},
+	})
+	table := db.NewTable("models")
+	constructors := []struct {
+		name     string
+		create   func() Oper[model]
+		register bool
+	}{
+		{"NewOper", func() Oper[model] { return NewOper[model](table.Name).WithDB(db) }, false},
+		{"Table.NewOper", func() Oper[model] { return table.NewOper[model]() }, false},
+		{"NewRegisteredOper", func() Oper[model] { return NewRegisteredOper[model](table.Name).WithDB(db) }, true},
+		{"Table.NewRegisteredOper", func() Oper[model] { return table.NewRegisteredOper[model]() }, true},
+	}
+	for _, constructor := range constructors {
+		t.Run(constructor.name, func(t *testing.T) {
+			DefaultMixRowsBinder.Unregister(dstType)
+			o := constructor.create()
+			if o.Table != table || o.GetDB() != db {
+				t.Fatal("constructor lost table or database")
+			}
+			if o.SoftCondition == nil || o.DeletedCondition == nil || o.SoftDeleteUpdater == nil {
+				t.Fatal("constructor lost soft-delete defaults")
+			}
+			if binder := DefaultMixRowsBinder.Get(dstType); constructor.register {
+				if _, ok := binder.(typedSliceRowsBinder[[]model, model]); !ok {
+					t.Fatal("missing typed model binder")
+				}
+				constructor.create()
+				if DefaultMixRowsBinder.Get(dstType) != binder {
+					t.Fatal("constructor replaced existing binder")
+				}
+			} else if binder != nil {
+				t.Fatal("constructor registered a binder")
+			}
+
+			got, err := o.Gets(context.Background(), PageSize(1, 20))
+			if err != nil || len(got) != 1 || got[0].ID != 7 {
+				t.Fatal("model query failed", got, err)
+			}
+			if !constructor.register && DefaultMixRowsBinder.Get(dstType) != nil {
+				t.Fatal("query registered a binder")
+			}
+
+			custom := &countingRowsBinder{delegate: NewSliceRowsBinder[[]model]()}
+			DefaultMixRowsBinder.Register(dstType, custom)
+			constructor.create()
+			if DefaultMixRowsBinder.Get(dstType) != custom {
+				t.Fatal("constructor overwrote a user registration")
+			}
+		})
 	}
 }
 
