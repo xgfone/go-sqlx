@@ -12,33 +12,44 @@ import (
 type sqlTable struct {
 	Table string
 	Alias string
+
 	Query *SelectBuilder
+	Expr  *Expression
+
+	Values  [][]any
+	Columns []string
+	Lateral bool
 }
 
-func (t sqlTable) render(c *BuildContext) string {
-	var s string
+func (t sqlTable) writeTo(s *strings.Builder, c *BuildContext) {
+	if t.Values != nil || t.Expr != nil || len(t.Columns) > 0 || t.Lateral {
+		t.writeSource(s, c)
+		return
+	}
+
 	if t.Query != nil {
 		if t.Alias == "" {
 			panic("subquery requires alias")
 		}
-		s = "(" + t.Query.render(c) + ")"
+		_ = s.WriteByte('(')
+		_, _ = s.WriteString(t.Query.render(c))
+		_ = s.WriteByte(')')
 	} else {
-		s = c.Quote(t.Table)
+		writeQuotedPath(s, c.Dialect(), t.Table)
 	}
-
 	if t.Alias != "" {
-		s += " AS " + c.Dialect().QuoteIdent(t.Alias)
+		_, _ = s.WriteString(" AS ")
+		dialect.WriteIdent(s, c.Dialect(), t.Alias)
 	}
-
-	return s
 }
 
-func renderTables(c *BuildContext, ts []sqlTable) string {
-	ss := make([]string, len(ts))
+func writeTables(s *strings.Builder, c *BuildContext, ts []sqlTable) {
 	for i, t := range ts {
-		ss[i] = t.render(c)
+		if i > 0 {
+			_, _ = s.WriteString(", ")
+		}
+		t.writeTo(s, c)
 	}
-	return strings.Join(ss, ", ")
 }
 
 type joinTable struct {
@@ -48,14 +59,27 @@ type joinTable struct {
 	Ons   []Condition
 }
 
-func (j joinTable) render(c *BuildContext) string {
+func (j joinTable) writeTo(s *strings.Builder, c *BuildContext) {
+	switch JoinType(j.Type) {
+	case InnerJoin, LeftJoin, RightJoin, FullJoin, CrossJoinType:
+	default:
+		panic("invalid JOIN type")
+	}
+
+	if j.Type == "CROSS" && (len(j.Using) > 0 || len(j.Ons) > 0) {
+		panic("CROSS JOIN cannot have ON or USING")
+	}
+
 	if j.Type == "FULL" {
 		requireFeature(c, dialect.FullJoin, "FULL JOIN")
 	}
 
-	s := " " + j.Type + " JOIN " + j.Table.render(c)
+	_ = s.WriteByte(' ')
+	_, _ = s.WriteString(j.Type)
+	_, _ = s.WriteString(" JOIN ")
+	j.Table.writeTo(s, c)
 	if j.Type == "CROSS" {
-		return s
+		return
 	}
 
 	if len(j.Using) > 0 {
@@ -63,32 +87,42 @@ func (j joinTable) render(c *BuildContext) string {
 			panic("JOIN cannot combine ON and USING")
 		}
 
-		ss := make([]string, len(j.Using))
+		_, _ = s.WriteString(" USING (")
 		for i, v := range j.Using {
-			ss[i] = c.Dialect().QuoteIdent(v)
+			if i > 0 {
+				_, _ = s.WriteString(", ")
+			}
+			dialect.WriteIdent(s, c.Dialect(), v)
 		}
-
-		return s + " USING (" + strings.Join(ss, ", ") + ")"
+		_ = s.WriteByte(')')
+		return
 	}
 
 	if len(j.Ons) == 0 {
 		panic("JOIN requires ON or USING")
 	}
-	return s + clause(c, "ON", j.Ons)
+	writeClause(s, c, "ON", j.Ons)
 }
 
 // On compares identifier paths. Other comparisons can use ConditionFunc or Expr.
 func On(left, right string) Condition {
-	return ConditionFunc(func(c *BuildContext) string { return c.Quote(left) + "=" + c.Quote(right) })
+	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
+		writeQuotedPath(s, c.Dialect(), left)
+		_ = s.WriteByte('=')
+		writeQuotedPath(s, c.Dialect(), right)
+	})
 }
 
 // OnArg compares an identifier path to a value or expression. A nil value,
 // including a typed nil pointer, uses IS NULL.
 func OnArg(left string, right any) Condition {
-	return ConditionFunc(func(c *BuildContext) string {
+	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
+		writeQuotedPath(s, c.Dialect(), left)
 		if isNil(right) {
-			return c.Quote(left) + " IS NULL"
+			_, _ = s.WriteString(" IS NULL")
+			return
 		}
-		return c.Quote(left) + "=" + c.Value(right)
+		_ = s.WriteByte('=')
+		writeValue(s, c, right)
 	})
 }

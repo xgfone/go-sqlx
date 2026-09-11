@@ -231,9 +231,12 @@ return tx.Commit()
 on the built-in MySQL and PostgreSQL dialects. SQLite returns a build error for
 row locking. The builder does not start a transaction automatically.
 
-Built-ins target MySQL 8+, PostgreSQL, and SQLite 3.39+ (including UPDATE FROM
-and FULL JOIN). Custom dialects explicitly advertise optional capabilities;
-unsupported features fail instead of being silently omitted.
+Built-ins target MySQL 8.0, PostgreSQL 14+, and SQLite 3.39+ (including UPDATE
+FROM and FULL JOIN). Use `dialect.WithVersion` for later MySQL capabilities:
+LATERAL at 8.0.14, inserted-row aliases at 8.0.19, and INTERSECT/EXCEPT at 8.0.31.
+Custom dialects explicitly advertise optional capabilities; unsupported features
+fail instead of being silently omitted. See [SQL composition](docs/sql-syntax.md)
+for the complete syntax guide, dialect constraints, and configuration examples.
 
 ## Composition
 
@@ -260,11 +263,12 @@ There are no other template markers. `$1`, `:name` and `@name` are copied
 unchanged and do not bind arguments. Pass `sql.Named(name, value)` through a `?`
 argument for dialect-aware named binding.
 
-Markers inside single quotes, double quotes, backticks, `--` line comments,
-`/* ... */` comments (including nested comments), and PostgreSQL dollar quotes
-(`$$...$$`, `$tag$...$tag$`) remain unchanged. Quoted text recognizes doubled
-delimiters and backslash escapes. With arguments, mismatched counts and
-unterminated quotes or block comments become statement Build errors.
+Markers in quoted text and comments remain unchanged according to the dialect's
+lexical rules. PostgreSQL recognizes E strings, dollar quotes, and nested block
+comments. MySQL recognizes hash comments and whitespace-qualified `--` comments.
+Backslash escapes follow the dialect's string rules; use `WithLexicalRules` to
+match connection SQL modes. With arguments, mismatched counts and unterminated
+quotes or block comments become statement Build errors.
 
 `Expr(sql)` without arguments copies trusted SQL verbatim, including `?` and
 `??`: escaping is disabled in this form. For example, `Expr("document ? 'key'")`
@@ -283,18 +287,29 @@ builder := db.Select().
 with parentheses. Conditions work in WHERE, HAVING and JOIN ON, including
 `sqlx.And`/`sqlx.Or`. `On(left,right)` compares columns; `OnArg(left,value)` accepts
 any argument type. `Join`, `JoinLeft`, `JoinRight`, `JoinFull`, `CrossJoin` are
-available; SELECT also supports `JoinUsing` and `JoinSelect`.
+available, with derived-query and USING variants for the outer joins as well.
+Reusable `TableSource`, `QuerySource`, `ExpressionSource`, and `ValuesSource`
+values work with `FromSource`, `JoinSource`, and `JoinSourceUsing`, and with
+PostgreSQL/SQLite UPDATE FROM or PostgreSQL DELETE USING.
 
 Use `FromSelect`, `Subquery`, `InQuery`, `NotInQuery`, `Exists`, and `NotExists`
 for nested queries. All nodes share one binding context, so placeholders remain
-correct across nesting. Supplied query builders are snapshotted. `With` and
-`WithRecursive` define SELECT CTEs. `Union` and `UnionAll` append simple SELECT
-operands; wrap an operand containing its own ordering/pagination/CTEs/compound
-query with `Select("*").FromSelect(operand, "q")` first.
+correct across nesting. Supplied query builders are snapshotted. `With`,
+`WithRecursive`, and `WithCTE(CommonTable(...))` define CTEs, including explicit
+column names and PostgreSQL data-modifying CTEs. `Union`, `UnionAll`, `Intersect`,
+`IntersectAll`, `Except`, and `ExceptAll` group complex operands automatically.
+Mixed fluent operations associate left-to-right; nested operands express other
+groupings. Ordering and pagination on the receiver apply to the complete result.
 
 `Count`, `CountDistinct`, `Sum`, `Min`, `Max`, `Avg` produce expressions.
 UPDATE accepts expressions through `SetExpr` or `sqlx.Set(column, expression)`;
-INSERT `Values` accepts expressions as well as bound values.
+INSERT `Values` accepts expressions as well as bound values. Aggregate `Expr`
+variants accept computed arguments, and `Filter`, `Over`, `OverName`, and `Window`
+compose analytic queries. `SortColumn.Nulls` controls NULL ordering; `FetchWithTies`
+retains ties when supported. `GroupByRollup`, `GroupingSets`, and `Cube` compose
+subtotals. Conditions include comparisons, ranges, pattern matching, IN lists,
+NULL tests, and `Not`; `Case`, `Coalesce`, `NullIf`, `Cast`, and `Tuple` are reusable
+expressions. See the [syntax guide](docs/sql-syntax.md) for examples.
 
 ## Append, clear and clone
 
@@ -306,13 +321,16 @@ OFFSET, table destination, comments and lock mode replace their previous value.
 `ClearOrderBy`, `ClearJoins`, `ClearPagination`, `ClearLock`, `ClearWith`,
 `ClearUnion`, `ClearSet`, `ClearColumns`, `ClearValues`, `ClearReturning`, and
 `ClearConflict` are exposed on applicable builders. `ClearSelect` also clears
-DISTINCT. `ClearValues` clears all insert source modes. `Reset` starts a fresh
+DISTINCT and DISTINCT ON. `ClearWindows`, `ClearSetOperations`, `ClearRowsAlias`,
+and mutation `ClearLimit` clear their respective additions. `ClearValues` clears
+all insert source modes. `Reset` starts a fresh
 statement while preserving its execution configuration.
 
 Builders are mutable and must not be concurrently mutated. `Clone()` copies
 builder-owned slices; argument objects and custom clause implementations remain shallow.
 Build does not mutate the builder. QueryRow preserves offset and an explicit
-zero limit, restricting a positive/unset limit to at most one.
+zero limit, restricting a positive/unset limit to at most one and disabling
+WITH TIES.
 
 `Limit(0)` means zero rows. `Pagination(sqlx.PageSize(...))` and `Paginate` update
 the same limit/offset state. Pages and sizes must be positive; bounds and overflow
@@ -340,13 +358,19 @@ Other predicates can use `Expr(...).Condition()` or a custom `Condition`.
 PostgreSQL/SQLite support `OnConflictDoNothing` and `OnConflictDoUpdate`.
 MySQL has explicit `OnDuplicateKeyUpdate`, `Ignore`, and `Replace` modes, which
 are not presented as equivalent conflict policies. SQLite does not support
-ON CONFLICT after DEFAULT VALUES. Conflict updates currently use column targets;
-constraint-name and partial-index conflict targets are not exposed.
+ON CONFLICT after DEFAULT VALUES. Constraint names, expression targets,
+partial-index predicates, and conditional
+updates are available through `OnConflict(ConflictColumns(...).DoUpdate(...))`.
+Use `ConflictExpressions` or PostgreSQL `ConflictConstraint` for other targets.
+SQLite permits targetless DO UPDATE and multiple conflict clauses. MySQL 8.0.19+
+uses `RowsAlias` and `Inserted` for proposed values; PostgreSQL/SQLite use `Excluded`.
 
 INSERT/UPDATE/DELETE support `Returning`/`ReturningExpr` on PostgreSQL/SQLite;
 consume these using `QueryRowsContext` or `QueryRowContext`. Exec rejects
 RETURNING to avoid silently discarding results. UPDATE FROM and PostgreSQL
-DELETE USING are available with dialect capability checks.
+DELETE USING are available with dialect capability checks. MySQL single-table
+UPDATE/DELETE also support OrderBy/Sort and Limit; SQLite requires an explicit
+capability override and SQLITE_ENABLE_UPDATE_DELETE_LIMIT for those clauses.
 
 ## Struct mapping and Oper
 
@@ -449,6 +473,11 @@ users, err := oper.Active().Gets(ctx, sqlx.PageSize(1, 20))
 ## Extending and testing
 
 Dialect registration uses `Register` (error) or `MustRegister` (panic at startup).
+Custom dialects implement `Dialect`, including `Grammar()` for SQL forms and
+clause placement and `LexicalRules()` for expression template scanning. The
+lexical rules must match the connection's SQL mode. See the
+[dialect configuration guide](docs/sql-syntax.md#dialect-configuration).
+
 Clause extension interfaces are defined in this package:
 
 ```go

@@ -3,7 +3,7 @@
 
 package dialect
 
-// Feature identifies a SQL grammar extension used by the builders.
+// Feature identifies a SQL grammar capability used by the builders.
 type Feature uint8
 
 const (
@@ -26,9 +26,41 @@ const (
 	EmptyInsert
 	DefaultInValues
 	DefaultValuesConflict
+	DefaultInSet
+	Intersect
+	Except
+	IntersectAll
+	ExceptAll
+	WindowFunctions
+	WindowDistinct
+	WindowGroups
+	WindowExclude
+	AggregateFilter
+	NullsOrdering
+	Rollup
+	GroupingSets
+	ValuesTable
+	FetchWithTies
+	RowAssignment
+	Cube
+	Lateral
+	DistinctOn                // PostgreSQL DISTINCT ON.
+	DataModifyingCTE          // PostgreSQL statements inside WITH.
+	CTEMaterialization        // PostgreSQL and SQLite MATERIALIZED / NOT MATERIALIZED.
+	ConflictConstraint        // PostgreSQL ON CONFLICT ON CONSTRAINT.
+	ConflictTargetExpressions // PostgreSQL and SQLite expression conflict targets.
+	ConflictTargetWhere       // PostgreSQL and SQLite partial-index conflict targets.
+	ConflictUpdateWhere       // PostgreSQL and SQLite conditional conflict updates.
+	ConflictTargetOptional    // SQLite targetless DO UPDATE.
+	MultipleOnConflict        // SQLite multiple ON CONFLICT clauses.
+	InsertRowAlias            // MySQL new-row alias after VALUES.
+	UpdateOrderLimit          // MySQL, or SQLite built with SQLITE_ENABLE_UPDATE_DELETE_LIMIT.
+	DeleteOrderLimit          // MySQL, or SQLite built with SQLITE_ENABLE_UPDATE_DELETE_LIMIT.
+	InsertTargetAlias         // PostgreSQL and SQLite INSERT target aliases.
+	KeyRowLock                // PostgreSQL FOR NO KEY UPDATE / FOR KEY SHARE.
 )
 
-// FeatureDialect opts in to grammar extensions beyond single-table DML.
+// FeatureDialect opts in to optional SQL capabilities.
 type FeatureDialect interface {
 	Supports(Feature) bool
 }
@@ -44,7 +76,7 @@ func (d builtin) Supports(feature Feature) bool {
 	case Returning, OnConflict, DefaultValues:
 		return d == "postgres" || d == "sqlite3"
 
-	case RowLock, LockOf, LockWait, DefaultInValues:
+	case RowLock, LockOf, LockWait, DefaultInValues, DefaultInSet, Rollup:
 		return d == "mysql" || d == "postgres"
 
 	case DeleteUsing, DefaultValuesConflict:
@@ -64,6 +96,25 @@ func (d builtin) Supports(feature Feature) bool {
 
 	case ReplaceInto:
 		return d == "mysql" || d == "sqlite3"
+
+	case WindowFunctions, ValuesTable:
+		return true
+
+	case Intersect, Except, WindowGroups, WindowExclude, AggregateFilter,
+		NullsOrdering, CTEMaterialization, ConflictTargetExpressions,
+		ConflictTargetWhere, ConflictUpdateWhere, RowAssignment,
+		InsertTargetAlias:
+		return d == "postgres" || d == "sqlite3"
+
+	case IntersectAll, ExceptAll, GroupingSets, Cube, Lateral, DistinctOn,
+		DataModifyingCTE, ConflictConstraint, FetchWithTies, KeyRowLock:
+		return d == "postgres"
+
+	case ConflictTargetOptional, MultipleOnConflict:
+		return d == "sqlite3"
+
+	case UpdateOrderLimit, DeleteOrderLimit:
+		return d == "mysql"
 
 	default:
 		return false

@@ -190,12 +190,6 @@ type selectedColumn struct {
 	Expr   *Expression
 }
 
-func renderColumns(ctx *BuildContext, cols []selectedColumn) string {
-	var buf strings.Builder
-	writeColumns(&buf, ctx, cols)
-	return buf.String()
-}
-
 func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
 	if len(cols) == 0 {
 		panic("no selected columns")
@@ -223,11 +217,20 @@ func cloneColumns(cols []selectedColumn) []selectedColumn {
 	return slices.Clone(cols)
 }
 
-func renderReturning(ctx *BuildContext, cols []selectedColumn) string {
+func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
 	if len(cols) == 0 {
-		return ""
+		return
 	}
 
 	requireFeature(ctx, dialect.Returning, "RETURNING")
-	return " RETURNING " + renderColumns(ctx, cols)
+	for _, col := range cols {
+		if e := col.Expr; e != nil &&
+			(e.function != "" ||
+				e.kind == aggregateExpression ||
+				e.kind == windowExpression) {
+			panic("RETURNING cannot contain a top-level aggregate or window function")
+		}
+	}
+	_, _ = buf.WriteString(" RETURNING ")
+	writeColumns(buf, ctx, cols)
 }

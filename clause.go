@@ -45,6 +45,7 @@ type Sorter interface {
 type SortColumn struct {
 	Column string
 	Order  Order
+	Nulls  NullsOrder
 	Expr   *Expression
 }
 
@@ -101,35 +102,44 @@ func Or(conditions ...Condition) Condition {
 }
 
 func (g conditionGroup) BuildCondition(c *BuildContext) string {
-	count := 0
-	var first string
-	var buf strings.Builder
+	if len(g.conditions) == 0 {
+		return ""
+	}
+	if len(g.conditions) == 1 {
+		if g.conditions[0] == nil {
+			return ""
+		}
+		return g.conditions[0].BuildCondition(c)
+	}
+
+	buf := c.acquireBuffer()
+	defer c.releaseBuffer(buf)
+
+	count := g.writeConditions(buf, c, 0)
+	if count > 1 {
+		return "(" + buf.String() + ")"
+	}
+	return buf.String()
+}
+
+// Flatten native AND groups without constructing another slice at render time.
+func (g conditionGroup) writeConditions(buf *strings.Builder, c *BuildContext, count int) int {
 	for _, condition := range g.conditions {
-		if condition == nil {
+		nested, ok := condition.(conditionGroup)
+		if ok && g.separator == " AND " && nested.separator == " AND " {
+			count = nested.writeConditions(buf, c, count)
 			continue
 		}
-		if s := condition.BuildCondition(c); s != "" {
-			if count == 0 {
-				first = s
-			} else {
-				if count == 1 {
-					buf.Grow(len(first) + len(s) + len(g.separator) + 2)
-					_ = buf.WriteByte('(')
-					_, _ = buf.WriteString(first)
-				}
-				_, _ = buf.WriteString(g.separator)
-				_, _ = buf.WriteString(s)
-			}
+
+		prefix := ""
+		if count > 0 {
+			prefix = g.separator
+		}
+		if writeCondition(buf, c, condition, prefix) {
 			count++
 		}
 	}
-
-	if count > 1 {
-		_ = buf.WriteByte(')')
-		return buf.String()
-	}
-
-	return first
+	return count
 }
 
 func appendWheres(dst []Condition, conditions ...Condition) []Condition {
@@ -156,37 +166,19 @@ func appendWheres(dst []Condition, conditions ...Condition) []Condition {
 //
 // See Expr for the dialect-independent ? and ?? template markers.
 func Set(column string, value any) Updater {
-	return UpdaterFunc(func(c *BuildContext) string {
-		return c.Quote(column) + "=" + c.Value(value)
+	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
+		writeQuotedPath(buf, c.Dialect(), column)
+		_ = buf.WriteByte('=')
+		writeAssignment(buf, c, value)
 	})
 }
 
 // Batch combines assignments. An empty result is an error, including in upserts.
 func Batch(updaters ...Updater) Updater {
 	updaters = slices.Clone(updaters)
-	return UpdaterFunc(func(c *BuildContext) string {
-		var parts []string
-		for _, updater := range updaters {
-			if updater != nil {
-				if s := updater.BuildUpdate(c); s != "" {
-					parts = append(parts, s)
-				}
-			}
-		}
-
-		if len(parts) == 0 {
-			panic("sqlx: update setters are empty")
-		}
-		return strings.Join(parts, ", ")
+	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
+		writeUpdaters(buf, c, updaters)
 	})
-}
-
-func clause(c *BuildContext, name string, conds []Condition) string {
-	if len(conds) == 0 {
-		return ""
-	}
-
-	return " " + name + " " + clauseCondition(c, name, conds)
 }
 
 func clauseCondition(c *BuildContext, name string, conds []Condition) string {
@@ -196,7 +188,7 @@ func clauseCondition(c *BuildContext, name string, conds []Condition) string {
 			s = conds[0].BuildCondition(c)
 		}
 	} else {
-		s = And(conds...).BuildCondition(c)
+		s = (conditionGroup{conditions: conds, separator: " AND "}).BuildCondition(c)
 	}
 	if s == "" {
 		panic(name + " contains no effective conditions")
@@ -206,10 +198,9 @@ func clauseCondition(c *BuildContext, name string, conds []Condition) string {
 
 func writeClause(buf *strings.Builder, c *BuildContext, name string, conds []Condition) {
 	if len(conds) != 0 {
-		s := clauseCondition(c, name, conds)
 		_ = buf.WriteByte(' ')
 		_, _ = buf.WriteString(name)
 		_ = buf.WriteByte(' ')
-		_, _ = buf.WriteString(s)
+		writeRequiredConditions(buf, c, name, conds)
 	}
 }

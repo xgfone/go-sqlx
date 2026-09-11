@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -22,11 +23,18 @@ var buildContextPool = sync.Pool{New: func() any {
 
 // BuildContext renders identifiers and collects arguments for SQL renderers.
 // Contexts passed to clause renderers are borrowed for that call only: do not
-// retain them or use them concurrently. Pool ownership is internal to sqlx.
+// copy or retain them or use them concurrently. Pool ownership is internal to sqlx.
 type BuildContext struct {
 	dialect Dialect
-	args    []any
 	named   map[string]int
+	args    []any
+
+	windows        map[string]WindowSpec
+	statementDepth int
+	insertedAlias  string
+	conflictScope  bool
+	bufferInUse    bool
+	buffer         strings.Builder
 }
 
 // NewBuildContext creates an independently owned context for standalone SQL rendering.
@@ -58,9 +66,32 @@ func releaseBuildContext(a *BuildContext) {
 		a.args = a.args[:0]
 	}
 
+	a.buffer.Reset()
+	a.bufferInUse = false
+	a.statementDepth = 0
+	a.insertedAlias = ""
+	a.conflictScope = false
+	a.windows = nil
 	a.named = nil
 	a.dialect = nil
 	buildContextPool.Put(a)
+}
+
+// Reuse the builder object, not its byte storage: Reset leaves returned SQL
+// strings immutable. Reentrant rendering borrows an independent builder.
+func (a *BuildContext) acquireBuffer() *strings.Builder {
+	if a.bufferInUse {
+		return new(strings.Builder)
+	}
+	a.bufferInUse = true
+	return &a.buffer
+}
+
+func (a *BuildContext) releaseBuffer(buf *strings.Builder) {
+	buf.Reset()
+	if buf == &a.buffer {
+		a.bufferInUse = false
+	}
 }
 
 // Dialect returns the dialect used for this build.
@@ -80,6 +111,31 @@ func (a *BuildContext) Quote(name string) string {
 // Invalid names and conflicting repeated values panic before appending.
 func (a *BuildContext) Add(arg any) string {
 	d := a.Dialect()
+	arg, placeholder, named := a.namedArg(d, arg)
+	if named {
+		return placeholder
+	}
+
+	placeholder = d.Placeholder(len(a.args) + 1)
+	a.args = append(a.args, arg)
+	return placeholder
+}
+
+// writeArg shares named-argument validation with Add, while positional
+// placeholders can be written without allocating an intermediate string.
+func (a *BuildContext) writeArg(buf *strings.Builder, arg any) {
+	d := a.Dialect()
+	arg, placeholder, named := a.namedArg(d, arg)
+	if named {
+		_, _ = buf.WriteString(placeholder)
+		return
+	}
+
+	dialect.WritePlaceholder(buf, d, len(a.args)+1)
+	a.args = append(a.args, arg)
+}
+
+func (a *BuildContext) namedArg(d Dialect, arg any) (value any, placeholder string, named bool) {
 	if na, ok := arg.(sql.NamedArg); ok {
 		if na.Name != "" {
 			if !validParameterName(na.Name) {
@@ -96,7 +152,7 @@ func (a *BuildContext) Add(arg any) string {
 						if !reflect.DeepEqual(a.args[index].(sql.NamedArg).Value, na.Value) {
 							panic(fmt.Sprintf("sqlx: conflicting values for parameter %q", na.Name))
 						}
-						return placeholder
+						return nil, placeholder, true
 					}
 
 					if a.named == nil {
@@ -105,16 +161,14 @@ func (a *BuildContext) Add(arg any) string {
 
 					a.named[na.Name] = len(a.args)
 					a.args = append(a.args, na)
-					return placeholder
+					return nil, placeholder, true
 				}
 			}
 		}
 		arg = na.Value
 	}
 
-	placeholder := d.Placeholder(len(a.args) + 1)
-	a.args = append(a.args, arg)
-	return placeholder
+	return arg, "", false
 }
 
 // Args returns an independent, shallow copy of the collected arguments.

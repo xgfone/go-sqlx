@@ -8,14 +8,15 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
 type UpdateBuilder struct {
 	builderBase
+	mutation mutationLimit
 
+	ctes      []commonTable
 	utables   []sqlTable
 	ftables   []sqlTable
 	jtables   []joinTable
@@ -28,6 +29,7 @@ func Update() *UpdateBuilder { return new(UpdateBuilder) }
 
 func (db *DB) Update() *UpdateBuilder { return Update().SetDB(db) }
 
+// Table appends UPDATE targets. Multiple targets require MySQL.
 func (b *UpdateBuilder) Table(tables ...string) *UpdateBuilder {
 	for _, t := range tables {
 		b.TableAlias(t, "")
@@ -40,6 +42,7 @@ func (b *UpdateBuilder) TableAlias(table, alias string) *UpdateBuilder {
 	return b
 }
 
+// From appends tables to PostgreSQL or SQLite UPDATE FROM.
 func (b *UpdateBuilder) From(tables ...string) *UpdateBuilder {
 	for _, t := range tables {
 		b.FromAlias(t, "")
@@ -47,6 +50,7 @@ func (b *UpdateBuilder) From(tables ...string) *UpdateBuilder {
 	return b
 }
 
+// FromAlias appends an aliased table to PostgreSQL or SQLite UPDATE FROM.
 func (b *UpdateBuilder) FromAlias(table, alias string) *UpdateBuilder {
 	b.ftables = append(b.ftables, sqlTable{Table: table, Alias: alias})
 	return b
@@ -74,6 +78,8 @@ func (b *UpdateBuilder) ClearReturning() *UpdateBuilder { b.returning = nil; ret
 
 func (b *UpdateBuilder) Clone() *UpdateBuilder {
 	v := *b
+	v.mutation = b.mutation.clone()
+	v.ctes = slices.Clone(b.ctes)
 	v.utables = slices.Clone(b.utables)
 	v.ftables = slices.Clone(b.ftables)
 	v.jtables = slices.Clone(b.jtables)
@@ -92,6 +98,9 @@ func (b *UpdateBuilder) Reset() *UpdateBuilder {
 }
 
 func (b *UpdateBuilder) render(c *BuildContext) string {
+	c.statementDepth++
+	defer func() { c.statementDepth-- }()
+
 	if b.err != nil {
 		panic(b.err)
 	}
@@ -114,35 +123,38 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 		panic("UPDATE JOIN requires FROM")
 	}
 
-	var s strings.Builder
-	s.Grow(128)
+	s := c.acquireBuffer()
+	defer c.releaseBuffer(s)
 
-	_, _ = s.WriteString("UPDATE " + renderTables(c, b.utables))
+	s.Grow(128)
+	writeCTEs(s, c, b.ctes)
+
+	_, _ = s.WriteString("UPDATE ")
+	writeTables(s, c, b.utables)
 
 	if before {
 		for _, j := range b.jtables {
-			_, _ = s.WriteString(j.render(c))
+			j.writeTo(s, c)
 		}
 	}
 
-	set := Batch(b.setters...).BuildUpdate(c)
-	if set == "" {
-		panic("empty SET")
-	}
-
-	_, _ = s.WriteString(" SET " + set)
+	_, _ = s.WriteString(" SET ")
+	writeUpdaters(s, c, b.setters)
 	if len(b.ftables) > 0 {
-		_, _ = s.WriteString(" FROM " + renderTables(c, b.ftables))
+		_, _ = s.WriteString(" FROM ")
+		writeTables(s, c, b.ftables)
 	}
 
 	if !before {
 		for _, j := range b.jtables {
-			_, _ = s.WriteString(j.render(c))
+			j.writeTo(s, c)
 		}
 	}
 
-	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
-	_, _ = s.WriteString(renderReturning(c, b.returning))
+	writeClause(s, c, "WHERE", b.wheres)
+	writeReturning(s, c, b.returning)
+	multi := len(b.utables) != 1 || len(b.jtables) > 0 || len(b.ftables) > 0
+	b.mutation.render(s, c, dialect.UpdateOrderLimit, multi)
 	_, _ = s.WriteString(commentSQL(b.comment))
 	return s.String()
 }
@@ -169,6 +181,7 @@ func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	return execStatement(ctx, b, &b.builderBase)
 }
 
+// Returning appends output columns on PostgreSQL or SQLite.
 func (b *UpdateBuilder) Returning(columns ...string) *UpdateBuilder {
 	for _, v := range columns {
 		b.returning = append(b.returning, selectedColumn{Column: v})
@@ -176,6 +189,7 @@ func (b *UpdateBuilder) Returning(columns ...string) *UpdateBuilder {
 	return b
 }
 
+// ReturningExpr appends an output expression on PostgreSQL or SQLite.
 func (b *UpdateBuilder) ReturningExpr(e Expression, alias string) *UpdateBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b
@@ -200,6 +214,7 @@ func (b *UpdateBuilder) Where(conds ...Condition) *UpdateBuilder {
 	return b
 }
 
+// Join appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
 func (b *UpdateBuilder) Join(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "INNER",
@@ -209,6 +224,7 @@ func (b *UpdateBuilder) Join(table, alias string, ons ...Condition) *UpdateBuild
 	return b
 }
 
+// JoinLeft appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
 func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "LEFT",
@@ -218,6 +234,7 @@ func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...Condition) *UpdateB
 	return b
 }
 
+// JoinRight appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
 func (b *UpdateBuilder) JoinRight(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "RIGHT",
@@ -227,6 +244,7 @@ func (b *UpdateBuilder) JoinRight(table, alias string, ons ...Condition) *Update
 	return b
 }
 
+// JoinFull appends a join in PostgreSQL/SQLite UPDATE FROM.
 func (b *UpdateBuilder) JoinFull(table, alias string, ons ...Condition) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "FULL",
@@ -236,6 +254,7 @@ func (b *UpdateBuilder) JoinFull(table, alias string, ons ...Condition) *UpdateB
 	return b
 }
 
+// CrossJoin appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
 func (b *UpdateBuilder) CrossJoin(table, alias string) *UpdateBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "CROSS",

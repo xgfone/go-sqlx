@@ -8,14 +8,15 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
 type DeleteBuilder struct {
 	builderBase
+	mutation mutationLimit
 
+	ctes      []commonTable
 	ftables   []sqlTable
 	using     []sqlTable
 	jtables   []joinTable
@@ -27,6 +28,7 @@ func Delete() *DeleteBuilder { return new(DeleteBuilder) }
 
 func (db *DB) Delete() *DeleteBuilder { return Delete().SetDB(db) }
 
+// From appends DELETE targets. Multiple targets require MySQL.
 func (b *DeleteBuilder) From(tables ...string) *DeleteBuilder {
 	for _, t := range tables {
 		b.FromAlias(t, "")
@@ -39,6 +41,7 @@ func (b *DeleteBuilder) FromAlias(table, alias string) *DeleteBuilder {
 	return b
 }
 
+// Using appends an aliased table to PostgreSQL DELETE USING.
 func (b *DeleteBuilder) Using(table, alias string) *DeleteBuilder {
 	b.using = append(b.using, sqlTable{Table: table, Alias: alias})
 	return b
@@ -52,6 +55,8 @@ func (b *DeleteBuilder) ClearReturning() *DeleteBuilder { b.returning = nil; ret
 
 func (b *DeleteBuilder) Clone() *DeleteBuilder {
 	v := *b
+	v.mutation = b.mutation.clone()
+	v.ctes = slices.Clone(b.ctes)
 	v.ftables = slices.Clone(b.ftables)
 	v.using = slices.Clone(b.using)
 	v.jtables = slices.Clone(b.jtables)
@@ -69,6 +74,9 @@ func (b *DeleteBuilder) Reset() *DeleteBuilder {
 }
 
 func (b *DeleteBuilder) render(c *BuildContext) string {
+	c.statementDepth++
+	defer func() { c.statementDepth-- }()
+
 	if b.err != nil {
 		panic(b.err)
 	}
@@ -77,8 +85,11 @@ func (b *DeleteBuilder) render(c *BuildContext) string {
 		panic("DELETE requires target")
 	}
 
-	var s strings.Builder
+	s := c.acquireBuffer()
+	defer c.releaseBuffer(s)
+
 	s.Grow(128)
+	writeCTEs(s, c, b.ctes)
 
 	_, _ = s.WriteString("DELETE ")
 	if len(b.using) > 0 {
@@ -94,25 +105,29 @@ func (b *DeleteBuilder) render(c *BuildContext) string {
 			}
 
 			if t.Alias != "" {
-				_, _ = s.WriteString(c.Dialect().QuoteIdent(t.Alias))
+				dialect.WriteIdent(s, c.Dialect(), t.Alias)
 			} else {
-				_, _ = s.WriteString(c.Quote(t.Table))
+				writeQuotedPath(s, c.Dialect(), t.Table)
 			}
 		}
 		_ = s.WriteByte(' ')
 	}
 
-	_, _ = s.WriteString("FROM " + renderTables(c, b.ftables))
+	_, _ = s.WriteString("FROM ")
+	writeTables(s, c, b.ftables)
 	if len(b.using) > 0 {
-		_, _ = s.WriteString(" USING " + renderTables(c, b.using))
+		_, _ = s.WriteString(" USING ")
+		writeTables(s, c, b.using)
 	}
 
 	for _, j := range b.jtables {
-		_, _ = s.WriteString(j.render(c))
+		j.writeTo(s, c)
 	}
 
-	_, _ = s.WriteString(clause(c, "WHERE", b.wheres))
-	_, _ = s.WriteString(renderReturning(c, b.returning))
+	writeClause(s, c, "WHERE", b.wheres)
+	writeReturning(s, c, b.returning)
+	multi := len(b.ftables) != 1 || len(b.jtables) > 0 || len(b.using) > 0
+	b.mutation.render(s, c, dialect.DeleteOrderLimit, multi)
 	_, _ = s.WriteString(commentSQL(b.comment))
 
 	return s.String()
@@ -140,6 +155,7 @@ func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	return execStatement(ctx, b, &b.builderBase)
 }
 
+// Returning appends output columns on PostgreSQL or SQLite.
 func (b *DeleteBuilder) Returning(columns ...string) *DeleteBuilder {
 	for _, v := range columns {
 		b.returning = append(b.returning, selectedColumn{Column: v})
@@ -147,6 +163,7 @@ func (b *DeleteBuilder) Returning(columns ...string) *DeleteBuilder {
 	return b
 }
 
+// ReturningExpr appends an output expression on PostgreSQL or SQLite.
 func (b *DeleteBuilder) ReturningExpr(e Expression, alias string) *DeleteBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b
@@ -171,6 +188,7 @@ func (b *DeleteBuilder) Where(conds ...Condition) *DeleteBuilder {
 	return b
 }
 
+// Join appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
 func (b *DeleteBuilder) Join(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "INNER",
@@ -180,6 +198,7 @@ func (b *DeleteBuilder) Join(table, alias string, ons ...Condition) *DeleteBuild
 	return b
 }
 
+// JoinLeft appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
 func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "LEFT",
@@ -189,6 +208,7 @@ func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...Condition) *DeleteB
 	return b
 }
 
+// JoinRight appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
 func (b *DeleteBuilder) JoinRight(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "RIGHT",
@@ -198,6 +218,7 @@ func (b *DeleteBuilder) JoinRight(table, alias string, ons ...Condition) *Delete
 	return b
 }
 
+// JoinFull appends a join in PostgreSQL DELETE USING.
 func (b *DeleteBuilder) JoinFull(table, alias string, ons ...Condition) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "FULL",
@@ -207,6 +228,7 @@ func (b *DeleteBuilder) JoinFull(table, alias string, ons ...Condition) *DeleteB
 	return b
 }
 
+// CrossJoin appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
 func (b *DeleteBuilder) CrossJoin(table, alias string) *DeleteBuilder {
 	b.jtables = append(b.jtables, joinTable{
 		Type:  "CROSS",

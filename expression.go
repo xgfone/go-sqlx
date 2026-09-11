@@ -13,12 +13,17 @@ import (
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
 // Expr must be trusted; values belong in bound parameters, not SQL strings.
 type Expression struct {
+	identity  *byte // Stable identity for reusing immutable custom expressions.
+	kind      expressionKind
+	rowValues []any
+	filtered  bool
+	distinct  bool
+
 	sql      string
+	args     []any
 	parts    []string
 	function string
-	distinct bool
-	args     []any
-	custom   func(*BuildContext) string
+	custom   func(*strings.Builder, *BuildContext)
 }
 
 // Expr represents trusted SQL with optional arguments. With arguments, sql is
@@ -39,12 +44,13 @@ type Expression struct {
 // To supply a named value, pass sql.Named(name, value) as an argument to ?;
 // BuildContext.Add handles the dialect's named-parameter support.
 //
-// Both markers are ignored inside single-quoted strings, double-quoted or
-// backtick-quoted text, -- line comments, /* ... */ comments (including nested
-// comments), and PostgreSQL dollar-quoted strings ($$...$$ or $tag$...$tag$).
-// Such regions are copied unchanged. Quoted text recognizes doubled delimiters
-// and backslash escapes. Other SQL syntax and operators are not translated
-// between dialects; the caller must supply SQL valid for the target database.
+// Markers in quoted text and comments are ignored according to the dialect's
+// LexicalRules. PostgreSQL recognizes E'...' strings, nested comments, and
+// dollar quotes; MySQL recognizes # comments, whitespace-qualified -- comments,
+// and string backslash escapes. Use dialect.WithLexicalRules for connection SQL
+// modes that differ from the defaults. Other SQL syntax and operators are not
+// translated between dialects; the caller must supply SQL valid for the target
+// database.
 //
 // Each unescaped ? outside those regions consumes exactly one argument. An
 // identifier consumes no bound-parameter number; nested expressions share the
@@ -70,7 +76,11 @@ type Expression struct {
 // that failure as an error. Raw SQL must be trusted: supply untrusted values
 // through arguments instead of concatenating them into sql.
 func Expr(sql string, args ...any) Expression {
-	return Expression{sql: sql, args: append([]any(nil), args...)}
+	e := Expression{sql: sql, args: append([]any(nil), args...)}
+	if len(args) > 0 {
+		e.identity = new(byte)
+	}
+	return e
 }
 
 // Ident represents an identifier with explicit qualification boundaries.
@@ -78,7 +88,7 @@ func Expr(sql string, args ...any) Expression {
 func Ident(parts ...string) Expression {
 	if len(parts) == 0 {
 		return Expression{
-			custom: func(*BuildContext) string {
+			custom: func(*strings.Builder, *BuildContext) {
 				panic("sqlx.Ident: no identifier")
 			},
 		}
@@ -146,7 +156,7 @@ func (e Expression) build(d Dialect) string {
 			if i > 0 {
 				_ = buf.WriteByte('.')
 			}
-			_, _ = buf.WriteString(d.QuoteIdent(part))
+			dialect.WriteIdent(&buf, d, part)
 		}
 	} else if e.function != "" {
 		writeQuotedPath(&buf, d, e.sql)
@@ -163,8 +173,17 @@ func (e Expression) build(d Dialect) string {
 
 // render uses one context for an entire statement, including nested queries.
 func (e Expression) render(ctx *BuildContext) string {
+	if e.kind == windowFunctionExpression {
+		panic("window function requires OVER")
+	}
+	if e.kind == defaultExpression {
+		panic("DEFAULT is only valid as a direct inserted or assigned value")
+	}
 	if e.custom != nil {
-		return e.custom(ctx)
+		buf := ctx.acquireBuffer()
+		defer ctx.releaseBuffer(buf)
+		e.custom(buf, ctx)
+		return buf.String()
 	}
 
 	if e.parts == nil && e.function == "" && strings.TrimSpace(e.sql) == "" {
@@ -178,21 +197,58 @@ func (e Expression) render(ctx *BuildContext) string {
 }
 
 func (e Expression) writeTo(buf *strings.Builder, ctx *BuildContext) {
-	if e.parts != nil && e.custom == nil && len(e.args) == 0 && e.function == "" && !e.distinct {
+	if e.kind == windowFunctionExpression {
+		panic("window function requires OVER")
+	}
+	if e.kind == defaultExpression {
+		panic("DEFAULT is only valid as a direct inserted or assigned value")
+	}
+
+	if e.custom != nil {
+		e.custom(buf, ctx)
+		return
+	}
+	if len(e.args) > 0 {
+		writeBoundExpression(buf, ctx, e.sql, e.args)
+		return
+	}
+
+	if e.parts == nil && e.function == "" && strings.TrimSpace(e.sql) == "" {
+		panic("sqlx.Expression: empty SQL expression")
+	}
+
+	if e.function != "" {
+		_, _ = buf.WriteString(e.function)
+		_ = buf.WriteByte('(')
+	}
+	if e.distinct {
+		_, _ = buf.WriteString("DISTINCT ")
+	}
+	if e.parts != nil {
 		for i, part := range e.parts {
 			if i != 0 {
 				_ = buf.WriteByte('.')
 			}
 			dialect.WriteIdent(buf, ctx.Dialect(), part)
 		}
-		return
+	} else if e.function != "" {
+		writeQuotedPath(buf, ctx.Dialect(), e.sql)
+	} else {
+		_, _ = buf.WriteString(e.sql)
 	}
-	_, _ = buf.WriteString(e.render(ctx))
+
+	if e.function != "" {
+		_ = buf.WriteByte(')')
+	}
 }
 
 // Condition adapts an expression to a grouped WHERE, HAVING or JOIN predicate.
 func (e Expression) Condition() Condition {
-	return ConditionFunc(func(c *BuildContext) string { return "(" + e.render(c) + ")" })
+	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
+		_ = buf.WriteByte('(')
+		e.writeTo(buf, c)
+		_ = buf.WriteByte(')')
+	})
 }
 
 // Subquery renders a parenthesized query in the parent's dialect and binding context.
@@ -201,12 +257,17 @@ func Subquery(q *SelectBuilder) Expression {
 		q = q.Clone()
 	}
 
-	return Expression{custom: func(c *BuildContext) string {
-		if q == nil {
-			panic("nil subquery")
-		}
-		return "(" + q.render(c) + ")"
-	}}
+	return Expression{
+		identity: new(byte),
+		custom: func(buf *strings.Builder, c *BuildContext) {
+			if q == nil {
+				panic("nil subquery")
+			}
+			_ = buf.WriteByte('(')
+			_, _ = buf.WriteString(q.render(c))
+			_ = buf.WriteByte(')')
+		},
+	}
 }
 
 // Exists builds an EXISTS predicate.
@@ -220,11 +281,18 @@ func NotExists(q *SelectBuilder) Condition {
 }
 
 // Default represents SQL DEFAULT, not a parameter value.
-func Default() Expression { return Expr("DEFAULT") }
+func Default() Expression {
+	return Expression{sql: "DEFAULT", kind: defaultExpression}
+}
 
 // Value explicitly binds a value, including nil as SQL NULL.
 func Value(v any) Expression {
-	return Expression{custom: func(c *BuildContext) string { return c.Add(v) }}
+	return Expression{
+		identity: new(byte),
+		custom: func(buf *strings.Builder, c *BuildContext) {
+			c.writeArg(buf, v)
+		},
+	}
 }
 
 func Count(field string) Expression {
@@ -247,10 +315,27 @@ func renderValue(c *BuildContext, v any) string {
 	return c.Add(v)
 }
 
+func writeValue(buf *strings.Builder, c *BuildContext, v any) {
+	if e, ok := v.(Expression); ok {
+		e.writeTo(buf, c)
+	} else {
+		c.writeArg(buf, v)
+	}
+}
+
 // bindExpression recognizes quoted literals/identifiers, comments and PostgreSQL
 // dollar quotes. ?? escapes a literal question mark (e.g. a PostgreSQL JSON operator).
 func bindExpression(c *BuildContext, s string, args []any) string {
-	var out strings.Builder
+	out := c.acquireBuffer()
+	defer c.releaseBuffer(out)
+
+	out.Grow(len(s))
+	writeBoundExpression(out, c, s, args)
+	return out.String()
+}
+
+func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args []any) {
+	rules := c.Dialect().LexicalRules()
 
 	n := 0
 	for i := 0; i < len(s); {
@@ -259,10 +344,16 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 		case s[i] == '\'' || s[i] == '"' || s[i] == '`':
 			closed := false
 			quote := s[i]
+			backslash := rules.BackslashStrings && (quote == '\'' || quote == '"' && rules.DoubleQuotedStrings)
+			if quote == '\'' && rules.EscapeStringPrefix && i > 0 &&
+				(s[i-1] == 'E' || s[i-1] == 'e') &&
+				(i < 2 || !sqlWordByte(s[i-2])) {
+				backslash = true
+			}
 
 			i++
 			for i < len(s) {
-				if s[i] == '\\' {
+				if s[i] == '\\' && backslash {
 					i += 2
 					continue
 				}
@@ -285,7 +376,8 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 			}
 			_, _ = out.WriteString(s[start:i])
 
-		case strings.HasPrefix(s[i:], "--"):
+		case s[i] == '#' && rules.HashComments || strings.HasPrefix(s[i:], "--") &&
+			(!rules.DashCommentSpace || i+2 == len(s) || s[i+2] <= ' '):
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
@@ -295,7 +387,7 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 			i += 2
 			depth := 1
 			for i < len(s) && depth > 0 {
-				if strings.HasPrefix(s[i:], "/*") {
+				if rules.NestedBlockComments && strings.HasPrefix(s[i:], "/*") {
 					depth++
 					i += 2
 				} else if strings.HasPrefix(s[i:], "*/") {
@@ -311,7 +403,7 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 			}
 			_, _ = out.WriteString(s[start:i])
 
-		case s[i] == '$':
+		case s[i] == '$' && rules.DollarQuotes && (i == 0 || !sqlWordByte(s[i-1])):
 			j := i + 1
 			for j < len(s) && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || s[j] == '_' || (j > i+1 && s[j] >= '0' && s[j] <= '9')) {
 				j++
@@ -342,7 +434,7 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 				panic("too few expression arguments")
 			}
 
-			_, _ = out.WriteString(renderValue(c, args[n]))
+			writeValue(out, c, args[n])
 			n++
 
 		default:
@@ -354,7 +446,6 @@ func bindExpression(c *BuildContext, s string, args []any) string {
 	if n != len(args) {
 		panic(fmt.Sprintf("expression used %d of %d arguments", n, len(args)))
 	}
-	return out.String()
 }
 
 // InQuery compares a column to a one-column subquery, snapshotted at this call.

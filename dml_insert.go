@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -26,6 +25,12 @@ func ColValue(column string, value any) ColumnValue {
 
 type InsertBuilder struct {
 	builderBase
+
+	ctes             []commonTable
+	conflicts        []ConflictClause
+	rowsAliasColumns []string
+	rowsAlias        string
+	alias            string
 
 	table           string
 	verb            string
@@ -47,7 +52,9 @@ func (db *DB) Insert() *InsertBuilder { return Insert().SetDB(db) }
 func (b *InsertBuilder) Into(table string) *InsertBuilder { b.table = table; return b }
 
 // Ignore uses MySQL INSERT IGNORE; it is not a portable conflict policy.
-func (b *InsertBuilder) Ignore() *InsertBuilder  { b.verb = "INSERT IGNORE"; return b }
+func (b *InsertBuilder) Ignore() *InsertBuilder { b.verb = "INSERT IGNORE"; return b }
+
+// Replace selects MySQL or SQLite REPLACE semantics.
 func (b *InsertBuilder) Replace() *InsertBuilder { b.verb = "REPLACE"; return b }
 
 func (b *InsertBuilder) Columns(columns ...string) *InsertBuilder {
@@ -114,12 +121,16 @@ func (b *InsertBuilder) FromSelect(q *SelectBuilder) *InsertBuilder {
 
 func (b *InsertBuilder) DefaultValues() *InsertBuilder { b.defaults = true; return b }
 
+// OnConflictDoNothing ignores matching conflicts on PostgreSQL or SQLite.
 func (b *InsertBuilder) OnConflictDoNothing(columns ...string) *InsertBuilder {
 	b.conflictAction = "nothing"
 	b.conflictColumns = append(b.conflictColumns, columns...)
 	return b
 }
 
+// OnConflictDoUpdate updates matching conflicts on PostgreSQL or SQLite.
+// SQLite permits an empty target list; PostgreSQL requires a conflict target.
+// Use OnConflict for predicates, expression targets, or named constraints.
 func (b *InsertBuilder) OnConflictDoUpdate(columns []string, updaters ...Updater) *InsertBuilder {
 	b.conflictAction = "update"
 	b.conflictColumns = append(b.conflictColumns, columns...)
@@ -148,6 +159,7 @@ func (b *InsertBuilder) ClearValues() *InsertBuilder {
 }
 
 func (b *InsertBuilder) ClearConflict() *InsertBuilder {
+	b.conflicts = nil
 	b.conflictColumns = nil
 	b.conflictSet = nil
 	b.conflictAction = ""
@@ -161,6 +173,9 @@ func (b *InsertBuilder) ClearReturning() *InsertBuilder {
 
 func (b *InsertBuilder) Clone() *InsertBuilder {
 	v := *b
+	v.ctes = slices.Clone(b.ctes)
+	v.conflicts = slices.Clone(b.conflicts)
+	v.rowsAliasColumns = slices.Clone(b.rowsAliasColumns)
 	v.columns = slices.Clone(b.columns)
 	v.returning = cloneColumns(b.returning)
 	v.conflictColumns = slices.Clone(b.conflictColumns)
@@ -180,6 +195,9 @@ func (b *InsertBuilder) Reset() *InsertBuilder {
 }
 
 func (b *InsertBuilder) render(c *BuildContext) string {
+	c.statementDepth++
+	defer func() { c.statementDepth-- }()
+
 	if b.err != nil {
 		panic(b.err)
 	}
@@ -212,14 +230,38 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 	if verb == "REPLACE" {
 		requireFeature(c, dialect.ReplaceInto, "REPLACE")
 	}
-	if verb != "INSERT" && b.conflictAction != "" {
+	if verb != "INSERT" && b.hasConflict() {
 		panic("cannot combine insert mode with conflict policy")
 	}
 
-	var s strings.Builder
-	s.Grow(128)
+	s := c.acquireBuffer()
+	defer c.releaseBuffer(s)
 
-	_, _ = s.WriteString(verb + " INTO " + c.Quote(b.table))
+	s.Grow(128)
+	oldAlias, oldConflict := c.insertedAlias, c.conflictScope
+	c.insertedAlias = b.rowsAlias
+	c.conflictScope = false
+	defer func() {
+		c.insertedAlias = oldAlias
+		c.conflictScope = oldConflict
+	}()
+
+	afterTarget := c.Dialect().Grammar().InsertCTEAfterTarget
+	if !afterTarget {
+		writeCTEs(s, c, b.ctes)
+	} else if len(b.ctes) > 0 && b.source == nil {
+		panic("this dialect requires a SELECT source for INSERT WITH")
+	}
+
+	_, _ = s.WriteString(verb)
+	_, _ = s.WriteString(" INTO ")
+	writeQuotedPath(s, c.Dialect(), b.table)
+	if b.alias != "" {
+		requireFeature(c, dialect.InsertTargetAlias, "INSERT target alias")
+		_, _ = s.WriteString(" AS ")
+		dialect.WriteIdent(s, c.Dialect(), b.alias)
+	}
+
 	seen := map[string]bool{}
 	if len(b.columns) > 0 {
 		_, _ = s.WriteString(" (")
@@ -233,14 +275,15 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 				_, _ = s.WriteString(", ")
 			}
 
-			_, _ = s.WriteString(c.Dialect().QuoteIdent(col))
+			dialect.WriteIdent(s, c.Dialect(), col)
 		}
 		_ = s.WriteByte(')')
 	}
 
 	switch {
 	case b.defaults:
-		if b.conflictAction != "" {
+		if b.hasConflict() && (b.conflictAction != "duplicate" ||
+			!dialect.Supports(c.Dialect(), dialect.EmptyInsert)) {
 			requireFeature(c, dialect.DefaultValuesConflict, "conflict handling with DEFAULT VALUES")
 		}
 
@@ -256,11 +299,18 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 		}
 
 	case b.source != nil:
-		_ = s.WriteByte(' ')
-		_, _ = s.WriteString(b.source.render(c))
-		if b.conflictAction != "" && len(b.source.wheres) == 0 {
-			panic("INSERT SELECT with conflict handling requires explicit WHERE to avoid ON ambiguity")
+		source := b.source
+		if afterTarget && len(b.ctes) > 0 {
+			source = source.Clone()
+			source.ctes = append(slices.Clone(b.ctes), source.ctes...)
 		}
+
+		if b.hasConflict() && c.Dialect().Grammar().InsertSelectNeedsWhere &&
+			(len(source.wheres) == 0 || len(source.unions) > 0) {
+			source = Select("*").FromSelect(source, "_sqlx_insert").Where(Expr("TRUE").Condition())
+		}
+		_ = s.WriteByte(' ')
+		_, _ = s.WriteString(source.render(c))
 
 	default:
 		_, _ = s.WriteString(" VALUES ")
@@ -288,53 +338,24 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 					_, _ = s.WriteString(", ")
 				}
 
-				if e, ok := v.(Expression); ok && e.sql == "DEFAULT" {
+				if e, ok := v.(Expression); ok &&
+					(e.kind == defaultExpression || e.sql == "DEFAULT" &&
+						e.custom == nil && e.function == "" && len(e.args) == 0) {
 					requireFeature(c, dialect.DefaultInValues, "DEFAULT in VALUES")
+					_, _ = s.WriteString("DEFAULT")
+					continue
 				}
-				_, _ = s.WriteString(renderValue(c, v))
+				writeValue(s, c, v)
 			}
 
 			_ = s.WriteByte(')')
 		}
 	}
 
-	if b.conflictAction != "" {
-		if b.conflictAction == "duplicate" {
-			requireFeature(c, dialect.DuplicateKeyUpdate, "ON DUPLICATE KEY UPDATE")
-			_, _ = s.WriteString(" ON DUPLICATE KEY UPDATE ")
-		} else {
-			requireFeature(c, dialect.OnConflict, "ON CONFLICT")
-			_, _ = s.WriteString(" ON CONFLICT")
-			if len(b.conflictColumns) > 0 {
-				_, _ = s.WriteString(" (")
-				for i, col := range b.conflictColumns {
-					if i > 0 {
-						_, _ = s.WriteString(", ")
-					}
-					_, _ = s.WriteString(c.Dialect().QuoteIdent(col))
-				}
-				_ = s.WriteByte(')')
-			}
+	b.renderRowsAlias(s, c)
+	b.renderConflicts(s, c)
 
-			if b.conflictAction == "nothing" {
-				_, _ = s.WriteString(" DO NOTHING")
-			} else {
-				if len(b.conflictColumns) == 0 {
-					panic("conflict update requires target columns")
-				}
-				_, _ = s.WriteString(" DO UPDATE SET ")
-			}
-		}
-
-		if b.conflictAction != "nothing" {
-			if len(b.conflictSet) == 0 {
-				panic("conflict update requires assignments")
-			}
-			_, _ = s.WriteString(Batch(b.conflictSet...).BuildUpdate(c))
-		}
-	}
-
-	_, _ = s.WriteString(renderReturning(c, b.returning))
+	writeReturning(s, c, b.returning)
 	_, _ = s.WriteString(commentSQL(b.comment))
 
 	return s.String()
@@ -362,6 +383,7 @@ func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	return execStatement(ctx, b, &b.builderBase)
 }
 
+// Returning appends output columns on PostgreSQL or SQLite.
 func (b *InsertBuilder) Returning(columns ...string) *InsertBuilder {
 	for _, v := range columns {
 		b.returning = append(b.returning, selectedColumn{Column: v})
@@ -369,6 +391,7 @@ func (b *InsertBuilder) Returning(columns ...string) *InsertBuilder {
 	return b
 }
 
+// ReturningExpr appends an output expression on PostgreSQL or SQLite.
 func (b *InsertBuilder) ReturningExpr(e Expression, alias string) *InsertBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b

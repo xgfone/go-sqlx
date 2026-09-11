@@ -13,7 +13,8 @@ import (
 	"sync"
 )
 
-// Dialect renders SQL syntax. Implementations must be safe for concurrent use.
+// Dialect renders SQL syntax and defines template tokenization rules.
+// Implementations must be safe for concurrent use.
 type Dialect interface {
 	Name() string
 
@@ -23,6 +24,13 @@ type Dialect interface {
 	// QuoteIdent quotes one raw identifier, escaping embedded quote characters.
 	// It does not parse qualified names, wildcards, or SQL expressions.
 	QuoteIdent(name string) string
+
+	// Grammar selects SQL forms and clause placement independently of Name.
+	Grammar() Grammar
+
+	// LexicalRules controls template scanning and must match the connection's
+	// SQL mode. It does not change server settings.
+	LexicalRules() LexicalRules
 
 	LimitOffset(Pagination) string
 }
@@ -40,7 +48,9 @@ type Pagination struct {
 	HasLimit bool
 }
 
-// Built-in dialects. SQLite uses sqlite3 as its canonical driver name.
+// Built-in dialects target MySQL 8.0, PostgreSQL 14+, and SQLite 3.39+.
+// Use WithVersion to enable later MySQL capabilities. SQLite uses sqlite3
+// as its canonical driver name.
 var (
 	MySQL    Dialect = builtin("mysql")
 	Postgres Dialect = builtin("postgres")
@@ -125,7 +135,9 @@ func (d builtin) Placeholder(i int) string {
 		panic("dialect: parameter index must be positive")
 	}
 	if d == "postgres" {
-		return "$" + strconv.Itoa(i)
+		var buf [21]byte
+		buf[0] = '$'
+		return string(strconv.AppendInt(buf[:1], int64(i), 10))
 	}
 	return "?"
 }
@@ -154,6 +166,7 @@ func (d builtin) QuoteIdent(name string) string {
 // an intermediate string; custom dialects retain their QuoteIdent behavior.
 // As with QuoteIdent, name is a single identifier, not a path or wildcard.
 func WriteIdent(buf *strings.Builder, d Dialect, name string) {
+	d = renderingDialect(d)
 	builtinDialect, ok := d.(builtin)
 	if !ok {
 		_, _ = buf.WriteString(d.QuoteIdent(name))
@@ -181,6 +194,40 @@ func WriteIdent(buf *strings.Builder, d Dialect, name string) {
 		name = name[i+1:]
 	}
 	_ = buf.WriteByte(quote)
+}
+
+// WritePlaceholder writes a positional parameter directly into buf; i starts
+// at one. Custom dialects retain their Placeholder behavior.
+func WritePlaceholder(buf *strings.Builder, d Dialect, i int) {
+	b, ok := renderingDialect(d).(builtin)
+	if !ok {
+		_, _ = buf.WriteString(d.Placeholder(i))
+		return
+	}
+
+	if i < 1 {
+		panic("dialect: parameter index must be positive")
+	}
+
+	if b == "postgres" {
+		var digits [21]byte
+		digits[0] = '$'
+		_, _ = buf.Write(strconv.AppendInt(digits[:1], int64(i), 10))
+	} else {
+		_ = buf.WriteByte('?')
+	}
+}
+
+// Configuration wrappers change grammar, features, and lexical rules, but
+// delegate identifiers and positional parameters to their underlying dialect.
+func renderingDialect(d Dialect) Dialect {
+	for {
+		configured, ok := d.(*configured)
+		if !ok {
+			return d
+		}
+		d = configured.Dialect
+	}
 }
 
 func (d builtin) LimitOffset(p Pagination) string {

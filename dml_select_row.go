@@ -22,6 +22,9 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	// Only pagination scalars are changed. Rendering is read-only, so the
 	// query can share its column/condition slices with the caller's builder.
 	q := *b
+	if q.withTies {
+		q.withTies = false
+	}
 	if !q.hasLimit || q.limit > 1 {
 		q.Limit(1)
 	}

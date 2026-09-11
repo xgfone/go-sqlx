@@ -165,6 +165,21 @@ DEFAULT in individual VALUES positions, or ON CONFLICT after DEFAULT VALUES.
 MySQL conflict updates use an explicit OnDuplicateKeyUpdate API; INSERT IGNORE
 and REPLACE are not equivalent to PostgreSQL/SQLite ON CONFLICT.
 
+## Dialect grammar and lexical rules
+
+`Dialect` now requires `Grammar() dialect.Grammar` and
+`LexicalRules() dialect.LexicalRules`. Custom implementations must provide both
+methods, either returning explicit rules or delegating to an existing dialect.
+Built-in dialects and the `WithFeatures`, `WithVersion`, `WithGrammar`, and
+`WithLexicalRules` wrappers already implement them.
+
+The optional `GrammarDialect` and `LexicalDialect` interfaces and their
+`GrammarOf` / `LexicalRulesOf` helpers have been removed. Replace helper calls
+with `d.Grammar()` / `d.LexicalRules()`. To retain the former fallback behavior,
+return `dialect.Grammar{}` and `dialect.LexicalRules{NestedBlockComments: true}`.
+Choose rules matching the executing connection. `FeatureDialect` and
+`NamedDialect` remain optional.
+
 ## Earlier changes on this branch
 
 Dialect implementations moved to `dialect` (MySQL, Postgres, SQLite), with explicit

@@ -18,15 +18,10 @@ const (
 	Desc Order = "DESC"
 )
 
-type commonTable struct {
-	Name      string
-	Query     *SelectBuilder
-	Recursive bool
-}
-
 type unionQuery struct {
 	Query *SelectBuilder
 	All   bool
+	Op    string
 }
 
 // SelectBuilder is mutable. Clone before deriving an independent query; builders
@@ -51,6 +46,11 @@ type SelectBuilder struct {
 	offset int64
 	limit  int64
 
+	distinctOn []Expression
+	windows    []namedWindow
+
+	rollup   bool
+	withTies bool
 	hasLimit bool
 	distinct bool
 }
@@ -93,9 +93,14 @@ func (b *SelectBuilder) SelectNamers(cols ...Namer) *SelectBuilder {
 
 func (b *SelectBuilder) Distinct() *SelectBuilder { b.distinct = true; return b }
 
-func (b *SelectBuilder) ClearSelect() *SelectBuilder  { b.columns = nil; b.distinct = false; return b }
+func (b *SelectBuilder) ClearSelect() *SelectBuilder {
+	b.columns = nil
+	b.distinct = false
+	b.distinctOn = nil
+	return b
+}
 func (b *SelectBuilder) ClearFrom() *SelectBuilder    { b.ftables = nil; return b }
-func (b *SelectBuilder) ClearGroupBy() *SelectBuilder { b.groups = nil; return b }
+func (b *SelectBuilder) ClearGroupBy() *SelectBuilder { b.groups = nil; b.rollup = false; return b }
 func (b *SelectBuilder) ClearHaving() *SelectBuilder  { b.havings = nil; return b }
 func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return b }
 func (b *SelectBuilder) ClearUnion() *SelectBuilder   { b.unions = nil; return b }
@@ -103,6 +108,7 @@ func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b
 func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
 func (b *SelectBuilder) ClearWith() *SelectBuilder    { b.ctes = nil; return b }
 func (b *SelectBuilder) ClearPagination() *SelectBuilder {
+	b.withTies = false
 	b.hasLimit = false
 	b.limit = 0
 	b.offset = 0
@@ -152,7 +158,7 @@ func (b *SelectBuilder) JoinUsing(table, alias string, columns ...string) *Selec
 
 func (b *SelectBuilder) GroupBy(columns ...string) *SelectBuilder {
 	for _, s := range columns {
-		b.groups = append(b.groups, Expression{custom: func(c *BuildContext) string { return c.Quote(s) }})
+		b.groups = append(b.groups, operand(s))
 	}
 	return b
 }
@@ -179,20 +185,7 @@ func (b *SelectBuilder) OrderByExpr(e Expression, order Order) *SelectBuilder {
 }
 
 func (b *SelectBuilder) Sort(sorters ...Sorter) *SelectBuilder {
-	b.mutate(func() {
-		for _, sorter := range sorters {
-			if sorter == nil {
-				continue
-			}
-			for _, term := range sorter.SortColumns() {
-				if term.Expr != nil {
-					b.OrderByExpr(*term.Expr, term.Order)
-				} else {
-					b.OrderBy(term.Column, term.Order)
-				}
-			}
-		}
-	})
+	b.mutate(func() { b.orderbys = appendSorts(b.orderbys, sorters...) })
 	return b
 }
 
@@ -203,6 +196,7 @@ func (b *SelectBuilder) Limit(n int64) *SelectBuilder {
 
 	b.limit = n
 	b.hasLimit = true
+	b.withTies = false
 	return b
 }
 
@@ -232,13 +226,13 @@ func (b *SelectBuilder) Pagination(p Pagination) *SelectBuilder {
 // ForUpdate locks selected rows. Table aliases may be specified on MySQL/PostgreSQL.
 func (b *SelectBuilder) ForUpdate(tables ...string) *SelectBuilder {
 	b.lock = "UPDATE"
-	b.lockTables = append(b.lockTables, tables...)
+	b.lockTables = append([]string(nil), tables...)
 	return b
 }
 
 func (b *SelectBuilder) ForShare(tables ...string) *SelectBuilder {
 	b.lock = "SHARE"
-	b.lockTables = append(b.lockTables, tables...)
+	b.lockTables = append([]string(nil), tables...)
 	return b
 }
 
@@ -257,18 +251,33 @@ func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool) *Sel
 	if q == nil {
 		b.fail(errors.New("sqlx: nil CTE"))
 	} else {
-		b.ctes = append(b.ctes, commonTable{name, q.Clone(), recursive})
+		b.ctes = append(b.ctes, commonTable{
+			name:  name,
+			query: q.Clone(),
+
+			recursive: recursive,
+		})
 	}
 	return b
 }
 
-func (b *SelectBuilder) Union(q *SelectBuilder) *SelectBuilder    { return b.union(q, false) }
+// Union appends a snapshotted operand. Mixed set operations associate left-to-right;
+// nest a compound operand to request a different grouping. Operand pagination and
+// WITH clauses are grouped automatically; this builder's ordering/limit apply to
+// the complete result. Row locking is not supported in compound queries.
+func (b *SelectBuilder) Union(q *SelectBuilder) *SelectBuilder { return b.union(q, false) }
+
+// UnionAll appends an operand without eliminating duplicates; see Union.
 func (b *SelectBuilder) UnionAll(q *SelectBuilder) *SelectBuilder { return b.union(q, true) }
 func (b *SelectBuilder) union(q *SelectBuilder, all bool) *SelectBuilder {
 	if q == nil {
 		b.fail(errors.New("sqlx: nil UNION"))
 	} else {
-		b.unions = append(b.unions, unionQuery{q.Clone(), all})
+		b.unions = append(b.unions, unionQuery{
+			Query: q.Clone(),
+			All:   all,
+			Op:    "UNION",
+		})
 	}
 	return b
 }
@@ -281,7 +290,9 @@ func (b *SelectBuilder) Clone() *SelectBuilder {
 	v.wheres = slices.Clone(b.wheres)
 	v.havings = slices.Clone(b.havings)
 	v.groups = slices.Clone(b.groups)
-	v.orderbys = slices.Clone(b.orderbys)
+	v.distinctOn = slices.Clone(b.distinctOn)
+	v.windows = slices.Clone(b.windows)
+	v.orderbys = cloneSorts(b.orderbys)
 	v.ctes = slices.Clone(b.ctes)
 	v.unions = slices.Clone(b.unions)
 	v.lockTables = slices.Clone(b.lockTables)
@@ -331,130 +342,80 @@ func extractName(s string) string {
 }
 
 func (b *SelectBuilder) render(c *BuildContext) string {
+	parentWindows := c.windows
+	c.windows = nil
+	defer func() { c.windows = parentWindows }()
+
+	c.statementDepth++
+	defer func() { c.statementDepth-- }()
+
 	if b.err != nil {
 		panic(b.err)
 	}
 
-	var s strings.Builder
+	s := c.acquireBuffer()
+	defer c.releaseBuffer(s)
+
 	s.Grow(b.renderSizeHint())
-	if len(b.ctes) > 0 {
-		requireFeature(c, dialect.CTE, "CTE")
-		_, _ = s.WriteString("WITH ")
-		for _, t := range b.ctes {
-			if t.Recursive {
-				_, _ = s.WriteString("RECURSIVE ")
-				break
-			}
-		}
+	writeCTEs(s, c, b.ctes)
+	b.prepareWindows(c)
 
-		seen := map[string]bool{}
-		for i, t := range b.ctes {
-			if seen[t.Name] {
-				panic("duplicate CTE name")
-			}
-
-			seen[t.Name] = true
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-
-			_, _ = s.WriteString(c.Dialect().QuoteIdent(t.Name))
-			_, _ = s.WriteString(" AS (")
-			_, _ = s.WriteString(t.Query.render(c))
-			_ = s.WriteByte(')')
-		}
-
-		_ = s.WriteByte(' ')
-	}
-
+	b.openSetGroups(s, c)
 	_, _ = s.WriteString("SELECT ")
 	if b.distinct {
 		_, _ = s.WriteString("DISTINCT ")
 	}
 
-	writeColumns(&s, c, b.columns)
+	orders := b.orderbys
+	if len(b.distinctOn) > 0 {
+		requireFeature(c, dialect.DistinctOn, "DISTINCT ON")
+		keys, terms := b.renderDistinctOn(c)
+		orders = terms
+		_, _ = s.WriteString("DISTINCT ON (" + keys + ") ")
+	}
+
+	writeColumns(s, c, b.columns)
 	if len(b.ftables) > 0 {
 		_, _ = s.WriteString(" FROM ")
 		for i, table := range b.ftables {
 			if i != 0 {
 				_, _ = s.WriteString(", ")
 			}
-			if table.Query != nil {
-				_, _ = s.WriteString(table.render(c))
-			} else {
-				writeQuotedPath(&s, c.Dialect(), table.Table)
-				if table.Alias != "" {
-					_, _ = s.WriteString(" AS ")
-					dialect.WriteIdent(&s, c.Dialect(), table.Alias)
-				}
-			}
+			table.writeTo(s, c)
 		}
 	} else if len(b.jtables) > 0 {
 		panic("JOIN requires FROM")
 	}
 
 	for _, j := range b.jtables {
-		_, _ = s.WriteString(j.render(c))
+		j.writeTo(s, c)
 	}
 
-	writeClause(&s, c, "WHERE", b.wheres)
+	writeClause(s, c, "WHERE", b.wheres)
 	if len(b.groups) > 0 {
 		_, _ = s.WriteString(" GROUP BY ")
-		for i, e := range b.groups {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			e.writeTo(&s, c)
+		if b.rollup {
+			requireFeature(c, dialect.Rollup, "ROLLUP")
 		}
-	}
-
-	writeClause(&s, c, "HAVING", b.havings)
-	for _, u := range b.unions {
-		q := u.Query
-		if len(q.ctes) > 0 || len(q.orderbys) > 0 || q.hasLimit ||
-			q.offset > 0 || q.lock != "" || len(q.unions) > 0 {
-			panic("complex UNION operand must be wrapped with FromSelect")
+		suffix := b.rollup && c.Dialect().Grammar().RollupSuffix
+		if b.rollup && !suffix {
+			_, _ = s.WriteString("ROLLUP (")
 		}
-
-		_, _ = s.WriteString(" UNION ")
-		if u.All {
-			_, _ = s.WriteString("ALL ")
-		}
-		_, _ = s.WriteString(q.render(c))
-	}
-
-	if len(b.orderbys) > 0 {
-		_, _ = s.WriteString(" ORDER BY ")
-		for i, o := range b.orderbys {
-			if o.Order != "" && o.Order != Asc && o.Order != Desc {
-				panic("invalid ORDER BY direction")
-			}
-
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-
-			if o.Expr != nil {
-				o.Expr.writeTo(&s, c)
+		writeExprs(s, c, b.groups)
+		if b.rollup {
+			if suffix {
+				_, _ = s.WriteString(" WITH ROLLUP")
 			} else {
-				writeQuotedPath(&s, c.Dialect(), o.Column)
-			}
-
-			if o.Order != "" {
-				_ = s.WriteByte(' ')
-				_, _ = s.WriteString(string(o.Order))
+				_ = s.WriteByte(')')
 			}
 		}
 	}
 
-	if b.hasLimit || b.offset > 0 {
-		_ = s.WriteByte(' ')
-		_, _ = s.WriteString(c.Dialect().LimitOffset(dialect.Pagination{
-			Limit:    b.limit,
-			Offset:   b.offset,
-			HasLimit: b.hasLimit,
-		}))
-	}
+	writeClause(s, c, "HAVING", b.havings)
+	b.writeWindows(s, c)
+	b.renderSetOperations(s, c)
+	writeOrderBy(s, c, orders)
+	b.writePagination(s, c)
 
 	if b.lock != "" {
 		if len(b.ftables) == 0 {
@@ -462,13 +423,19 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 		}
 
 		for _, col := range b.columns {
-			if col.Expr != nil && col.Expr.function != "" {
+			if col.Expr != nil && (col.Expr.function != "" ||
+				col.Expr.kind == aggregateExpression ||
+				col.Expr.kind == windowExpression) {
 				panic("row locking aggregate queries is unsupported")
 			}
 		}
 
 		requireFeature(c, dialect.RowLock, "row locking")
-		if b.distinct || len(b.groups) > 0 || len(b.havings) > 0 || len(b.unions) > 0 {
+		if b.lock == "NO KEY UPDATE" || b.lock == "KEY SHARE" {
+			requireFeature(c, dialect.KeyRowLock, "key row locking")
+		}
+		if b.distinct || len(b.distinctOn) > 0 || len(b.windows) > 0 ||
+			len(b.groups) > 0 || len(b.havings) > 0 || len(b.unions) > 0 {
 			panic("locking DISTINCT, grouped or compound queries is unsupported")
 		}
 
@@ -480,7 +447,7 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 				if i > 0 {
 					_, _ = s.WriteString(", ")
 				}
-				_, _ = s.WriteString(c.Dialect().QuoteIdent(t))
+				dialect.WriteIdent(s, c.Dialect(), t)
 			}
 		}
 
