@@ -94,6 +94,24 @@ func TestBuildContextPoolCleanup(t *testing.T) {
 	if view[0] != nil || saved[0] == nil || c.named != nil || c.dialect != nil {
 		t.Fatal("incorrect context cleanup")
 	}
+
+	medium := acquireBuildContext(dialect.Postgres)
+	medium.args = make([]any, 128)
+	for i := range medium.args {
+		medium.args[i] = &struct{}{}
+	}
+	view = medium.args
+	releaseBuildContext(medium)
+	if len(medium.args) != 0 || cap(medium.args) != len(view) ||
+		&medium.args[:cap(medium.args)][0] != &view[0] {
+		t.Fatal("medium argument buffer was discarded")
+	}
+	for _, value := range view {
+		if value != nil {
+			t.Fatal("retained argument buffer kept a reference")
+		}
+	}
+
 	large := acquireBuildContext(dialect.MySQL)
 	large.args = make([]any, maxPooledArgsCap+1)
 	backing := &large.args[0]

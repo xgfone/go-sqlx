@@ -15,7 +15,10 @@ import (
 )
 
 const defaultArgsCap = 24
-const maxPooledArgsCap = 64
+
+// Retain common IN lists and small batches, bounded to 8 KiB of argument slots
+// on 64-bit systems. releaseBuildContext clears all retained argument references.
+const maxPooledArgsCap = 512
 
 var buildContextPool = sync.Pool{New: func() any {
 	return &BuildContext{args: make([]any, 0, defaultArgsCap)}
