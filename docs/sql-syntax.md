@@ -103,6 +103,8 @@ q := sqlx.Select("id").From("events").SelectExprAlias(
 take frame boundaries from `CurrentRow`, `Preceding(n)`, `Following(n)`,
 `UnboundedPreceding`, and `UnboundedFollowing`. Numeric offsets are nonnegative
 integer literals. RANGE offset frames require one ordering expression.
+PostgreSQL GROUPS frames require ORDER BY (including inherited ordering).
+SQLite permits GROUPS without ordering; all rows in the partition are peers.
 
 `Exclude` accepts `ExcludeCurrentRow`, `ExcludeGroup`, `ExcludeTies`, or
 `ExcludeNoOthers`, and requires an explicit frame. MySQL supports ROWS/RANGE

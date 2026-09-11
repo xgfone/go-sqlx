@@ -197,7 +197,7 @@ func (w WindowSpec) writeTo(s *strings.Builder, c *BuildContext) {
 
 		if f.mode == "GROUPS" {
 			requireFeature(c, dialect.WindowGroups, "GROUPS frame")
-			if len(effective.orders) == 0 {
+			if c.Dialect().Grammar().WindowGroupsRequiresOrder && len(effective.orders) == 0 {
 				panic("GROUPS frame requires ORDER BY")
 			}
 		}

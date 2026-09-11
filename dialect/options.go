@@ -17,6 +17,7 @@ type Grammar struct {
 	CompoundOperandViaSelect      bool // SQLite requires a derived SELECT for grouped operands.
 	MutationOrderRequiresLimit    bool // SQLite ORDER BY requires a LIMIT clause.
 	RowInViaValues                bool // SQLite row IN requires a query on the right.
+	WindowGroupsRequiresOrder     bool // PostgreSQL GROUPS frames require ORDER BY.
 }
 
 func (d builtin) Grammar() Grammar {
@@ -27,6 +28,11 @@ func (d builtin) Grammar() Grammar {
 			RollupSuffix:         true,
 			ValuesRowKeyword:     true,
 			ValuesViaSelect:      true,
+		}
+
+	case "postgres":
+		return Grammar{
+			WindowGroupsRequiresOrder: true,
 		}
 
 	case "sqlite3":

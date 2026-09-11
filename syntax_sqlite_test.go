@@ -130,6 +130,18 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			[][]any{{1, 30}, {2, 30}, {3, 30}},
 		},
 		{
+			"groups without ordering",
+			db.Select("id").SelectExpr(Sum("v").Over(Window().
+				Groups(UnboundedPreceding(), CurrentRow()))).From("t").OrderByAsc("id"),
+			[][]any{{1, 60}, {2, 60}, {3, 60}},
+		},
+		{
+			"partitioned groups without ordering",
+			db.Select("id").SelectExpr(Sum("v").Over(Window().PartitionBy("team").
+				Groups(CurrentRow(), CurrentRow()))).From("t").OrderByAsc("id"),
+			[][]any{{1, 30}, {2, 30}, {3, 30}},
+		},
+		{
 			"lag lead",
 			db.Select("id").SelectExpr(
 				Lag(Ident("v"), 1, 0).Over(window),
