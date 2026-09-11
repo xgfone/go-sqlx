@@ -369,7 +369,7 @@ func TestSQLiteExecution(t *testing.T) {
 	}
 
 	cases := []struct {
-		b    Statement
+		b    SQLBuilder
 		want [][]any
 	}{
 		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "one", 10).Returning("id"), [][]any{{1}}},

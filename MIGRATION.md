@@ -3,6 +3,20 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## CTE bodies and independent SQL builders
+
+`CommonTable` is now named `NewCTE`. The constructor accepts the open `CTEBody`
+interface; all four built-in builder pointers remain valid arguments. Custom
+bodies implement `WriteSQL(*strings.Builder, *BuildContext) error`,
+`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Snapshot panics and nil bodies or
+snapshots are reported by the enclosing `Build` call.
+
+The former public `Statement` interface is removed. Use `SQLBuilder` for code
+that calls `Build()` and `CTEBody` for CTE composition. They are independent:
+an external CTE body does not need a standalone `Build` method. `Kind` must
+return `CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete`; other values fail
+at build time. Other query composition methods keep their existing input types.
+
 ## Go 1.27 and generic model selection
 
 The minimum Go version is now 1.27. `SelectBuilder.SelectStruct[T]` and

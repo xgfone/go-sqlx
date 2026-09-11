@@ -111,7 +111,7 @@ func TestNativeSubqueriesShareContext(t *testing.T) {
 func TestNativeClauseValidation(t *testing.T) {
 	emptyCondition := sqlx.ConditionFunc(func(*sqlx.BuildContext) string { return "" })
 	emptyUpdate := sqlx.UpdaterFunc(func(*sqlx.BuildContext) string { return "" })
-	statements := []sqlx.Statement{
+	statements := []sqlx.SQLBuilder{
 		sqlx.Select("id").From("t").Where(emptyCondition),
 		sqlx.Select("id").From("t").Having(emptyCondition),
 		sqlx.Select("id").From("t").Join("u", "", emptyCondition),

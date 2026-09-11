@@ -69,7 +69,7 @@ func BenchmarkSyntaxBuild(b *testing.B) {
 		b.Run(d.Name(), func(b *testing.B) {
 			for _, tc := range []struct {
 				name string
-				q    Statement
+				q    SQLBuilder
 			}{
 				{"Function128", Select().SelectExpr(Func("COALESCE", values...)).SetDialect(d)},
 				{"Window", Select().SelectExpr(SumExpr(Expr("? * ?", Ident("v"), 2)).

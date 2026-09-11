@@ -42,7 +42,7 @@ func TestNativeDefaultContexts(t *testing.T) {
 		}
 	}
 
-	for _, b := range []Statement{
+	for _, b := range []SQLBuilder{
 		Update().Table("t").Set(Set("v", Default())).SetDialect(dialect.SQLite),
 		Insert().Into("t").Values(1).OnConflictDoUpdate(nil, Set("v", Default())).SetDialect(dialect.SQLite),
 		Select().SelectExpr(Default()),
@@ -88,7 +88,7 @@ func TestConditionalUpsertsAndAliases(t *testing.T) {
 		"INSERT INTO `t` (`id`, `v`) VALUES (?, ?) AS `new` (`a`, `b`) ON DUPLICATE KEY UPDATE `v`=`new`.`b`",
 		1, 2)
 
-	for _, b := range []Statement{
+	for _, b := range []SQLBuilder{
 		q.Clone().SetDialect(dialect.MySQL),
 		Insert().Into("t").Values(1).OnConflictDoUpdate(nil, Set("v", 2)).SetDialect(pg),
 		Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoNothing(), ConflictColumns("id").DoNothing()).SetDialect(dialect.SQLite),
@@ -181,7 +181,7 @@ func TestWindowAndGroupingRendering(t *testing.T) {
 			SetDialect(dialect.Postgres),
 		`SELECT COUNT(*) FROM "t" GROUP BY GROUPING SETS (("team"), ())`)
 
-	for _, b := range []Statement{
+	for _, b := range []SQLBuilder{
 		Select().SelectExpr(Sum("v").Filter(Eq("id", 1))),
 		Select().SelectExpr(RowNumber().Over(Window().Rows(UnboundedFollowing(), CurrentRow()))),
 		Select().SelectExpr(RowNumber().Over(Window().Rows(Preceding(-1), CurrentRow()))),
@@ -357,7 +357,7 @@ func TestComputedDistinctOnReusesParameters(t *testing.T) {
 }
 
 func TestWindowScopesAndInvalidCombinations(t *testing.T) {
-	for _, b := range []Statement{
+	for _, b := range []SQLBuilder{
 		Select().SelectExpr(RowNumber()).SetDialect(dialect.Postgres),
 		Select().SelectExpr(RowNumber().OverName("missing")).SetDialect(dialect.Postgres),
 		Select().SelectExpr(Sum("v").Filter(Eq("id", 1)).Filter(Eq("id", 2))).

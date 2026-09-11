@@ -252,8 +252,8 @@ func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool) *Sel
 		b.fail(errors.New("sqlx: nil CTE"))
 	} else {
 		b.ctes = append(b.ctes, commonTable{
-			name:  name,
-			query: q.Clone(),
+			name: name,
+			body: q.Clone(),
 
 			recursive: recursive,
 		})
@@ -342,12 +342,8 @@ func extractName(s string) string {
 }
 
 func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
-	parentWindows := c.windows
-	c.windows = nil
-	defer func() { c.windows = parentWindows }()
-
-	c.statementDepth++
-	defer func() { c.statementDepth-- }()
+	parent := c.enterStatement()
+	defer c.leaveStatement(parent)
 
 	if b.err != nil {
 		panic(b.err)

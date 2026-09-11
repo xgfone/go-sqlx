@@ -4,16 +4,56 @@
 package sqlx
 
 import (
+	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
+// CTEBodyKind identifies the SQL statement written by a CTEBody. The zero
+// value and unrecognized values are invalid. Dialect support is checked
+// at build time.
+type CTEBodyKind uint8
+
+const (
+	CTESelect CTEBodyKind = iota + 1 // SELECT, including compound queries.
+	CTEInsert                        // INSERT.
+	CTEUpdate                        // UPDATE.
+	CTEDelete                        // DELETE.
+)
+
+// CTEBody is the body inside a CTE's AS (...), without its name or parentheses.
+// All four built-in builders implement it; applications may implement it without
+// implementing SQLBuilder. Other composition APIs retain their own input types.
+type CTEBody interface {
+	// WriteSQL appends nonempty SQL using ctx's dialect and bindings.
+	//
+	// Use ctx.WriteArg/WriteValue for parameters; do not splice independently
+	// built placeholders into the statement. The buffer and context are borrowed:
+	// do not copy, reset, retain, or use them concurrently.
+	//
+	// Do not mutate the body. Return rendering errors; enclosing builders also
+	// recover panics. After an error, partial SQL and bindings must be discarded,
+	// not reused for a retry.
+	WriteSQL(buf *strings.Builder, ctx *BuildContext) error
+
+	// Snapshot returns a non-nil body whose SQL description is independent of
+	// subsequent receiver mutations and safe for concurrent read-only rendering.
+	// An immutable body may return itself. Argument objects may remain shallow,
+	// as with built-in builders. Wrappers customizing rendering must preserve
+	// their behavior in the returned snapshot, not just clone an embedded builder.
+	Snapshot() CTEBody
+
+	// Kind describes the SQL actually written, for dialect and placement checks.
+	Kind() CTEBodyKind
+}
+
 // CTE is an immutable common table expression, constructed with NewCTE.
 type CTE struct {
 	name         string
-	query        Statement
+	body         CTEBody
 	columns      []string
 	materialized string
 	recursive    bool
@@ -21,17 +61,28 @@ type CTE struct {
 
 type commonTable = CTE
 
-// NewCTE snapshots a query and optional output column names. PostgreSQL
+// NewCTE snapshots a body and optional output column names. PostgreSQL
 // additionally permits INSERT, UPDATE, and DELETE statements as the CTE body;
 // those data-modifying CTEs must belong to the top-level statement.
-// query must be a *SelectBuilder, *InsertBuilder, *UpdateBuilder, or *DeleteBuilder.
-// External SQLBuilder implementations and wrappers are not supported CTE bodies.
-func NewCTE(name string, query Statement, columns ...string) CTE {
-	return CTE{
-		name:    name,
-		query:   snapshotStatement(query),
-		columns: slices.Clone(columns),
+// Nil bodies, nil snapshots, and snapshot panics become errors when a statement
+// containing the CTE is built. Custom bodies must honor the CTEBody contract.
+func NewCTE(name string, body CTEBody, columns ...string) (cte CTE) {
+	cte.name, cte.columns = name, slices.Clone(columns)
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("sqlx: CTE %q snapshot: %w", name, renderingError(r))
+			cte.body = failedCTEBody{err: err}
+		}
+	}()
+
+	if !nilCTEBody(body) {
+		cte.body = body.Snapshot()
+		if nilCTEBody(cte.body) {
+			cte.body = nil
+		}
 	}
+
+	return
 }
 
 // Recursive marks this CTE as recursive, enabling WITH RECURSIVE for the clause.
@@ -43,29 +94,18 @@ func (t CTE) Materialized() CTE { t.materialized = "MATERIALIZED"; return t }
 // NotMaterialized requests NOT MATERIALIZED on PostgreSQL and SQLite.
 func (t CTE) NotMaterialized() CTE { t.materialized = "NOT MATERIALIZED"; return t }
 
-func snapshotStatement(s Statement) Statement {
-	switch q := s.(type) {
-	case *SelectBuilder:
-		if q != nil {
-			return q.Clone()
-		}
-
-	case *InsertBuilder:
-		if q != nil {
-			return q.Clone()
-		}
-
-	case *UpdateBuilder:
-		if q != nil {
-			return q.Clone()
-		}
-
-	case *DeleteBuilder:
-		if q != nil {
-			return q.Clone()
-		}
+func nilCTEBody(body CTEBody) bool {
+	if body == nil {
+		return true
 	}
-	return nil
+
+	switch v := reflect.ValueOf(body); v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Slice,
+		reflect.Interface, reflect.Pointer:
+		return v.IsNil()
+	}
+
+	return false
 }
 
 func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
@@ -90,11 +130,13 @@ func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
 		}
 		seen[t.name] = true
 
-		if t.query == nil {
-			panic("nil CTE query")
+		if t.body == nil {
+			panic("nil CTE body or snapshot")
 		}
 
-		if _, ok := t.query.(*SelectBuilder); !ok {
+		switch t.body.Kind() {
+		case CTESelect:
+		case CTEInsert, CTEUpdate, CTEDelete:
 			requireFeature(c, dialect.DataModifyingCTE, "data-modifying CTE")
 			if c.statementDepth != 1 {
 				panic("data-modifying CTE must belong to the top-level statement")
@@ -102,6 +144,8 @@ func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
 			if t.materialized != "" {
 				panic("materialization hints require a SELECT CTE")
 			}
+		default:
+			panic("invalid CTE body kind")
 		}
 
 		if i > 0 {
@@ -124,11 +168,16 @@ func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
 		_, _ = s.WriteString(" AS ")
 		if t.materialized != "" {
 			requireFeature(c, dialect.CTEMaterialization, "CTE materialization hints")
-			_, _ = s.WriteString(t.materialized + " ")
+			_, _ = s.WriteString(t.materialized)
+			_ = s.WriteByte(' ')
 		}
 
 		_ = s.WriteByte('(')
-		t.query.writeTo(s, c)
+		start := s.Len()
+		writeCTEBody(s, c, t.body)
+		if s.Len() == start {
+			panic("empty CTE body")
+		}
 		_ = s.WriteByte(')')
 	}
 

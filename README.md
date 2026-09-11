@@ -47,14 +47,36 @@ builders too. A custom builder chooses its own dialect and placeholders; pass
 its SQL and arguments to `Executor.ExecContext` or `DB.QueryRowsContext` after
 checking the build error.
 
-`Statement` embeds `SQLBuilder` and adds private rendering for built-in statement
-composition. It is not an external implementation hook. CTE bodies accept only
-the four built-in builder types; other composition APIs retain their documented
-input types. Nested rendering shares the parent's dialect and parameter numbering,
-so an independently built SQL string cannot simply be spliced into that context.
-Embedding a built-in builder does not make an application wrapper a supported
-CTE body. Use `Condition`, `Updater`, `Expr`, and `ExpressionSource` for the
-existing clause and expression extension points.
+`CTEBody` is the open interface for the body inside `WITH name AS (...)`:
+
+```go
+type CTEBody interface {
+    WriteSQL(*strings.Builder, *BuildContext) error
+    Snapshot() CTEBody
+    Kind() CTEBodyKind
+}
+```
+
+All four built-in builders implement it independently of `SQLBuilder`.
+`NewCTE` snapshots the body; custom snapshots must preserve rendering behavior,
+be independent of subsequent changes to their source, and allow concurrent reads.
+Argument objects remain shallow, as with built-in builders. A wrapper customizing
+an embedded builder must also override `Snapshot` to preserve its customization.
+
+Custom bodies append SQL using the supplied context's dialect and bindings.
+`BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` stream identifiers,
+bound parameters, and expressions into the shared `strings.Builder`. Do not
+reset, copy, retain, or concurrently use the borrowed buffer/context. Return
+rendering errors; enclosing `Build` calls also recover panics and discard partial
+output. Independently built placeholder strings cannot simply be spliced into
+the parent's binding context.
+
+`Kind` returns `CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete` to enable
+dialect and placement checks. The implementation must write SQL matching that
+kind and the target dialect. Other composition APIs retain their documented
+input types; `CTEBody` does not extend `Subquery`, `FromSelect`, or `Union`.
+Use `Condition`, `Updater`, `Expr`, and `ExpressionSource` for clause and
+expression extension points.
 
 Builders retain the first error encountered while collecting inputs. `Reset()`
 clears that error and all statement clauses while retaining DB, executor,

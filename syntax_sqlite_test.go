@@ -24,7 +24,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	window := Window().PartitionBy("team").OrderBy("id", Asc)
 	cases := []struct {
 		name string
-		b    Statement
+		b    SQLBuilder
 		want [][]any
 	}{
 		{

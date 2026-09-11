@@ -99,8 +99,8 @@ func (b *UpdateBuilder) Reset() *UpdateBuilder {
 }
 
 func (b *UpdateBuilder) writeTo(s *strings.Builder, c *BuildContext) {
-	c.statementDepth++
-	defer func() { c.statementDepth-- }()
+	parent := c.enterStatement()
+	defer c.leaveStatement(parent)
 
 	if b.err != nil {
 		panic(b.err)

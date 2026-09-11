@@ -125,10 +125,23 @@ these grouping extensions; MySQL supports only its ROLLUP form.
 
 ## CTEs and set operations
 
-All four builders accept `WithCTE(NewCTE(name, statement, columns...))`.
+All four builders accept `WithCTE(NewCTE(name, body, columns...))`.
 `NewCTE(...).Recursive()` enables WITH RECURSIVE. Select also retains
 `With`, `WithRecursive`, `WithColumns`, and `WithRecursiveColumns`; the write
 builders have `With` and `WithRecursive` helpers.
+
+`body` implements `CTEBody`: `WriteSQL(*strings.Builder, *BuildContext) error`,
+`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Built-in builders and external
+implementations are supported. `NewCTE` calls `Snapshot` once and retains the
+result. Snapshots must be independent of subsequent source mutations and safe
+for concurrent rendering; bound argument objects remain shallow. Custom SQL must
+match its declared kind (`CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete`)
+and the supplied dialect.
+
+Use `BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` to append to the
+borrowed buffer with the parent's bindings. Renderers must not reset or retain
+the buffer/context. Snapshot or rendering panics, returned rendering errors,
+invalid kinds, and nil bodies/snapshots become errors from the enclosing `Build`.
 
 ```go
 numbers := sqlx.Select().SelectExpr(sqlx.Value(1)).UnionAll(

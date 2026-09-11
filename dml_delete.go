@@ -75,8 +75,8 @@ func (b *DeleteBuilder) Reset() *DeleteBuilder {
 }
 
 func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
-	c.statementDepth++
-	defer func() { c.statementDepth-- }()
+	parent := c.enterStatement()
+	defer c.leaveStatement(parent)
 
 	if b.err != nil {
 		panic(b.err)

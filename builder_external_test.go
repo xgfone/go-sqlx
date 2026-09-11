@@ -20,16 +20,16 @@ func (b customSQLBuilder) Build() (string, []any, error) {
 
 var (
 	_ sqlx.SQLBuilder = customSQLBuilder{}
-	_ sqlx.Statement  = (*sqlx.SelectBuilder)(nil)
-	_ sqlx.Statement  = (*sqlx.InsertBuilder)(nil)
-	_ sqlx.Statement  = (*sqlx.UpdateBuilder)(nil)
-	_ sqlx.Statement  = (*sqlx.DeleteBuilder)(nil)
+	_ sqlx.CTEBody    = (*sqlx.SelectBuilder)(nil)
+	_ sqlx.CTEBody    = (*sqlx.InsertBuilder)(nil)
+	_ sqlx.CTEBody    = (*sqlx.UpdateBuilder)(nil)
+	_ sqlx.CTEBody    = (*sqlx.DeleteBuilder)(nil)
 )
 
 func TestExternalSQLBuilder(t *testing.T) {
 	var b sqlx.SQLBuilder = customSQLBuilder{value: 7}
 	assertSQL(t, b, "SELECT $1", 7)
-	if _, ok := b.(sqlx.Statement); ok {
+	if _, ok := b.(sqlx.CTEBody); ok {
 		t.Fatal("independent SQLBuilder must not implicitly support composition")
 	}
 }

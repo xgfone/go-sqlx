@@ -22,15 +22,8 @@ type SQLBuilder interface {
 	Build() (string, []any, error)
 }
 
-// Statement is a built-in SQLBuilder that participates in statement composition.
-// Nested statements share their parent's dialect, argument numbering, and
-// rendering context. Its unexported method prevents independent implementations
-// outside this package; external builders should implement SQLBuilder instead.
-// Composition supports SelectBuilder, InsertBuilder, UpdateBuilder, and
-// DeleteBuilder pointers, not wrappers embedding them or Statement.
-type Statement interface {
-	SQLBuilder
-
+// statementWriter is the internal streaming path for built-in statements.
+type statementWriter interface {
 	writeTo(*strings.Builder, *BuildContext)
 }
 
@@ -78,7 +71,7 @@ func (b *builderBase) runner() (Executor, error) {
 	return nil, errors.New("sqlx: no executor configured")
 }
 
-func buildBorrowed(s Statement, b *builderBase) (query string, ctx *BuildContext, err error) {
+func buildBorrowed(s statementWriter, b *builderBase) (query string, ctx *BuildContext, err error) {
 	if b.err != nil {
 		return "", nil, b.err
 	}
@@ -111,7 +104,7 @@ func buildBorrowed(s Statement, b *builderBase) (query string, ctx *BuildContext
 	return
 }
 
-func buildStatement(s Statement, b *builderBase) (string, []any, error) {
+func buildStatement(s statementWriter, b *builderBase) (string, []any, error) {
 	q, c, e := buildBorrowed(s, b)
 	if e != nil {
 		return "", nil, e
@@ -141,7 +134,7 @@ func stringStatement(s SQLBuilder) string {
 	return q
 }
 
-func execStatement(ctx context.Context, s Statement, b *builderBase) (sql.Result, error) {
+func execStatement(ctx context.Context, s statementWriter, b *builderBase) (sql.Result, error) {
 	q, c, e := buildBorrowed(s, b)
 	if e != nil {
 		return nil, e
@@ -156,7 +149,7 @@ func execStatement(ctx context.Context, s Statement, b *builderBase) (sql.Result
 	return r.ExecContext(ctx, q, c.argsView()...)
 }
 
-func queryStatement(ctx context.Context, s Statement, b *builderBase) (*sql.Rows, []string, error) {
+func queryStatement(ctx context.Context, s statementWriter, b *builderBase) (*sql.Rows, []string, error) {
 	q, c, e := buildBorrowed(s, b)
 	if e != nil {
 		return nil, nil, e

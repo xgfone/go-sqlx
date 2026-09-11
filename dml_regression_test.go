@@ -90,7 +90,7 @@ func TestBuildConvertsFailure(t *testing.T) {
 		c.Add(7)
 		panic(failure)
 	})
-	for _, builder := range []Statement{
+	for _, builder := range []SQLBuilder{
 		Select("*").From("t").Where(condition),
 		Update().Table("t").Set(Set("value", 1)).Where(condition),
 		Delete().From("t").Where(condition),
