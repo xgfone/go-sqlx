@@ -264,7 +264,24 @@ func (s GeneralScanner) Scan(src any) error {
 		}
 
 	default:
-		err = scanScalar(dst, src)
+		switch dst.Type() {
+		case _durationtype:
+			var value time.Duration
+			value, err = s.scanDuration(src)
+			if err == nil {
+				dst.SetInt(int64(value))
+			}
+
+		case _timetype:
+			var value time.Time
+			value, err = s.scanTime(src)
+			if err == nil {
+				dst.Set(reflect.ValueOf(value))
+			}
+
+		default:
+			err = scanScalar(dst, src)
+		}
 	}
 
 	if err != nil {

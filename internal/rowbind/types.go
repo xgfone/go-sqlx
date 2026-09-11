@@ -11,8 +11,11 @@ import (
 )
 
 var (
-	_bytetype    = reflect.TypeFor[byte]()
-	_timetype    = reflect.TypeFor[time.Time]()
+	_bytetype = reflect.TypeFor[byte]()
+
+	_timetype     = reflect.TypeFor[time.Time]()
+	_durationtype = reflect.TypeFor[time.Duration]()
+
 	_valuertype  = reflect.TypeFor[driver.Valuer]()
 	_scannertype = reflect.TypeFor[sql.Scanner]()
 )
