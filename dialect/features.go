@@ -58,6 +58,7 @@ const (
 	DeleteOrderLimit          // MySQL, or SQLite built with SQLITE_ENABLE_UPDATE_DELETE_LIMIT.
 	InsertTargetAlias         // PostgreSQL and SQLite INSERT target aliases.
 	KeyRowLock                // PostgreSQL FOR NO KEY UPDATE / FOR KEY SHARE.
+	DeleteTargetAlias         // Single-table DELETE aliases; MySQL requires 8.0.16+.
 )
 
 // FeatureDialect opts in to optional SQL capabilities.
@@ -103,7 +104,7 @@ func (d builtin) Supports(feature Feature) bool {
 	case Intersect, Except, WindowGroups, WindowExclude, AggregateFilter,
 		NullsOrdering, CTEMaterialization, ConflictTargetExpressions,
 		ConflictTargetWhere, ConflictUpdateWhere, RowAssignment,
-		InsertTargetAlias:
+		InsertTargetAlias, DeleteTargetAlias:
 		return d == "postgres" || d == "sqlite3"
 
 	case IntersectAll, ExceptAll, GroupingSets, Cube, Lateral, DistinctOn,

@@ -199,9 +199,12 @@ PostgreSQL `ForNoKeyUpdate` and `ForKeyShare` complement `ForUpdate` and
 grouped, and compound queries reject locking.
 
 MySQL single-table UPDATE/DELETE support `OrderBy`, `Sort`, and `Limit`.
-Multi-table and joined mutations reject these clauses. SQLite requires an
-explicit capability override and a build containing
-SQLITE_ENABLE_UPDATE_DELETE_LIMIT. SQLite RETURNING precedes these clauses;
+Single-table DELETE aliases require MySQL 8.0.16+ and the `DeleteTargetAlias`
+capability. Earlier profiles reject them at build time; multi-table DELETE
+aliases remain available on the MySQL 8.0 baseline. Multi-table and joined
+mutations reject these clauses.
+
+SQLite requires an explicit capability override and a build containing SQLITE_ENABLE_UPDATE_DELETE_LIMIT. SQLite RETURNING precedes these clauses;
 ORDER BY controls which rows are selected, not the order of returned rows.
 `ClearOrderBy` and `ClearLimit` remove the individual mutation clauses.
 
@@ -256,10 +259,11 @@ mutating the supplied builder. PG/MySQL sources do not require a dummy WHERE.
 ## Dialect configuration
 
 Built-in profiles target PostgreSQL 14+, MySQL 8.0, and SQLite 3.39+.
-`WithVersion` enables later MySQL capabilities: LATERAL at 8.0.14, new-row aliases
-and native VALUES tables at 8.0.19, and INTERSECT/EXCEPT at 8.0.31. Version
-selection does not inspect or modify the server. Specify the version your
-application actually targets, including when using MySQL 8.4 or newer.
+`WithVersion` enables later MySQL capabilities: LATERAL at 8.0.14, single-table
+DELETE aliases at 8.0.16, new-row aliases and native VALUES tables at 8.0.19,
+and INTERSECT/EXCEPT at 8.0.31. Version selection does not inspect or modify
+the server. Specify the version your application actually targets, including
+when using MySQL 8.4 or newer.
 
 `Dialect.Grammar()` selects clause placement and spelling;
 `Dialect.LexicalRules()` selects template tokenization. Both methods are required

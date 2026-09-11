@@ -285,7 +285,8 @@ row locking. The builder does not start a transaction automatically.
 
 Built-ins target MySQL 8.0, PostgreSQL 14+, and SQLite 3.39+ (including UPDATE
 FROM and FULL JOIN). Use `dialect.WithVersion` for later MySQL capabilities:
-LATERAL at 8.0.14, inserted-row aliases at 8.0.19, and INTERSECT/EXCEPT at 8.0.31.
+LATERAL at 8.0.14, single-table DELETE aliases at 8.0.16, inserted-row aliases
+at 8.0.19, and INTERSECT/EXCEPT at 8.0.31.
 Custom dialects explicitly advertise optional capabilities; unsupported features
 fail instead of being silently omitted. See [SQL composition](docs/sql-syntax.md)
 for the complete syntax guide, dialect constraints, and configuration examples.

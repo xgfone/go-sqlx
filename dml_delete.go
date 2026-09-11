@@ -111,6 +111,10 @@ func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		_ = s.WriteByte(' ')
 	}
 
+	if len(b.ftables) == 1 && len(b.jtables) == 0 && b.ftables[0].Alias != "" {
+		requireFeature(c, dialect.DeleteTargetAlias, "single-table DELETE alias")
+	}
+
 	_, _ = s.WriteString("FROM ")
 	writeTables(s, c, b.ftables)
 	if len(b.using) > 0 {

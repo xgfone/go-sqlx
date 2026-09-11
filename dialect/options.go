@@ -164,8 +164,12 @@ func WithGrammar(d Dialect, grammar Grammar) Dialect {
 
 // WithVersion selects capabilities for a built-in dialect's server version.
 // Baselines are MySQL 8.0, PostgreSQL 14, and SQLite 3.39. Older versions and
-// custom dialects are rejected. MySQL 8.0.14 adds LATERAL, 8.0.19 adds VALUES
-// tables and inserted-row aliases, and 8.0.31 adds INTERSECT/EXCEPT.
+// custom dialects are rejected.
+//
+//   - MySQL 8.0.14 adds LATERAL
+//   - MySQL 8.0.16 adds single-table DELETE aliases
+//   - MySQL 8.0.19 adds VALUES tables and inserted-row aliases
+//   - MySQL 8.0.31 adds INTERSECT/EXCEPT.
 //
 // Apply explicit feature overrides after WithVersion. The server is not queried
 // or modified.
@@ -200,6 +204,7 @@ func WithVersion(d Dialect, major, minor, patch int) Dialect {
 		}
 
 		v.features[Lateral] = atLeast(8, 0, 14)
+		v.features[DeleteTargetAlias] = atLeast(8, 0, 16)
 		v.features[InsertRowAlias] = atLeast(8, 0, 19)
 		v.grammar.ValuesViaSelect = !atLeast(8, 0, 19)
 		for _, f := range []Feature{Intersect, Except, IntersectAll, ExceptAll} {
@@ -216,5 +221,6 @@ func WithVersion(d Dialect, major, minor, patch int) Dialect {
 			panic("dialect: SQLite 3.39 or newer required")
 		}
 	}
+
 	return v
 }

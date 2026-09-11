@@ -36,23 +36,26 @@ func TestWritePlaceholder(t *testing.T) {
 
 func TestVersionCapabilities(t *testing.T) {
 	for _, tc := range []struct {
-		minor                int
-		lateral, alias, sets bool
+		minor                             int
+		lateral, deleteAlias, alias, sets bool
 	}{
-		{0, false, false, false},
-		{14, true, false, false},
-		{19, true, true, false},
-		{30, true, true, false},
-		{31, true, true, true},
+		{0, false, false, false, false},
+		{14, true, false, false, false},
+		{15, true, false, false, false},
+		{16, true, true, false, false},
+		{19, true, true, true, false},
+		{30, true, true, true, false},
+		{31, true, true, true, true},
 	} {
 		d := WithVersion(MySQL, 8, 0, tc.minor)
 		for f, want := range map[Feature]bool{
-			Lateral:        tc.lateral,
-			InsertRowAlias: tc.alias,
-			IntersectAll:   tc.sets,
-			Intersect:      tc.sets,
-			Except:         tc.sets,
-			ExceptAll:      tc.sets,
+			Lateral:           tc.lateral,
+			DeleteTargetAlias: tc.deleteAlias,
+			InsertRowAlias:    tc.alias,
+			IntersectAll:      tc.sets,
+			Intersect:         tc.sets,
+			Except:            tc.sets,
+			ExceptAll:         tc.sets,
 		} {
 			if got := Supports(d, f); got != want {
 				t.Fatalf("8.0.%d feature %d: %v != %v", tc.minor, f, got, want)
@@ -63,7 +66,8 @@ func TestVersionCapabilities(t *testing.T) {
 		}
 	}
 
-	if Supports(MySQL, Intersect) || Supports(MySQL, InsertRowAlias) {
+	if Supports(MySQL, Intersect) || Supports(MySQL, InsertRowAlias) ||
+		Supports(MySQL, DeleteTargetAlias) {
 		t.Fatal("version profile modified the built-in")
 	}
 	if !Supports(WithVersion(MySQL, 8, 4, 0), IntersectAll) {
