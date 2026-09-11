@@ -109,6 +109,11 @@ type nullStructGroup struct {
 type captureScanner struct{ value any }
 
 func (s *captureScanner) Scan(value any) error {
+	// Conversion happens after the driver's Scan returns, when cancellation
+	// may already have closed the cursor and invalidated its byte buffers.
+	if data, ok := value.([]byte); ok {
+		value = slices.Clone(data)
+	}
 	s.value = value
 	return nil
 }

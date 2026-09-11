@@ -18,10 +18,16 @@ import (
 // A real database/sql driver with controllable iteration/finalization failures.
 // Each cursor owns its reusable byte buffers; the fixture is safe to share.
 type bindFixture struct {
-	columns           []string
-	values            [][]driver.Value
-	nextErr, closeErr error
-	next, closed      atomic.Int64
+	columns []string
+	values  [][]driver.Value
+
+	next   atomic.Int64
+	closed atomic.Int64
+
+	nextErr  error
+	closeErr error
+
+	closeDone chan struct{}
 }
 
 type bindConnector struct{ fixture *bindFixture }
@@ -62,6 +68,9 @@ func (r *bindDriverRows) Close() error {
 		for i := range buffer {
 			buffer[i] = '!'
 		}
+	}
+	if r.fixture.closeDone != nil {
+		close(r.fixture.closeDone)
 	}
 	return r.fixture.closeErr
 }
