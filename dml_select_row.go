@@ -32,7 +32,7 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 }
 
 func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
-	return Row{result: Rows{
+	return Row{rows: Rows{
 		Rows: rows,
 		err:  err,
 
@@ -41,28 +41,28 @@ func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
 	}}
 }
 
-// Row owns a single-use result. Scan and Bind close it automatically. It is not
+// Row owns a single-use rows. Scan and Bind close it automatically. It is not
 // an iterator; close an unread Row explicitly to release the connection.
-type Row struct{ result Rows }
+type Row struct{ rows Rows }
 
 func NewRow(rows *sql.Rows, columns []string, err error) Row {
 	r := (BindConfig{}).row(rows, columns, err)
-	r.result.validateColumns = columns != nil
+	r.rows.validateColumns = columns != nil
 	return r
 }
 
 func (r Row) Columns() ([]string, error) {
-	return r.result.Columns()
+	return r.rows.Columns()
 }
 
 func (r Row) WithColumns(columns ...string) Row {
-	r.result.columns = slices.Clone(columns)
-	r.result.validateColumns = true
+	r.rows.columns = slices.Clone(columns)
+	r.rows.validateColumns = true
 	return r
 }
 
 func (r Row) WithScanOptions(options ScanOptions) Row {
-	r.result.config.Scan = cloneScanOptions(options)
+	r.rows.config.Scan = cloneScanOptions(options)
 	return r
 }
 
@@ -83,16 +83,16 @@ func (r Row) Scan(dst ...any) (err error) {
 	if err = r.Err(); err != nil {
 		return err
 	}
-	if err = validateScanOptions(r.result.config.Scan); err != nil {
+	if err = validateScanOptions(r.rows.config.Scan); err != nil {
 		return err
 	}
-	if r.result.validateColumns {
-		if _, err = r.result.scanColumns(); err != nil {
+	if r.rows.validateColumns {
+		if _, err = r.rows.scanColumns(); err != nil {
 			return err
 		}
 	}
 
-	if !r.result.Next() {
+	if !r.rows.Next() {
 		if err := r.Err(); err != nil {
 			return err
 		}
@@ -100,10 +100,10 @@ func (r Row) Scan(dst ...any) (err error) {
 	}
 
 	if len(dst) == 1 && dst[0] != nil && !rowbind.IsScalarDestination(reflect.TypeOf(dst[0])) {
-		return scanSingleStruct(r.result, dst)
+		return scanSingleStruct(r.rows, dst)
 	}
-	return rowbind.ScanScalarRow(r.result.Rows.Scan, dst, r.result.config.Scan)
+	return rowbind.ScanScalarRow(r.rows.Rows.Scan, dst, r.rows.config.Scan)
 }
 
-func (r Row) Err() error   { return r.result.Err() }
-func (r Row) Close() error { return r.result.Close() }
+func (r Row) Err() error   { return r.rows.Err() }
+func (r Row) Close() error { return r.rows.Close() }
