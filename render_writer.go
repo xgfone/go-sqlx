@@ -3,7 +3,15 @@
 
 package sqlx
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
+
+func writeInt64(buf *strings.Builder, value int64) {
+	var digits [20]byte
+	_, _ = buf.Write(strconv.AppendInt(digits[:0], value, 10))
+}
 
 // Native predicates and assignments write directly into their parent's SQL
 // buffer. Public Condition/Updater implementations keep their string contract.
@@ -20,6 +28,11 @@ func (f conditionWriterFunc) BuildCondition(c *BuildContext) string {
 func writeCondition(buf *strings.Builder, c *BuildContext, condition Condition, prefix string) bool {
 	if condition == nil {
 		return false
+	}
+	if group, ok := condition.(conditionGroup); ok {
+		if count, known := group.nativeCount(); known {
+			return group.writeNative(buf, c, prefix, count)
+		}
 	}
 
 	if write, ok := condition.(conditionWriterFunc); ok {
@@ -45,7 +58,38 @@ func writeRequiredConditions(buf *strings.Builder, c *BuildContext, name string,
 		}
 		return
 	}
-	_, _ = buf.WriteString(clauseCondition(c, name, conditions))
+
+	// Keep this temporary group concrete. Boxing it as Condition would force
+	// even the single-element CASE/FILTER slices above to escape to the heap.
+	group := conditionGroup{conditions, " AND "}
+	if count, known := group.nativeCount(); known {
+		if group.writeNative(buf, c, "", count) {
+			return
+		}
+	} else if sql := group.BuildCondition(c); sql != "" {
+		_, _ = buf.WriteString(sql)
+		return
+	}
+
+	panic(name + " contains no effective conditions")
+}
+
+func (g conditionGroup) writeNative(buf *strings.Builder, c *BuildContext, prefix string, count int) bool {
+	if count == 0 {
+		return false
+	}
+
+	_, _ = buf.WriteString(prefix)
+	if count > 1 {
+		_ = buf.WriteByte('(')
+	}
+
+	g.writeConditions(buf, c, 0)
+	if count > 1 {
+		_ = buf.WriteByte(')')
+	}
+
+	return true
 }
 
 type updaterWriterFunc func(*strings.Builder, *BuildContext)

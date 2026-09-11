@@ -101,6 +101,34 @@ func Or(conditions ...Condition) Condition {
 	return conditionGroup{slices.Clone(conditions), " OR "}
 }
 
+// Native writers always produce SQL. Count their effective terms without
+// evaluating callbacks; custom conditions retain their single-call fallback.
+func (g conditionGroup) nativeCount() (count int, known bool) {
+	for _, condition := range g.conditions {
+		switch v := condition.(type) {
+		case nil:
+		case conditionWriterFunc:
+			count++
+
+		case conditionGroup:
+			n, ok := v.nativeCount()
+			if !ok {
+				return 0, false
+			}
+
+			if g.separator == " AND " && v.separator == " AND " {
+				count += n
+			} else if n > 0 {
+				count++
+			}
+
+		default:
+			return 0, false
+		}
+	}
+	return count, true
+}
+
 func (g conditionGroup) BuildCondition(c *BuildContext) string {
 	if len(g.conditions) == 0 {
 		return ""
@@ -114,6 +142,10 @@ func (g conditionGroup) BuildCondition(c *BuildContext) string {
 
 	buf := c.acquireBuffer()
 	defer c.releaseBuffer(buf)
+	if count, known := g.nativeCount(); known {
+		g.writeNative(buf, c, "", count)
+		return buf.String()
+	}
 
 	count := g.writeConditions(buf, c, 0)
 	if count > 1 {
@@ -179,21 +211,6 @@ func Batch(updaters ...Updater) Updater {
 	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
 		writeUpdaters(buf, c, updaters)
 	})
-}
-
-func clauseCondition(c *BuildContext, name string, conds []Condition) string {
-	var s string
-	if len(conds) == 1 {
-		if conds[0] != nil {
-			s = conds[0].BuildCondition(c)
-		}
-	} else {
-		s = (conditionGroup{conditions: conds, separator: " AND "}).BuildCondition(c)
-	}
-	if s == "" {
-		panic(name + " contains no effective conditions")
-	}
-	return s
 }
 
 func writeClause(buf *strings.Builder, c *BuildContext, name string, conds []Condition) {

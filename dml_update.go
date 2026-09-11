@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -97,7 +98,7 @@ func (b *UpdateBuilder) Reset() *UpdateBuilder {
 	return b
 }
 
-func (b *UpdateBuilder) render(c *BuildContext) string {
+func (b *UpdateBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	c.statementDepth++
 	defer func() { c.statementDepth-- }()
 
@@ -122,9 +123,6 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 	if len(b.jtables) > 0 && !before && len(b.ftables) == 0 {
 		panic("UPDATE JOIN requires FROM")
 	}
-
-	s := c.acquireBuffer()
-	defer c.releaseBuffer(s)
 
 	s.Grow(128)
 	writeCTEs(s, c, b.ctes)
@@ -155,8 +153,7 @@ func (b *UpdateBuilder) render(c *BuildContext) string {
 	writeReturning(s, c, b.returning)
 	multi := len(b.utables) != 1 || len(b.jtables) > 0 || len(b.ftables) > 0
 	b.mutation.render(s, c, dialect.UpdateOrderLimit, multi)
-	_, _ = s.WriteString(commentSQL(b.comment))
-	return s.String()
+	writeComment(s, b.comment)
 }
 
 func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder { b.db = db; return b }

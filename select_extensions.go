@@ -192,7 +192,7 @@ func (b *SelectBuilder) renderSetOperations(s *strings.Builder, c *BuildContext)
 		if complex {
 			openCompound(s, c)
 		}
-		_, _ = s.WriteString(q.render(c))
+		q.writeTo(s, c)
 		if complex {
 			closeCompound(s, c)
 		}
@@ -357,15 +357,19 @@ func (b *SelectBuilder) writePagination(s *strings.Builder, c *BuildContext) {
 		}
 
 		if b.offset > 0 {
-			_, _ = s.WriteString(" OFFSET " + strconv.FormatInt(b.offset, 10) + " ROWS")
+			_, _ = s.WriteString(" OFFSET ")
+			writeInt64(s, b.offset)
+			_, _ = s.WriteString(" ROWS")
 		}
-		_, _ = s.WriteString(" FETCH FIRST " + strconv.FormatInt(b.limit, 10) + " ROWS WITH TIES")
+		_, _ = s.WriteString(" FETCH FIRST ")
+		writeInt64(s, b.limit)
+		_, _ = s.WriteString(" ROWS WITH TIES")
 	} else if b.hasLimit || b.offset > 0 {
 		_ = s.WriteByte(' ')
-		_, _ = s.WriteString(c.Dialect().LimitOffset(dialect.Pagination{
+		dialect.WriteLimitOffset(s, c.Dialect(), dialect.Pagination{
 			Limit:    b.limit,
 			Offset:   b.offset,
 			HasLimit: b.hasLimit,
-		}))
+		})
 	}
 }

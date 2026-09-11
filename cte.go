@@ -126,7 +126,7 @@ func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
 		}
 
 		_ = s.WriteByte('(')
-		_, _ = s.WriteString(t.query.render(c))
+		t.query.writeTo(s, c)
 		_ = s.WriteByte(')')
 	}
 

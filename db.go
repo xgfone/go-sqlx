@@ -22,7 +22,7 @@ var DefaultDB = &DB{Dialect: dialect.MySQL}
 
 // SetConnURLLocation sets the argument "loc" in the connection url if missing.
 //
-// If loc is nil, use Location instead.
+// If loc is nil, return connURL unchanged.
 func SetConnURLLocation(connURL string, loc *time.Location) string {
 	if loc == nil {
 		return connURL
@@ -37,7 +37,7 @@ func SetConnURLLocation(connURL string, loc *time.Location) string {
 		return connURL
 	}
 
-	return fmt.Sprintf("%s?loc=%s", connURL, loc.String())
+	return connURL + "?loc=" + url.QueryEscape(loc.String())
 }
 
 // Config is used to configure the DB.

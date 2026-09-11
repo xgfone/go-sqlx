@@ -341,7 +341,7 @@ func extractName(s string) string {
 	return s
 }
 
-func (b *SelectBuilder) render(c *BuildContext) string {
+func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	parentWindows := c.windows
 	c.windows = nil
 	defer func() { c.windows = parentWindows }()
@@ -352,9 +352,6 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 	if b.err != nil {
 		panic(b.err)
 	}
-
-	s := c.acquireBuffer()
-	defer c.releaseBuffer(s)
 
 	s.Grow(b.renderSizeHint())
 	writeCTEs(s, c, b.ctes)
@@ -459,8 +456,7 @@ func (b *SelectBuilder) render(c *BuildContext) string {
 		panic("lock wait option requires ForUpdate or ForShare")
 	}
 
-	_, _ = s.WriteString(commentSQL(b.comment))
-	return s.String()
+	writeComment(s, b.comment)
 }
 
 // Estimate from immutable query descriptions only; never evaluate custom

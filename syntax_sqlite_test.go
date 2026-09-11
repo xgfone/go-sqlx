@@ -28,6 +28,12 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		want [][]any
 	}{
 		{
+			"bracket identifier with marker",
+			db.Select().SelectExpr(Expr("[why?] + ?", 2)).
+				FromSelect(Select().SelectExprAlias(Value(40), "why?"), "q"),
+			[][]any{{42}},
+		},
+		{
 			"values source",
 			db.Select("v.id", "v.label").
 				FromSource(ValuesSource("v", []string{"id", "label"}, []any{1, "a"}, []any{2, "b"})).

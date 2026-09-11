@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -73,7 +74,7 @@ func (b *DeleteBuilder) Reset() *DeleteBuilder {
 	return b
 }
 
-func (b *DeleteBuilder) render(c *BuildContext) string {
+func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	c.statementDepth++
 	defer func() { c.statementDepth-- }()
 
@@ -84,9 +85,6 @@ func (b *DeleteBuilder) render(c *BuildContext) string {
 	if len(b.ftables) == 0 {
 		panic("DELETE requires target")
 	}
-
-	s := c.acquireBuffer()
-	defer c.releaseBuffer(s)
 
 	s.Grow(128)
 	writeCTEs(s, c, b.ctes)
@@ -128,9 +126,8 @@ func (b *DeleteBuilder) render(c *BuildContext) string {
 	writeReturning(s, c, b.returning)
 	multi := len(b.ftables) != 1 || len(b.jtables) > 0 || len(b.using) > 0
 	b.mutation.render(s, c, dialect.DeleteOrderLimit, multi)
-	_, _ = s.WriteString(commentSQL(b.comment))
+	writeComment(s, b.comment)
 
-	return s.String()
 }
 
 func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder { b.db = db; return b }

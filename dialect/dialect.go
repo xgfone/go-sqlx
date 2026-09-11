@@ -231,14 +231,28 @@ func renderingDialect(d Dialect) Dialect {
 }
 
 func (d builtin) LimitOffset(p Pagination) string {
+	var buf [64]byte
+	return string(d.appendLimitOffset(buf[:0], p))
+}
+
+// WriteLimitOffset writes pagination without an intermediate string for built-in
+// dialects. Custom dialects retain their LimitOffset behavior.
+func WriteLimitOffset(buf *strings.Builder, d Dialect, p Pagination) {
+	if b, ok := renderingDialect(d).(builtin); ok {
+		var storage [64]byte
+		_, _ = buf.Write(b.appendLimitOffset(storage[:0], p))
+	} else {
+		_, _ = buf.WriteString(d.LimitOffset(p))
+	}
+}
+
+func (d builtin) appendLimitOffset(s []byte, p Pagination) []byte {
 	if p.Offset < 0 || p.Limit < 0 {
 		panic("dialect: limit and offset must be nonnegative")
 	}
 
-	// LIMIT, OFFSET and their decimal numbers fit in 64 bytes. AppendInt
-	// formats directly into this stack buffer, leaving only the result allocation.
-	var buf [64]byte
-	s := buf[:0]
+	// LIMIT, OFFSET and their decimal numbers fit in the caller's 64-byte
+	// stack buffer. AppendInt avoids intermediate numeric strings.
 	if p.HasLimit {
 		s = append(s, "LIMIT "...)
 		s = strconv.AppendInt(s, p.Limit, 10)
@@ -260,5 +274,5 @@ func (d builtin) LimitOffset(p Pagination) string {
 		s = strconv.AppendInt(s, p.Offset, 10)
 	}
 
-	return string(s)
+	return s
 }

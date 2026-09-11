@@ -32,7 +32,7 @@ func (t sqlTable) writeTo(s *strings.Builder, c *BuildContext) {
 			panic("subquery requires alias")
 		}
 		_ = s.WriteByte('(')
-		_, _ = s.WriteString(t.Query.render(c))
+		t.Query.writeTo(s, c)
 		_ = s.WriteByte(')')
 	} else {
 		writeQuotedPath(s, c.Dialect(), t.Table)

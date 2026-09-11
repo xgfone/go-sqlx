@@ -5,7 +5,6 @@ package sqlx
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -81,29 +80,32 @@ func UnboundedPreceding() FrameBound { return FrameBound{position: -2} }
 
 // UnboundedFollowing selects the end of the partition.
 func UnboundedFollowing() FrameBound { return FrameBound{position: 2} }
-func (b FrameBound) render() string {
+func (b FrameBound) writeTo(s *strings.Builder) {
 	if b.offset < 0 {
 		panic("negative window frame offset")
 	}
 
 	switch b.position {
 	case -2:
-		return "UNBOUNDED PRECEDING"
+		_, _ = s.WriteString("UNBOUNDED PRECEDING")
 
 	case -1:
-		return strconv.FormatInt(b.offset, 10) + " PRECEDING"
+		writeInt64(s, b.offset)
+		_, _ = s.WriteString(" PRECEDING")
 
 	case 0:
-		return "CURRENT ROW"
+		_, _ = s.WriteString("CURRENT ROW")
 
 	case 1:
-		return strconv.FormatInt(b.offset, 10) + " FOLLOWING"
+		writeInt64(s, b.offset)
+		_, _ = s.WriteString(" FOLLOWING")
 
 	case 2:
-		return "UNBOUNDED FOLLOWING"
-	}
+		_, _ = s.WriteString("UNBOUNDED FOLLOWING")
 
-	panic("invalid window frame bound")
+	default:
+		panic("invalid window frame bound")
+	}
 }
 
 // FrameExclusion specifies which rows to omit from a window frame.
@@ -210,7 +212,11 @@ func (w WindowSpec) writeTo(s *strings.Builder, c *BuildContext) {
 			_ = s.WriteByte(' ')
 		}
 
-		_, _ = s.WriteString(f.mode + " BETWEEN " + f.start.render() + " AND " + f.end.render())
+		_, _ = s.WriteString(f.mode)
+		_, _ = s.WriteString(" BETWEEN ")
+		f.start.writeTo(s)
+		_, _ = s.WriteString(" AND ")
+		f.end.writeTo(s)
 		if f.exclusion != "" {
 			switch f.exclusion {
 			case ExcludeNoOthers, ExcludeCurrentRow, ExcludeGroup, ExcludeTies:

@@ -10,8 +10,11 @@ arguments, strings are data: use `Ident` to refer to a column.
 
 `Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,
 `In`, `NotIn`, `IsNull`, `IsNotNull`, and `Not` compose with `And` and `Or`.
-Their left operand accepts an identifier path or an `Expression`; other operand
-values bind normally. `Eq(column, nil)` and `Ne(column, nil)` produce `IS NULL`
+Except for `Not`, their left operand is constrained at compile time to `Operand`
+(`~string | Expression`): an identifier path or an explicit expression. Defined
+string types also name paths; use `Value(v)` for a literal on the left. `Not`
+accepts a `Condition`. Other operand values bind normally.
+`Eq(column, nil)` and `Ne(column, nil)` produce `IS NULL`
 and `IS NOT NULL`, including typed nil pointers. Use `Value(nil)` when explicitly
 requesting an ordinary comparison against SQL NULL.
 

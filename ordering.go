@@ -5,7 +5,6 @@ package sqlx
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -106,7 +105,7 @@ func (p mutationLimit) render(s *strings.Builder, c *BuildContext, feature diale
 	writeOrderBy(s, c, p.terms)
 	if p.hasLimit {
 		_, _ = s.WriteString(" LIMIT ")
-		_, _ = s.WriteString(strconv.FormatInt(p.limit, 10))
+		writeInt64(s, p.limit)
 	} else if c.Dialect().Grammar().MutationOrderRequiresLimit {
 		_, _ = s.WriteString(" LIMIT -1")
 	}

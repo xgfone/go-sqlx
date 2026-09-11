@@ -4,6 +4,7 @@
 package sqlx
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -20,6 +21,7 @@ const (
 	aggregateExpression
 	windowExpression
 	windowFunctionExpression
+	pathExpression
 )
 
 func sqlWordByte(b byte) bool {
@@ -38,24 +40,28 @@ func writeAssignment(buf *strings.Builder, c *BuildContext, value any) {
 	writeValue(buf, c, value)
 }
 
-// operand interprets string left operands as identifier paths, like OnArg.
-func operand(v any) Expression {
-	if s, ok := v.(string); ok {
-		return Expression{
-			identity: new(byte),
-			custom: func(buf *strings.Builder, c *BuildContext) {
-				writeQuotedPath(buf, c.Dialect(), s)
-			},
-		}
-	}
-
-	if e, ok := v.(Expression); ok {
-		return e
-	}
-	return Value(v)
+// Operand restricts predicate left operands to identifier paths or explicit
+// expressions. Defined string types are accepted as paths. To compare a literal
+// on the left, wrap it with Value; ordinary right operands remain bound data.
+type Operand interface {
+	~string | Expression
 }
 
-func compare(left, right any, op string) Condition {
+func operand[T Operand](v T) Expression {
+	switch value := any(v).(type) {
+	case Expression:
+		return value
+
+	case string:
+		return Expression{kind: pathExpression, sql: value}
+
+	default:
+		// The constraint guarantees that every remaining type is a defined string.
+		return Expression{kind: pathExpression, sql: reflect.ValueOf(v).String()}
+	}
+}
+
+func compare[T Operand](left T, right any, op string) Condition {
 	l := operand(left)
 	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
 		if l.kind == tupleExpression {
@@ -86,28 +92,28 @@ func compare(left, right any, op string) Condition {
 
 // Eq compares a column path or Expression to a bound value or Expression.
 // A nil right operand means IS NULL. Use Ident on the right to compare columns.
-func Eq(left, right any) Condition { return compare(left, right, "=") }
+func Eq[T Operand](left T, right any) Condition { return compare(left, right, "=") }
 
 // Ne is the unequal comparison; a nil right operand means IS NOT NULL.
-func Ne(left, right any) Condition { return compare(left, right, "<>") }
+func Ne[T Operand](left T, right any) Condition { return compare(left, right, "<>") }
 
 // Gt compares a column path or Expression to a value using >.
-func Gt(left, right any) Condition { return compare(left, right, ">") }
+func Gt[T Operand](left T, right any) Condition { return compare(left, right, ">") }
 
 // Ge compares a column path or Expression to a value using >=.
-func Ge(left, right any) Condition { return compare(left, right, ">=") }
+func Ge[T Operand](left T, right any) Condition { return compare(left, right, ">=") }
 
 // Lt compares a column path or Expression to a value using <.
-func Lt(left, right any) Condition { return compare(left, right, "<") }
+func Lt[T Operand](left T, right any) Condition { return compare(left, right, "<") }
 
 // Le compares a column path or Expression to a value using <=.
-func Le(left, right any) Condition { return compare(left, right, "<=") }
+func Le[T Operand](left T, right any) Condition { return compare(left, right, "<=") }
 
 // IsNull tests a column path or Expression for NULL.
-func IsNull(left any) Condition { return Eq(left, nil) }
+func IsNull[T Operand](left T) Condition { return Eq(left, nil) }
 
 // IsNotNull tests a column path or Expression for a non-NULL value.
-func IsNotNull(left any) Condition { return Ne(left, nil) }
+func IsNotNull[T Operand](left T) Condition { return Ne(left, nil) }
 
 // Not negates a predicate, preserving grouping. An empty predicate is an error.
 func Not(condition Condition) Condition {
@@ -119,7 +125,7 @@ func Not(condition Condition) Condition {
 }
 
 // Between tests an inclusive range. Bounds are values or Expressions.
-func Between(left, low, high any) Condition {
+func Between[T Operand](left T, low, high any) Condition {
 	l := operand(left)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
 		s.Grow(32)
@@ -134,17 +140,21 @@ func Between(left, low, high any) Condition {
 }
 
 // NotBetween tests whether an operand lies outside an inclusive range.
-func NotBetween(left, low, high any) Condition { return Not(Between(left, low, high)) }
+func NotBetween[T Operand](left T, low, high any) Condition {
+	return Not(Between(left, low, high))
+}
 
 // Like matches a pattern with an optional single-character ESCAPE value.
-func Like(left, pattern any, escape ...string) Condition { return like(left, pattern, "LIKE", escape) }
+func Like[T Operand](left T, pattern any, escape ...string) Condition {
+	return like(left, pattern, "LIKE", escape)
+}
 
 // NotLike negates a LIKE pattern match.
-func NotLike(left, pattern any, escape ...string) Condition {
+func NotLike[T Operand](left T, pattern any, escape ...string) Condition {
 	return like(left, pattern, "NOT LIKE", escape)
 }
 
-func like(left, pattern any, op string, escape []string) Condition {
+func like[T Operand](left T, pattern any, op string, escape []string) Condition {
 	l := operand(left)
 	escape = slices.Clone(escape)
 	valid := len(escape) <= 1 && (len(escape) == 0 || utf8.RuneCountInString(escape[0]) == 1)
@@ -170,12 +180,16 @@ func like(left, pattern any, op string, escape []string) Condition {
 
 // In tests membership in a value list. Empty lists are false; nil elements keep
 // SQL's three-valued semantics. A Tuple left operand requires equal-width Tuples.
-func In(left any, values ...any) Condition { return inList(left, false, values) }
+func In[T Operand](left T, values ...any) Condition {
+	return inList(left, false, values)
+}
 
 // NotIn tests non-membership. Empty lists are true; NULL elements are not removed.
-func NotIn(left any, values ...any) Condition { return inList(left, true, values) }
+func NotIn[T Operand](left T, values ...any) Condition {
+	return inList(left, true, values)
+}
 
-func inList(left any, not bool, values []any) Condition {
+func inList[T Operand](left T, not bool, values []any) Condition {
 	l := operand(left)
 	values = slices.Clone(values)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {

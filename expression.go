@@ -47,10 +47,10 @@ type Expression struct {
 // Markers in quoted text and comments are ignored according to the dialect's
 // LexicalRules. PostgreSQL recognizes E'...' strings, nested comments, and
 // dollar quotes; MySQL recognizes # comments, whitespace-qualified -- comments,
-// and string backslash escapes. Use dialect.WithLexicalRules for connection SQL
-// modes that differ from the defaults. Other SQL syntax and operators are not
-// translated between dialects; the caller must supply SQL valid for the target
-// database.
+// and string backslash escapes. SQLite also recognizes [identifier] quoting.
+// Use dialect.WithLexicalRules for connection SQL modes that differ from the
+// defaults. Other SQL syntax and operators are not translated between dialects;
+// the caller must supply SQL valid for the target database.
 //
 // Each unescaped ? outside those regions consumes exactly one argument. An
 // identifier consumes no bound-parameter number; nested expressions share the
@@ -112,6 +112,10 @@ func (e Expression) String() string {
 }
 
 func (e Expression) build(d Dialect) string {
+	if e.kind == pathExpression {
+		return quotePath(d, e.sql)
+	}
+
 	if e.function == "" && !e.distinct {
 		if e.parts == nil {
 			return e.sql
@@ -197,6 +201,11 @@ func (e Expression) render(ctx *BuildContext) string {
 }
 
 func (e Expression) writeTo(buf *strings.Builder, ctx *BuildContext) {
+	if e.kind == pathExpression {
+		writeQuotedPath(buf, ctx.Dialect(), e.sql)
+		return
+	}
+
 	if e.kind == windowFunctionExpression {
 		panic("window function requires OVER")
 	}
@@ -264,7 +273,7 @@ func Subquery(q *SelectBuilder) Expression {
 				panic("nil subquery")
 			}
 			_ = buf.WriteByte('(')
-			_, _ = buf.WriteString(q.render(c))
+			q.writeTo(buf, c)
 			_ = buf.WriteByte(')')
 		},
 	}
@@ -341,6 +350,14 @@ func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args 
 	for i := 0; i < len(s); {
 		start := i
 		switch {
+		case s[i] == '[' && rules.BracketIdentifiers:
+			end := strings.IndexByte(s[i+1:], ']')
+			if end < 0 {
+				panic("unterminated bracket identifier")
+			}
+			i += end + 2
+			_, _ = out.WriteString(s[start:i])
+
 		case s[i] == '\'' || s[i] == '"' || s[i] == '`':
 			closed := false
 			quote := s[i]
@@ -405,7 +422,7 @@ func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args 
 
 		case s[i] == '$' && rules.DollarQuotes && (i == 0 || !sqlWordByte(s[i-1])):
 			j := i + 1
-			for j < len(s) && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || s[j] == '_' || (j > i+1 && s[j] >= '0' && s[j] <= '9')) {
+			for j < len(s) && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || s[j] == '_' || s[j] >= 128 || (j > i+1 && s[j] >= '0' && s[j] <= '9')) {
 				j++
 			}
 
@@ -460,7 +477,9 @@ func NotInQuery(column string, q *SelectBuilder) Condition {
 
 func inQuery(column string, q *SelectBuilder, operator string) Condition {
 	query := Subquery(q)
-	return ConditionFunc(func(c *BuildContext) string {
-		return c.Quote(column) + operator + query.render(c)
+	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
+		writeQuotedPath(buf, c.Dialect(), column)
+		_, _ = buf.WriteString(operator)
+		query.writeTo(buf, c)
 	})
 }

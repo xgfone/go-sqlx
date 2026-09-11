@@ -15,6 +15,27 @@ no inferable model type; use SelectType or a typed nil pointer instead.
 SelectStruct still honors dynamic ColumnProvider output, including when the
 argument is an interface. SelectType intentionally uses only mapped type fields.
 
+## Predicate operand constraints
+
+`Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,
+`In`, `NotIn`, `IsNull`, and `IsNotNull` now constrain their left operand to
+`Operand` (`~string | Expression`). Strings, including defined string types,
+name identifier paths. Other values and dynamically typed `any` arguments no
+longer compile as left operands. Use `Value(v)` to explicitly compare a bound
+literal, or resolve a dynamic column to a string/Expression before calling.
+Right operands still accept SQL values, expressions, nil, and driver.Valuer.
+
+```go
+sqlx.Eq("id", 42)                 // unchanged
+sqlx.Eq(sqlx.Ident("id"), 42)      // unchanged
+sqlx.Eq(sqlx.Value(42), 42)        // explicit literal on the left
+predicate := sqlx.Eq[string]      // instantiate a generic function value
+```
+
+Custom `Condition` and `Updater` implementations retain their existing string
+rendering contracts. Native nested statements now stream into the parent buffer;
+returned SQL and argument slices remain independently owned by callers.
+
 ## Removing the go-op dependency
 
 The root module no longer imports or requires go-op, including in its tests.

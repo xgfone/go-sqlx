@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -194,7 +195,7 @@ func (b *InsertBuilder) Reset() *InsertBuilder {
 	return b
 }
 
-func (b *InsertBuilder) render(c *BuildContext) string {
+func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	c.statementDepth++
 	defer func() { c.statementDepth-- }()
 
@@ -234,10 +235,7 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 		panic("cannot combine insert mode with conflict policy")
 	}
 
-	s := c.acquireBuffer()
-	defer c.releaseBuffer(s)
-
-	s.Grow(128)
+	s.Grow(b.renderSizeHint())
 	oldAlias, oldConflict := c.insertedAlias, c.conflictScope
 	c.insertedAlias = b.rowsAlias
 	c.conflictScope = false
@@ -262,15 +260,10 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 		dialect.WriteIdent(s, c.Dialect(), b.alias)
 	}
 
-	seen := map[string]bool{}
 	if len(b.columns) > 0 {
+		validateColumnNames(b.columns)
 		_, _ = s.WriteString(" (")
 		for i, col := range b.columns {
-			if seen[col] {
-				panic("duplicate INSERT column")
-			}
-
-			seen[col] = true
 			if i > 0 {
 				_, _ = s.WriteString(", ")
 			}
@@ -310,7 +303,7 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 			source = Select("*").FromSelect(source, "_sqlx_insert").Where(Expr("TRUE").Condition())
 		}
 		_ = s.WriteByte(' ')
-		_, _ = s.WriteString(source.render(c))
+		source.writeTo(s, c)
 
 	default:
 		_, _ = s.WriteString(" VALUES ")
@@ -321,6 +314,19 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 
 		if len(b.columns) > 0 && len(b.columns) != width {
 			panic("INSERT columns and values differ")
+		}
+		if len(b.values) > (cap(c.args)-len(c.args))/width {
+			// Count only direct parameters. Expressions may bind zero or many
+			// values and must never be evaluated for capacity estimation.
+			count := 0
+			for _, row := range b.values {
+				for _, value := range row {
+					if _, expression := value.(Expression); !expression {
+						count++
+					}
+				}
+			}
+			c.args = slices.Grow(c.args, count)
 		}
 
 		for i, row := range b.values {
@@ -356,9 +362,19 @@ func (b *InsertBuilder) render(c *BuildContext) string {
 	b.renderConflicts(s, c)
 
 	writeReturning(s, c, b.returning)
-	_, _ = s.WriteString(commentSQL(b.comment))
+	writeComment(s, b.comment)
 
-	return s.String()
+}
+
+func (b *InsertBuilder) renderSizeHint() int {
+	n := 32 + quotedPathSize(b.table) + len(b.alias)
+	for _, column := range b.columns {
+		n += len(column) + 4
+	}
+	for _, row := range b.values {
+		n += 4 + 6*len(row)
+	}
+	return max(128, n)
 }
 
 func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder { b.db = db; return b }

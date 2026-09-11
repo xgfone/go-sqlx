@@ -53,6 +53,7 @@ type LexicalRules struct {
 	HashComments        bool // MySQL # comments.
 	DashCommentSpace    bool // MySQL requires whitespace after --.
 	NestedBlockComments bool
+	BracketIdentifiers  bool // SQLite [identifier] quoting, ending at the first ].
 }
 
 func (d builtin) LexicalRules() LexicalRules {
@@ -70,6 +71,11 @@ func (d builtin) LexicalRules() LexicalRules {
 			NestedBlockComments: true,
 			EscapeStringPrefix:  true,
 			DollarQuotes:        true,
+		}
+
+	case "sqlite3":
+		return LexicalRules{
+			BracketIdentifiers: true,
 		}
 
 	default:

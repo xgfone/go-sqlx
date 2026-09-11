@@ -127,7 +127,7 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 			panic("subquery requires alias")
 		}
 		_ = s.WriteByte('(')
-		_, _ = s.WriteString(t.Query.render(c))
+		t.Query.writeTo(s, c)
 		_ = s.WriteByte(')')
 	} else if t.Expr != nil {
 		t.Expr.writeTo(s, c)

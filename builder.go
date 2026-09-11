@@ -18,7 +18,7 @@ import (
 type Statement interface {
 	Build() (string, []any, error)
 
-	render(*BuildContext) string
+	writeTo(*strings.Builder, *BuildContext)
 }
 
 type builderBase struct {
@@ -91,7 +91,10 @@ func buildBorrowed(s Statement, b *builderBase) (query string, ctx *BuildContext
 	}
 
 	ctx = acquireBuildContext(d)
-	query = s.render(ctx)
+	buf := ctx.acquireBuffer()
+	defer ctx.releaseBuffer(buf)
+	s.writeTo(buf, ctx)
+	query = buf.String()
 	return
 }
 
@@ -156,6 +159,9 @@ func queryStatement(ctx context.Context, s Statement, b *builderBase) (*sql.Rows
 	if e != nil {
 		return nil, nil, e
 	}
+	if rows == nil {
+		return nil, nil, errors.New("sqlx: executor returned nil rows")
+	}
 
 	cols, e := rows.Columns()
 	if e != nil {
@@ -172,16 +178,18 @@ func requireFeature(ctx *BuildContext, f dialect.Feature, name string) {
 	}
 }
 
-func commentSQL(s string) string {
+func writeComment(buf *strings.Builder, s string) {
 	if s == "" {
-		return ""
+		return
 	}
 
-	if strings.Contains(s, "*/") {
-		panic("comment contains */")
+	if strings.Contains(s, "*/") || strings.Contains(s, "/*") {
+		panic("comment contains a block-comment delimiter")
 	}
 
-	return " /* " + s + " */"
+	_, _ = buf.WriteString(" /* ")
+	_, _ = buf.WriteString(s)
+	_, _ = buf.WriteString(" */")
 }
 
 type selectedColumn struct {
