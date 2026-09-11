@@ -47,7 +47,7 @@ var (
 	_ sqlx.Pagination = window{}
 )
 
-func assertSQL(t *testing.T, s sqlx.Statement, want string, args ...any) {
+func assertSQL(t *testing.T, s sqlx.SQLBuilder, want string, args ...any) {
 	t.Helper()
 	got, values, err := s.Build()
 	if err != nil || got != want || !reflect.DeepEqual(values, args) {

@@ -33,6 +33,29 @@ features, and failures from custom clause renderers become build errors.
 or other explicitly asserted invariants. `String()` returns SQL or a diagnostic;
 it must not be used in place of checking `Build` errors.
 
+`SQLBuilder` is the open interface for independent SQL construction:
+
+```go
+type SQLBuilder interface {
+    Build() (string, []any, error)
+}
+```
+
+All four built-in builders implement it. Application code that only calls
+`Build` can accept `sqlx.SQLBuilder` to support application and third-party
+builders too. A custom builder chooses its own dialect and placeholders; pass
+its SQL and arguments to `Executor.ExecContext` or `DB.QueryRowsContext` after
+checking the build error.
+
+`Statement` embeds `SQLBuilder` and adds private rendering for built-in statement
+composition. It is not an external implementation hook. CTE bodies accept only
+the four built-in builder types; other composition APIs retain their documented
+input types. Nested rendering shares the parent's dialect and parameter numbering,
+so an independently built SQL string cannot simply be spliced into that context.
+Embedding a built-in builder does not make an application wrapper a supported
+CTE body. Use `Condition`, `Updater`, `Expr`, and `ExpressionSource` for the
+existing clause and expression extension points.
+
 Builders retain the first error encountered while collecting inputs. `Reset()`
 clears that error and all statement clauses while retaining DB, executor,
 explicit dialect and binding configuration. `ClearXxx()` clears only the named clause.

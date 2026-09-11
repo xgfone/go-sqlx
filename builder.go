@@ -14,9 +14,22 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// Statement is a SQL statement which can be built without executing it.
-type Statement interface {
+// SQLBuilder builds a complete SQL string and its bound arguments without
+// executing it. Applications and third-party builders may implement this
+// interface. The implementation chooses the dialect and placeholder syntax.
+// Use SQLBuilder when only independent construction through Build is needed.
+type SQLBuilder interface {
 	Build() (string, []any, error)
+}
+
+// Statement is a built-in SQLBuilder that participates in statement composition.
+// Nested statements share their parent's dialect, argument numbering, and
+// rendering context. Its unexported method prevents independent implementations
+// outside this package; external builders should implement SQLBuilder instead.
+// Composition supports SelectBuilder, InsertBuilder, UpdateBuilder, and
+// DeleteBuilder pointers, not wrappers embedding them or Statement.
+type Statement interface {
+	SQLBuilder
 
 	writeTo(*strings.Builder, *BuildContext)
 }
@@ -112,7 +125,7 @@ func buildStatement(s Statement, b *builderBase) (string, []any, error) {
 	return q, c.Args(), nil
 }
 
-func mustBuild(s Statement) (string, []any) {
+func mustBuild(s SQLBuilder) (string, []any) {
 	q, a, e := s.Build()
 	if e != nil {
 		panic(e)
@@ -120,7 +133,7 @@ func mustBuild(s Statement) (string, []any) {
 	return q, a
 }
 
-func stringStatement(s Statement) string {
+func stringStatement(s SQLBuilder) string {
 	q, _, e := s.Build()
 	if e != nil {
 		return "sqlx: " + e.Error()

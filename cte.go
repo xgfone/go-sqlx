@@ -24,6 +24,8 @@ type commonTable = CTE
 // CommonTable snapshots a query and optional output column names. PostgreSQL
 // additionally permits INSERT, UPDATE, and DELETE statements as the CTE body;
 // those data-modifying CTEs must belong to the top-level statement.
+// query must be a *SelectBuilder, *InsertBuilder, *UpdateBuilder, or *DeleteBuilder.
+// External SQLBuilder implementations and wrappers are not supported CTE bodies.
 func CommonTable(name string, query Statement, columns ...string) CTE {
 	return CTE{
 		name:    name,

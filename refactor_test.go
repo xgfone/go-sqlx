@@ -18,7 +18,7 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-func checkSQL(t *testing.T, b Statement, want string, args ...any) {
+func checkSQL(t *testing.T, b SQLBuilder, want string, args ...any) {
 	t.Helper()
 
 	q, a, e := b.Build()
@@ -27,7 +27,7 @@ func checkSQL(t *testing.T, b Statement, want string, args ...any) {
 	}
 }
 
-func checkBuildError(t *testing.T, b Statement) {
+func checkBuildError(t *testing.T, b SQLBuilder) {
 	t.Helper()
 
 	q, a, e := b.Build()
