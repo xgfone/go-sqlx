@@ -6,6 +6,7 @@ package sqlx
 import (
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -98,6 +99,8 @@ func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 		if v.Len() == 0 {
 			return
 		}
+
+		b.values = slices.Grow(b.values, v.Len())
 
 		// Resolve field order once for a homogeneous batch. Interface slices
 		// may contain different models, so refresh it when the model changes.
