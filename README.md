@@ -223,6 +223,13 @@ policies. Collection binders keep mutable scan state per result; manual
 `Rows.Scan` reuses its current destination setup. `Row.Scan`/`Rows.Scan` may
 partially update a row on error, as in
 `database/sql`; collection binding provides the staged commit guarantee.
+`Rows` exposes `Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`,
+and `Close`, while keeping the underlying `*sql.Rows` private. `NextResultSet`
+refreshes column mappings for all shared copies and prepared scans made from
+`Rows`. Call `Next` before scanning each result set. `WithColumns` overrides
+only the current set's labels; `ColumnTypes` always returns driver metadata.
+For a scan prepared from raw `*sql.Rows`, call `PrepareScan` again after switching
+result sets. Collection helpers consume the current set and close the cursor.
 Single-row `Row.Bind` uses the row scanner and does not invoke `RowsBinder`;
 customize field conversion with `sql.Scanner` or `WithScanOptions`.
 

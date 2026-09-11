@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
+	"slices"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -41,6 +42,8 @@ type RowScanFunc func(...any) error
 // the single-use [Row] (use [Row.Scan] directly). [Rows] supplies its configured
 // conversion policies; other scanners use zero [ScanOptions]. Destination
 // pointers may change between calls but their types must stay the same.
+// Plans prepared from Rows follow NextResultSet calls made through any shared
+// view. For raw *sql.Rows or other scanners, prepare again after changing sets.
 func PrepareScan(scanner RowScanner, types ...reflect.Type) (RowScanFunc, error) {
 	source, columns, options, _, err := scanSource(scanner)
 	if err != nil {
@@ -52,7 +55,43 @@ func PrepareScan(scanner RowScanner, types ...reflect.Type) (RowScanFunc, error)
 		return nil, err
 	}
 
-	return func(dst ...any) error { return plan.Scan(source, dst) }, nil
+	var rows Rows
+	switch v := scanner.(type) {
+	case Rows:
+		rows = v
+
+	case *Rows:
+		rows = *v
+
+	default:
+		return func(dst ...any) error {
+			return plan.Scan(source, dst)
+		}, nil
+	}
+
+	set := rows.cursor.set
+	types = slices.Clone(types)
+	return func(dst ...any) error {
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		if set != rows.cursor.set {
+			columns, err := rows.scanColumns()
+			if err != nil {
+				return err
+			}
+
+			next, err := rowbind.NewPlan(columns, types, options)
+			if err != nil {
+				return err
+			}
+
+			plan, set = next, rows.cursor.set
+		}
+
+		return plan.Scan(source, dst)
+	}, nil
 }
 
 // Select the underlying scan function before creating a method value. Wrapping
@@ -84,7 +123,7 @@ func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, 
 		return nil, nil, ScanOptions{}, false, err
 	}
 
-	return rows.Rows.Scan, columns, rows.config.Scan, true, nil
+	return rows.cursor.rows.Scan, columns, rows.config.Scan, true, nil
 }
 
 // Internal collection scans have a definite end, so their scratch storage can
@@ -108,7 +147,7 @@ func scanSingleStruct(rows Rows, dst []any) error {
 	if err != nil {
 		return err
 	}
-	return rowbind.ScanStruct(rows.Rows.Scan, columns, dst, rows.config.Scan)
+	return rowbind.ScanStruct(rows.cursor.rows.Scan, columns, dst, rows.config.Scan)
 }
 
 func nilBindingValue(v any) bool {

@@ -47,19 +47,29 @@ func (b *SelectBuilder) QueryRowsContext(ctx context.Context) Rows {
 func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) Rows {
 	// Internal configurations already own their layout slices and are immutable.
 	return Rows{
-		Rows: rows,
-		err:  err,
-
-		columns: slices.Clone(columns),
-		config:  c,
-		state:   &rowScanState{},
+		err:    err,
+		config: c,
+		state:  &rowScanState{},
+		cursor: &rowsCursor{
+			rows:    rows,
+			columns: slices.Clone(columns),
+		},
 	}
+}
+
+// All views share the cursor and its metadata generation. Per-view scan plans
+// and label overrides must be refreshed when any view advances the result set.
+type rowsCursor struct {
+	columns []string
+	rows    *sql.Rows
+	set     uint64
 }
 
 // The indirection keeps plan assignments visible across value-receiver Scan
 // calls and Rows copies, without allocating a plan before manual scanning.
 type rowScanState struct {
 	plan *rowbind.Plan
+	set  uint64
 }
 
 // Rows owns a forward-only SQL result. Bind/Append/Merge close it automatically.
@@ -67,21 +77,22 @@ type rowScanState struct {
 // Copies and With methods share the SQL cursor; they are not independent results
 // and must not be scanned concurrently.
 type Rows struct {
-	*sql.Rows
+	err    error
+	config BindConfig
+	cursor *rowsCursor
+	state  *rowScanState
 
-	err     error
-	columns []string
-	config  BindConfig
-	state   *rowScanState
-
-	validateColumns bool
+	labels   []string
+	labelSet uint64
 }
 
 // NewRows takes ownership of rows and uses zero BindConfig. Nil columns use the
-// driver's metadata. The result should be closed even when err is non-nil.
+// driver's metadata; non-nil columns override labels for the current result set.
+// Advance through the returned Rows to keep cached metadata synchronized.
+// The result should be closed even when err is non-nil.
 func NewRows(rows *sql.Rows, columns []string, err error) Rows {
-	r := (BindConfig{}).rows(rows, columns, err)
-	r.validateColumns = columns != nil
+	r := (BindConfig{}).rows(rows, nil, err)
+	r.labels = slices.Clone(columns)
 	return r
 }
 
@@ -89,19 +100,37 @@ func (r Rows) Columns() ([]string, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
-	if r.columns != nil {
-		return slices.Clone(r.columns), nil
+	if r.hasLabels() {
+		return slices.Clone(r.labels), nil
 	}
-	return r.Rows.Columns()
+
+	columns, err := r.driverColumns()
+	return slices.Clone(columns), err
 }
 
-// WithColumns overrides result labels. Labels are copied and validated against
-// the driver column count when a scan plan is prepared.
+// ColumnTypes returns the current result set's driver metadata. WithColumns
+// changes binding labels only; it does not alter the names in this metadata.
+func (r Rows) ColumnTypes() ([]*sql.ColumnType, error) {
+	if err := r.Err(); err != nil {
+		return nil, err
+	}
+	return r.cursor.rows.ColumnTypes()
+}
+
+// WithColumns overrides labels for the current result set only. Labels are
+// copied and validated against the driver column count when preparing a scan.
+// Nil columns restore driver labels. NextResultSet expires existing overrides.
 func (r Rows) WithColumns(columns ...string) Rows {
-	r.columns = slices.Clone(columns)
-	r.validateColumns = true
+	r.labels = slices.Clone(columns)
+	if r.cursor != nil {
+		r.labelSet = r.cursor.set
+	}
 	r.state = &rowScanState{}
 	return r
+}
+
+func (r Rows) hasLabels() bool {
+	return r.labels != nil && r.cursor != nil && r.labelSet == r.cursor.set
 }
 
 func (r Rows) WithBindConfig(config BindConfig) Rows {
@@ -127,10 +156,10 @@ func (r Rows) Err() error {
 	if r.err != nil {
 		return r.err
 	}
-	if r.Rows == nil {
+	if r.cursor == nil || r.cursor.rows == nil {
 		return errors.New("sqlx: nil rows")
 	}
-	return r.Rows.Err()
+	return r.cursor.rows.Err()
 }
 
 // Bind replaces a collection. Built-in binders publish a non-nil empty
@@ -214,7 +243,7 @@ func (r Rows) Scan(dst ...any) error {
 		state = &rowScanState{}
 	}
 
-	if state.plan == nil || !state.plan.Matches(dst) {
+	if state.plan == nil || state.set != r.cursor.set || !state.plan.Matches(dst) {
 		columns, err := r.scanColumns()
 		if err != nil {
 			return err
@@ -231,9 +260,10 @@ func (r Rows) Scan(dst ...any) error {
 		}
 
 		state.plan = p
+		state.set = r.cursor.set
 	}
 
-	return state.plan.ScanValues(r.Rows.Scan, dst)
+	return state.plan.ScanValues(r.cursor.rows.Scan, dst)
 }
 
 func (r Rows) scanColumns() ([]string, error) {
@@ -241,34 +271,57 @@ func (r Rows) scanColumns() ([]string, error) {
 		return nil, err
 	}
 
-	if r.columns != nil && !r.validateColumns {
-		return r.columns, nil
-	}
-
-	columns, err := r.Rows.Columns()
+	columns, err := r.driverColumns()
 	if err != nil {
 		return nil, err
 	}
-	if r.columns == nil {
+	if !r.hasLabels() {
 		return columns, nil
 	}
-	if len(columns) != len(r.columns) {
+	if len(columns) != len(r.labels) {
 		return nil, errors.New("sqlx: result label count differs from driver columns")
 	}
 
-	return r.columns, nil
+	return r.labels, nil
+}
+
+func (r Rows) driverColumns() ([]string, error) {
+	if r.cursor.columns == nil {
+		columns, err := r.cursor.rows.Columns()
+		if err != nil {
+			return nil, err
+		}
+		r.cursor.columns = slices.Clone(columns)
+	}
+	return r.cursor.columns, nil
 }
 
 func (r Rows) Next() bool {
-	return r.err == nil && r.Rows != nil && r.Rows.Next()
+	return r.err == nil && r.cursor != nil && r.cursor.rows != nil && r.cursor.rows.Next()
+}
+
+// NextResultSet advances to the next result set, invalidating cached labels and
+// scan plans in all copies and With views. Call Next before scanning its rows.
+// A false result means exhaustion or failure; check Err to distinguish them.
+func (r Rows) NextResultSet() bool {
+	if r.err != nil || r.cursor == nil || r.cursor.rows == nil {
+		return false
+	}
+
+	r.cursor.columns = nil
+	r.cursor.set++
+	return r.cursor.rows.NextResultSet()
 }
 
 func (r Rows) Close() error {
 	if r.state != nil {
 		r.state.plan = nil
 	}
-	if r.Rows == nil {
+	if r.cursor == nil || r.cursor.rows == nil {
 		return nil
 	}
-	return r.Rows.Close()
+
+	r.cursor.columns = nil
+	r.cursor.set++
+	return r.cursor.rows.Close()
 }

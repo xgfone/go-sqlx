@@ -360,7 +360,7 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 
 		var scanner RowScanner = &rows
 		if raw {
-			scanner = rows.Rows
+			scanner = rows.cursor.rows
 		}
 
 		scan, err := PrepareScan(scanner, reflect.TypeFor[**time.Duration]())
@@ -387,7 +387,7 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 	}
 
 	rows, _ := bindTestRows(t, int64(1))
-	row := NewRow(rows.Rows, nil, nil)
+	row := NewRow(rows.cursor.rows, nil, nil)
 	if _, ok := any(row).(RowsScanner); ok {
 		t.Fatal("Row must not be an iterator")
 	}
@@ -535,7 +535,8 @@ func TestSingleRowPlanReuseDoesNotLeakPolicyOrTypes(t *testing.T) {
 
 		var wrong record
 		rows, _ := bindTestRows(t, int64(7))
-		if err := NewRow(rows.Rows, nil, nil).Scan(&wrong); err == nil {
+		err := NewRow(rows.cursor.rows, nil, nil).Scan(&wrong)
+		if err == nil {
 			t.Fatal("bad label accepted")
 		}
 
@@ -544,7 +545,8 @@ func TestSingleRowPlanReuseDoesNotLeakPolicyOrTypes(t *testing.T) {
 			Value int `sql:"value"`
 		}
 
-		if err := NewRow(rows.Rows, nil, nil).Scan(&correct); err != nil || correct.Value != 8 {
+		err = NewRow(rows.cursor.rows, nil, nil).Scan(&correct)
+		if err != nil || correct.Value != 8 {
 			t.Fatal(correct, err)
 		}
 	}
@@ -561,7 +563,7 @@ func TestRecursivePointerDestinationsAreRejected(t *testing.T) {
 
 	var value recursivePointer
 	rows, _ = bindTestRows(t, int64(1))
-	if err := NewRow(rows.Rows, nil, nil).Scan(&value); err == nil {
+	if err := NewRow(rows.cursor.rows, nil, nil).Scan(&value); err == nil {
 		t.Fatal("recursive pointer accepted")
 	}
 	if err := (GeneralScanner{Value: &value}).Scan(1); err == nil {

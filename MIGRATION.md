@@ -391,6 +391,17 @@ validation. It does not perform scalar conversion. Use `PrepareScan` for raw
 `*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
 for single-use results. Result labels and WithColumns inputs are copied.
 
+`Rows` no longer embeds or exposes `*sql.Rows`. Replace `rows.Rows.Method(...)`
+with `rows.Method(...)`; all seven public cursor methods remain available:
+`Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`, and `Close`.
+Construct wrappers with `NewRows` instead of a struct literal. After transferring
+ownership, advance through the wrapper so its metadata stays synchronized.
+`NextResultSet` refreshes mappings for all shared copies and scan functions
+prepared from `Rows`; `WithColumns` and `NewRows` label overrides expire at the
+next result set. `ColumnTypes` returns driver names and types independently of
+label overrides. Recreate prepared scans from raw `*sql.Rows` after switching
+sets. Collection helpers consume the current set and close the entire result.
+
 Struct metadata, column layouts, compiled setters and scan plans now live in
 `internal/rowbind`, together with the shared scalar conversion rules. The root
 package owns SQL expression caching, result lifetimes and collection commits.

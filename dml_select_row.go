@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
-	"slices"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -32,13 +31,7 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 }
 
 func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
-	return Row{rows: Rows{
-		Rows: rows,
-		err:  err,
-
-		columns: slices.Clone(columns),
-		config:  c,
-	}}
+	return Row{rows: c.rows(rows, columns, err)}
 }
 
 // Row owns a single-use rows. Scan and Bind close it automatically. It is not
@@ -46,9 +39,7 @@ func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
 type Row struct{ rows Rows }
 
 func NewRow(rows *sql.Rows, columns []string, err error) Row {
-	r := (BindConfig{}).row(rows, columns, err)
-	r.rows.validateColumns = columns != nil
-	return r
+	return Row{rows: NewRows(rows, columns, err)}
 }
 
 func (r Row) Columns() ([]string, error) {
@@ -56,8 +47,7 @@ func (r Row) Columns() ([]string, error) {
 }
 
 func (r Row) WithColumns(columns ...string) Row {
-	r.rows.columns = slices.Clone(columns)
-	r.rows.validateColumns = true
+	r.rows = r.rows.WithColumns(columns...)
 	return r
 }
 
@@ -86,7 +76,7 @@ func (r Row) Scan(dst ...any) (err error) {
 	if err = validateScanOptions(r.rows.config.Scan); err != nil {
 		return err
 	}
-	if r.rows.validateColumns {
+	if r.rows.hasLabels() {
 		if _, err = r.rows.scanColumns(); err != nil {
 			return err
 		}
@@ -102,7 +92,7 @@ func (r Row) Scan(dst ...any) (err error) {
 	if len(dst) == 1 && dst[0] != nil && !rowbind.IsScalarDestination(reflect.TypeOf(dst[0])) {
 		return scanSingleStruct(r.rows, dst)
 	}
-	return rowbind.ScanScalarRow(r.rows.Rows.Scan, dst, r.rows.config.Scan)
+	return rowbind.ScanScalarRow(r.rows.cursor.rows.Scan, dst, r.rows.config.Scan)
 }
 
 func (r Row) Err() error   { return r.rows.Err() }
