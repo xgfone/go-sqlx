@@ -125,8 +125,8 @@ these grouping extensions; MySQL supports only its ROLLUP form.
 
 ## CTEs and set operations
 
-All four builders accept `WithCTE(CommonTable(name, statement, columns...))`.
-`CommonTable(...).Recursive()` enables WITH RECURSIVE. Select also retains
+All four builders accept `WithCTE(NewCTE(name, statement, columns...))`.
+`NewCTE(...).Recursive()` enables WITH RECURSIVE. Select also retains
 `With`, `WithRecursive`, `WithColumns`, and `WithRecursiveColumns`; the write
 builders have `With` and `WithRecursive` helpers.
 
@@ -136,7 +136,7 @@ numbers := sqlx.Select().SelectExpr(sqlx.Value(1)).UnionAll(
         From("numbers").Where(sqlx.Lt("n", 4)),
 )
 q := sqlx.Select("n").From("numbers").WithCTE(
-    sqlx.CommonTable("numbers", numbers, "n").Recursive(),
+    sqlx.NewCTE("numbers", numbers, "n").Recursive(),
 ).OrderByAsc("n")
 ```
 

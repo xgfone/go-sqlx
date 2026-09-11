@@ -199,7 +199,7 @@ func TestWindowAndGroupingRendering(t *testing.T) {
 }
 
 func TestCTEPlacementAndDMLScope(t *testing.T) {
-	cte := CommonTable("q", Select().SelectExpr(Value(7)), "id")
+	cte := NewCTE("q", Select().SelectExpr(Value(7)), "id")
 	checkSQL(t,
 		Insert().Into("t").Columns("id").WithCTE(cte).FromSelect(Select("id").From("q")),
 		"INSERT INTO `t` (`id`) WITH `q` (`id`) AS (SELECT ?) SELECT `id` FROM `q`",
@@ -211,7 +211,7 @@ func TestCTEPlacementAndDMLScope(t *testing.T) {
 		7)
 
 	deleted := Delete().From("old").Where(Eq("id", 9)).Returning("id")
-	q := Select("id").From("deleted").WithCTE(CommonTable("deleted", deleted)).SetDialect(dialect.Postgres)
+	q := Select("id").From("deleted").WithCTE(NewCTE("deleted", deleted)).SetDialect(dialect.Postgres)
 	checkSQL(t, q, `WITH "deleted" AS (DELETE FROM "old" WHERE ("id" = $1) RETURNING "id") SELECT "id" FROM "deleted"`, 9)
 
 	deleted.ClearWhere()
@@ -414,7 +414,7 @@ func TestFetchWithTiesQueryRowUsesOrdinaryLimit(t *testing.T) {
 }
 
 func TestDialectExtensionsKeepParentBindingOrder(t *testing.T) {
-	cte := CommonTable("candidate", Select().SelectExpr(Value(5)), "id")
+	cte := NewCTE("candidate", Select().SelectExpr(Value(5)), "id")
 	q := Delete().From("t").WithCTE(cte).
 		UsingSelect(Select().SelectExpr(Value(6)), "q").Where(Eq("id", 7)).
 		Returning("id").SetDialect(dialect.Postgres)

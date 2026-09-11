@@ -181,7 +181,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		},
 		{
 			"recursive cte",
-			db.Select("n").WithCTE(CommonTable("seq", seq, "n").Recursive()).
+			db.Select("n").WithCTE(NewCTE("seq", seq, "n").Recursive()).
 				From("seq").OrderByAsc("n"),
 			[][]any{{1}, {2}, {3}, {4}},
 		},
@@ -202,7 +202,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"cte insert",
 			db.Insert().Into("t").Columns("id", "team", "v").
-				WithCTE(CommonTable("q", Select().SelectExpr(Value(4), Value("c"), Value(40)), "id", "team", "v")).
+				WithCTE(NewCTE("q", Select().SelectExpr(Value(4), Value("c"), Value(40)), "id", "team", "v")).
 				FromSelect(Select("*").From("q")).Returning("id", "v"),
 			[][]any{{4, 40}},
 		},

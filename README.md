@@ -318,7 +318,7 @@ PostgreSQL/SQLite UPDATE FROM or PostgreSQL DELETE USING.
 Use `FromSelect`, `Subquery`, `InQuery`, `NotInQuery`, `Exists`, and `NotExists`
 for nested queries. All nodes share one binding context, so placeholders remain
 correct across nesting. Supplied query builders are snapshotted. `With`,
-`WithRecursive`, and `WithCTE(CommonTable(...))` define CTEs, including explicit
+`WithRecursive`, and `WithCTE(NewCTE(...))` define CTEs, including explicit
 column names and PostgreSQL data-modifying CTEs. `Union`, `UnionAll`, `Intersect`,
 `IntersectAll`, `Except`, and `ExceptAll` group complex operands automatically.
 Mixed fluent operations associate left-to-right; nested operands express other

@@ -10,7 +10,7 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// CTE is an immutable common table expression, constructed with CommonTable.
+// CTE is an immutable common table expression, constructed with NewCTE.
 type CTE struct {
 	name         string
 	query        Statement
@@ -21,12 +21,12 @@ type CTE struct {
 
 type commonTable = CTE
 
-// CommonTable snapshots a query and optional output column names. PostgreSQL
+// NewCTE snapshots a query and optional output column names. PostgreSQL
 // additionally permits INSERT, UPDATE, and DELETE statements as the CTE body;
 // those data-modifying CTEs must belong to the top-level statement.
 // query must be a *SelectBuilder, *InsertBuilder, *UpdateBuilder, or *DeleteBuilder.
 // External SQLBuilder implementations and wrappers are not supported CTE bodies.
-func CommonTable(name string, query Statement, columns ...string) CTE {
+func NewCTE(name string, query Statement, columns ...string) CTE {
 	return CTE{
 		name:    name,
 		query:   snapshotStatement(query),
@@ -143,12 +143,12 @@ func (b *SelectBuilder) WithCTE(ctes ...CTE) *SelectBuilder {
 
 // WithColumns appends a SELECT CTE with explicit output names.
 func (b *SelectBuilder) WithColumns(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.WithCTE(CommonTable(name, q, columns...))
+	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
 // WithRecursiveColumns appends a recursive CTE with explicit output names.
 func (b *SelectBuilder) WithRecursiveColumns(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.WithCTE(CommonTable(name, q, columns...).Recursive())
+	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
 
 // WithCTE appends CTEs to an INSERT. MySQL permits these only with a SELECT source
@@ -160,12 +160,12 @@ func (b *InsertBuilder) WithCTE(ctes ...CTE) *InsertBuilder {
 
 // With adds a SELECT CTE to an INSERT. MySQL requires a SELECT insert source.
 func (b *InsertBuilder) With(name string, q *SelectBuilder) *InsertBuilder {
-	return b.WithCTE(CommonTable(name, q))
+	return b.WithCTE(NewCTE(name, q))
 }
 
 // WithRecursive adds a recursive CTE to an INSERT. MySQL requires a SELECT insert source.
 func (b *InsertBuilder) WithRecursive(name string, q *SelectBuilder) *InsertBuilder {
-	return b.WithCTE(CommonTable(name, q).Recursive())
+	return b.WithCTE(NewCTE(name, q).Recursive())
 }
 
 // ClearWith removes INSERT common table expressions.
@@ -179,12 +179,12 @@ func (b *UpdateBuilder) WithCTE(ctes ...CTE) *UpdateBuilder {
 
 // With appends a SELECT common table expression to an UPDATE.
 func (b *UpdateBuilder) With(name string, q *SelectBuilder) *UpdateBuilder {
-	return b.WithCTE(CommonTable(name, q))
+	return b.WithCTE(NewCTE(name, q))
 }
 
 // WithRecursive appends a recursive common table expression to an UPDATE.
 func (b *UpdateBuilder) WithRecursive(name string, q *SelectBuilder) *UpdateBuilder {
-	return b.WithCTE(CommonTable(name, q).Recursive())
+	return b.WithCTE(NewCTE(name, q).Recursive())
 }
 
 // ClearWith removes UPDATE common table expressions.
@@ -198,12 +198,12 @@ func (b *DeleteBuilder) WithCTE(ctes ...CTE) *DeleteBuilder {
 
 // With appends a SELECT common table expression to a DELETE.
 func (b *DeleteBuilder) With(name string, q *SelectBuilder) *DeleteBuilder {
-	return b.WithCTE(CommonTable(name, q))
+	return b.WithCTE(NewCTE(name, q))
 }
 
 // WithRecursive appends a recursive common table expression to a DELETE.
 func (b *DeleteBuilder) WithRecursive(name string, q *SelectBuilder) *DeleteBuilder {
-	return b.WithCTE(CommonTable(name, q).Recursive())
+	return b.WithCTE(NewCTE(name, q).Recursive())
 }
 
 // ClearWith removes DELETE common table expressions.
