@@ -190,7 +190,7 @@ raw queries, and builders, including INSERT/UPDATE/DELETE RETURNING:
 
 ```go
 db = db.WithBindConfig(sqlx.BindConfig{
-    Capacity:      128, // Allocation hint; zero uses DefaultRowsCapacity.
+    Capacity:      128, // Explicit allocation hint; zero enables automatic sizing.
     DuplicateKeys: sqlx.DuplicateKeyReject,
     Scan: sqlx.ScanOptions{
         Nulls:          sqlx.NullToZero,
@@ -205,6 +205,18 @@ Use `SetBindConfig` on a builder or Rows, `WithBindConfig` on an Oper,
 whole prior configuration and copy `TimeLayouts`. Capacity and scan policies
 remain per-configuration; the binder registry is shared. `WithExecutor` preserves
 the DB configuration. Builder `Clone` and `Reset` preserve its explicit override.
+
+An explicit positive `Capacity` takes precedence and is not capped. When it is
+zero, a SELECT builder's positive LIMIT (including Pagination/Paginate) supplies
+an initial capacity of `min(Limit, 100)`. Without such a limit, binding uses
+`DefaultRowsCapacity` (20). Raw SQL is not parsed to infer a limit, and an inner
+subquery's limit does not size the outer result. The limit hint is captured when
+the query runs; setting a result's Capacity back to zero restores that hint.
+Advancing to another result set clears it while preserving explicit configuration.
+These hints apply to slice and map binding, including Append/Merge, and never
+truncate results. Empty results do not reserve the hinted storage; nonempty
+results grow as needed. For a known 1000-row page, set Capacity to 1000 explicitly
+to avoid growth beyond the automatic 100-row reservation.
 
 Scalar pointers and values use the same conversions: both `time.Duration` and
 `*time.Duration` interpret numeric sources in the configured unit. NULL clears

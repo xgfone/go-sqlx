@@ -137,8 +137,8 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 	}
 }
 
-// Capacity is an explicit caller hint; query limits and table cardinality are
-// not reliable reasons for the library to reserve arbitrarily large buffers.
+// Explicit capacity hints may exceed the bounded hints inferred from SELECT
+// limits. These raw SQL queries have no inferred capacity.
 func BenchmarkBindingCapacity(b *testing.B) {
 	f := &bindFixture{columns: []string{"id", "a"}}
 	for i := range 1000 {

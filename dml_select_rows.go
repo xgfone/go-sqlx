@@ -41,7 +41,11 @@ func (db *DB) queryRowsContext(ctx context.Context, query string, args ...any) (
 }
 
 func (b *SelectBuilder) QueryRowsContext(ctx context.Context) *Rows {
-	return b.binding().rows(queryStatement(ctx, b, &b.builderBase))
+	r := b.binding().rows(queryStatement(ctx, b, &b.builderBase))
+	if b.hasLimit && b.limit > 0 {
+		r.capacityHint = int(min(b.limit, maxLimitRowsCapacity))
+	}
+	return r
 }
 
 func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) *Rows {
@@ -70,6 +74,9 @@ type Rows struct {
 	columns  []string
 	revision uint64
 	scan     rowbind.ScanState
+
+	// Keep query hints separate so SetBindConfig can restore automatic sizing.
+	capacityHint int
 }
 
 // NewRows takes ownership of rows and uses zero BindConfig. Nil columns use the
@@ -195,6 +202,9 @@ func (r *Rows) bind(dst any, mode BindMode) (err error) {
 	}
 
 	options := r.config.options(mode)
+	if options.Capacity == 0 {
+		options.Capacity = r.capacityHint
+	}
 	if options.Columns, err = r.scanColumns(); err != nil {
 		return err
 	}
@@ -289,9 +299,9 @@ func (r *Rows) Next() bool {
 	return r != nil && r.err == nil && r.rows != nil && r.rows.Next()
 }
 
-// NextResultSet advances to the next result set and invalidates cached labels
-// and prepared scans. All aliases refer to this same object. Call Next before
-// scanning its rows; check Err when the result is false.
+// NextResultSet advances to the next result set and invalidates cached labels,
+// the query's capacity hint and prepared scans. All aliases refer to this same
+// object. Call Next before scanning its rows; check Err when the result is false.
 func (r *Rows) NextResultSet() bool {
 	if r == nil || r.err != nil || r.rows == nil {
 		return false
@@ -299,6 +309,7 @@ func (r *Rows) NextResultSet() bool {
 
 	r.labels = nil
 	r.columns = nil
+	r.capacityHint = 0
 	r.revision++
 	r.scan.Reset()
 	return r.rows.NextResultSet()
@@ -311,6 +322,7 @@ func (r *Rows) Close() error {
 
 	r.labels = nil
 	r.columns = nil
+	r.capacityHint = 0
 	r.revision++
 	r.scan.Reset()
 	if r.rows == nil {

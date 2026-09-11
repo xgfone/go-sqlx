@@ -58,8 +58,13 @@ const (
 	BindMerge            // Maps only.
 )
 
-// DefaultRowsCapacity is the immutable allocation hint used when Capacity is 0.
+// DefaultRowsCapacity is the allocation hint used when Capacity is zero and
+// no positive SELECT limit is available.
 const DefaultRowsCapacity = 20
+
+// Limits are hints rather than expected row counts. Bound inferred reservations;
+// callers can explicitly request larger capacities when they know the workload.
+const maxLimitRowsCapacity = 100
 
 // BindOptions is passed to RowsBinder.Prepare. Implementations must leave the
 // destination unchanged until Commit, including its shared backing storage.
@@ -67,6 +72,9 @@ const DefaultRowsCapacity = 20
 // Scan supplies the conversion policy; it is not inferred from the raw cursor.
 // Built-in binders prepare the mapping here, so supply Columns before Prepare.
 type BindOptions struct {
+	// Capacity hints at the number of incoming rows to reserve, not a row limit.
+	// Zero uses DefaultRowsCapacity. SELECT results fill an unspecified capacity
+	// from their positive LIMIT, capped at 100, before calling Prepare.
 	Capacity      int
 	Columns       []string
 	Scan          ScanOptions
@@ -136,7 +144,10 @@ type BindConfig struct {
 	Binder RowsBinder
 
 	DuplicateKeys DuplicateKeyPolicy
-	Capacity      int
+
+	// Capacity is an explicit allocation hint and is not capped. Zero lets a
+	// SELECT result use its positive LIMIT (up to 100), otherwise DefaultRowsCapacity.
+	Capacity int
 }
 
 func (c BindConfig) clone() BindConfig {
