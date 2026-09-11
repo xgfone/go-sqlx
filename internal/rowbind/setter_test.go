@@ -11,6 +11,7 @@ import (
 )
 
 type setterNamedInt int32
+type setterNamedInt64 int64
 type setterNamedFloat float64
 type setterNamedString string
 type setterNamedBool bool
@@ -41,6 +42,7 @@ func setterTestTypes() []reflect.Type {
 		reflect.TypeFor[any](),
 
 		reflect.TypeFor[setterNamedInt](),
+		reflect.TypeFor[setterNamedInt64](),
 		reflect.TypeFor[setterNamedFloat](),
 		reflect.TypeFor[setterNamedString](),
 		reflect.TypeFor[setterNamedBool](),

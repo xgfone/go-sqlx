@@ -105,6 +105,16 @@ func compileNumberFieldSetter(t reflect.Type) fieldSetter {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		bits, timestamp := t.Bits(), kind == reflect.Int || kind == reflect.Int64
 		return func(dst reflect.Value, src any, _ *ScanOptions) error {
+			// Drivers commonly return int64. Every such value fits a 64-bit
+			// signed field, including defined types; narrower fields still
+			// need the overflow checks in scanInt.
+			if bits == 64 {
+				if value, ok := src.(int64); ok {
+					dst.SetInt(value)
+					return nil
+				}
+			}
+
 			if data, ok := src.([]byte); ok {
 				n, err := strconv.ParseInt(string(data), 10, bits)
 				if err == nil {
