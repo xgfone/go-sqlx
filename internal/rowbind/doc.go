@@ -10,11 +10,20 @@
 // layout validation, nested-pointer handling and scratch pools are private.
 // Changing those implementations does not require changing the root package.
 //
-// NewPlan creates state with a caller-controlled lifetime. BorrowPlan and
-// ScanStruct reuse scratch storage only for synchronous operations. A Plan must
-// not be copied or scanned concurrently. Scanning clears destination references
-// even on failure or panic; Release also clears source and configuration state.
-// Metadata is safe to share concurrently and must never be modified by callers.
+// Prepare creates an immutable Mapping without allocating execution scratch.
+// Mapping.WithScan borrows private scan plans only for synchronous operations;
+// Mapping.Scanner borrows independent scratch until the returned Scanner.Close.
+// ScanState reuses private preparation and scratch until the owner resets or
+// closes its result; ScanStruct and ScanColumnsToStruct borrow scratch for a
+// single call. Scanning clears
+// destination references even on failure or panic; pooled plans also release
+// configuration. Metadata and mappings may be shared concurrently and must not
+// be modified.
+//
+// Every Scan(dst ...any) error and matching callback borrows its destination
+// slice only for the call. Retaining that slice or a subslice requires a clone.
+// Cloning the slice does not extend the lifetime of temporary scanner adapters
+// or driver-owned buffers. Prepared scanners still own their plans until Close.
 //
 // Scalar and struct scans use the same conversion rules. ScanOptions and
 // GeneralScanner are aliased by the root package to preserve its public entry

@@ -5,6 +5,7 @@ package rowbind
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -34,12 +35,12 @@ func TestSharedScanLayoutKeepsDestinationsAndPoliciesIndependent(t *testing.T) {
 
 	columns := []string{"id", "span", "stamp"}
 	types := []reflect.Type{reflect.TypeFor[*record]()}
-	p, err := NewPlan(columns, types, ScanOptions{TimeLayouts: []string{time.DateOnly}})
+	p, err := initRowScanPlan(&scanPlan{}, columns, types, ScanOptions{TimeLayouts: []string{time.DateOnly}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	q, err := NewPlan(columns, types, ScanOptions{
+	q, err := initRowScanPlan(&scanPlan{}, columns, types, ScanOptions{
 		Nulls: NullError, DurationUnit: time.Second, TimeLayouts: []string{"02/01/2006"},
 	})
 	if err != nil || p.layout != q.layout {
@@ -66,7 +67,7 @@ func TestSharedScanLayoutKeepsDestinationsAndPoliciesIndependent(t *testing.T) {
 	}
 
 	// Clearing a pooled execution plan must never clear the shared layout.
-	Release(p)
+	releasePlan(p)
 	if err := q.Scan(scanCacheSource(int64(8)), []any{&second}); err != nil || second.ID != 8 {
 		t.Fatal("releasing another plan corrupted this scan", second, err)
 	}
@@ -90,7 +91,7 @@ func TestScanLayoutDistinguishesOrderSubsetAndMappingPolicy(t *testing.T) {
 			}
 
 			for _, columns := range [][]string{{"id", "child_value"}, {"child_value", "id"}, {"id"}} {
-				p, err := NewPlan(columns, types, options)
+				p, err := initRowScanPlan(&scanPlan{}, columns, types, options)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -126,18 +127,18 @@ func TestScanLayoutDistinguishesOrderSubsetAndMappingPolicy(t *testing.T) {
 	}
 
 	columns := []string{"id", "unknown"}
-	if _, err := NewPlan(columns, types, ScanOptions{IgnoreUnknownColumns: true}); err != nil {
+	if _, err := initRowScanPlan(&scanPlan{}, columns, types, ScanOptions{IgnoreUnknownColumns: true}); err != nil {
 		t.Fatal(err)
 	}
 
 	for _, columns := range [][]string{columns, {"id", "id"}} {
-		if _, err := NewPlan(columns, types, ScanOptions{}); err == nil {
+		if _, err := initRowScanPlan(&scanPlan{}, columns, types, ScanOptions{}); err == nil {
 			t.Fatal("cached mapping bypassed validation", columns)
 		}
 	}
 }
 
-func TestRawFieldMappingCachePreservesCallbackOwnership(t *testing.T) {
+func TestRawFieldMappingClonePreservesCallbackOwnership(t *testing.T) {
 	type record struct {
 		Value []int `sql:"value"`
 	}
@@ -146,7 +147,7 @@ func TestRawFieldMappingCachePreservesCallbackOwnership(t *testing.T) {
 	columns := []string{"value"}
 	var first, second record
 	var retained []any
-	if err := ScanColumnsToStruct(func(dst ...any) error { retained = dst; return nil }, columns, &first); err != nil {
+	if err := ScanColumnsToStruct(func(dst ...any) error { retained = slices.Clone(dst); return nil }, columns, &first); err != nil {
 		t.Fatal(err)
 	}
 	if err := ScanColumnsToStruct(func(dst ...any) error { *dst[0].(*[]int) = []int{2}; return nil }, columns, &second); err != nil {
@@ -157,8 +158,63 @@ func TestRawFieldMappingCachePreservesCallbackOwnership(t *testing.T) {
 	if !slices.Equal(first.Value, []int{1}) || !slices.Equal(second.Value, []int{2}) {
 		t.Fatal("callback destination storage was shared", first, second)
 	}
-	if _, err := NewPlan(columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{}); err == nil {
+	if _, err := initRowScanPlan(&scanPlan{}, columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{}); err == nil {
 		t.Fatal("raw-field layout bypassed SQL field validation")
+	}
+}
+
+func TestRawFieldMappingCloneSurvivesFailureAndOtherScans(t *testing.T) {
+	type record struct {
+		Value []int `sql:"value"`
+	}
+
+	cause := errors.New("raw scan failure")
+	for _, panicValue := range []bool{false, true} {
+		var first, second record
+		var retained []any
+		func() {
+			defer func() {
+				got := recover()
+				if (panicValue && got != cause) || (!panicValue && got != nil) {
+					t.Error(got)
+				}
+			}()
+
+			err := ScanColumnsToStruct(func(dst ...any) error {
+				retained = slices.Clone(dst)
+				*dst[0].(*[]int) = []int{1}
+				if panicValue {
+					panic(cause)
+				}
+				return cause
+			}, []string{"value"}, &first)
+			if !errors.Is(err, cause) {
+				t.Error(err)
+			}
+		}()
+
+		// Interleave an adapted positional scan with the next raw field scan.
+		// Neither pool borrower may change the caller's cloned field addresses.
+		var scalar int64
+		var state ScanState
+		err := state.Scan(scanCacheSource(int64(9)), []string{"value"}, []any{&scalar}, ScanOptions{})
+		if err != nil || scalar != 9 {
+			t.Fatal(scalar, err)
+		}
+
+		state.Reset()
+		err = ScanColumnsToStruct(func(dst ...any) error {
+			*dst[0].(*[]int) = []int{2}
+			return nil
+		}, []string{"value"}, &second)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		*retained[0].(*[]int) = []int{3}
+		if !slices.Equal(first.Value, []int{3}) || !slices.Equal(second.Value, []int{2}) {
+			t.Fatal(first, second)
+		}
 	}
 }
 
@@ -203,12 +259,12 @@ func TestSharedScanLayoutPreservesDestinationPointerDepth(t *testing.T) {
 	}
 
 	columns := []string{"id"}
-	p, err := NewPlan(columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
+	p, err := initRowScanPlan(&scanPlan{}, columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	q, err := NewPlan(columns, []reflect.Type{reflect.TypeFor[**record]()}, ScanOptions{})
+	q, err := initRowScanPlan(&scanPlan{}, columns, []reflect.Type{reflect.TypeFor[**record]()}, ScanOptions{})
 	if err != nil || p.layout != q.layout {
 		t.Fatal("pointer depths should share field metadata", err)
 	}
@@ -242,7 +298,7 @@ func TestScanLayoutCacheConcurrentFirstUse(t *testing.T) {
 					columns, src = []string{"value", "id"}, []any{int64(i), int64(worker)}
 				}
 
-				p, err := NewPlan(columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
+				p, err := initRowScanPlan(&scanPlan{}, columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
 				if err != nil {
 					t.Error(err)
 					return
@@ -374,7 +430,7 @@ func FuzzStructScanLayout(f *testing.F) {
 		}
 
 		scanOptions := ScanOptions{IgnoreUnknownColumns: ignoreUnknown}
-		p, err := NewPlan(columns, []reflect.Type{reflect.TypeFor[*record]()}, scanOptions)
+		p, err := initRowScanPlan(&scanPlan{}, columns, []reflect.Type{reflect.TypeFor[*record]()}, scanOptions)
 		if invalid {
 			if err == nil {
 				t.Fatal("invalid mapping accepted", columns)

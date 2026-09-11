@@ -14,6 +14,9 @@ func BenchmarkRowsBindingPrepare(b *testing.B) {
 	var index map[int64]performanceRecord
 	typed := NewSliceRowsBinder[[]performanceRecord]()
 	wrapped := RowsBinderFunc(typed.Prepare)
+	options := BindOptions{
+		Columns: []string{"id", "a", "b", "c", "d", "e", "f", "g"},
+	}
 	for _, c := range []struct {
 		name   string
 		binder RowsBinder
@@ -27,7 +30,7 @@ func BenchmarkRowsBindingPrepare(b *testing.B) {
 		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				binding, err := c.binder.Prepare(c.dst, BindOptions{})
+				binding, err := c.binder.Prepare(c.dst, options)
 				if err != nil || binding == nil {
 					b.Fatal("invalid preparation", err)
 				}

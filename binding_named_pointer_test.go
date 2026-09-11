@@ -33,10 +33,12 @@ func TestNamedTimePointersAcrossScanAPIs(t *testing.T) {
 				defer rows.Close() //nolint:errcheck
 				scan := rows.Scan
 				if mode == "PrepareScan" {
-					scan, err = PrepareScan(rows, reflect.TypeOf(dst[0]), reflect.TypeOf(dst[1]))
+					prepared, err := PrepareScan(rows, reflect.TypeOf(dst[0]), reflect.TypeOf(dst[1]))
 					if err != nil {
 						t.Fatal(err)
 					}
+					defer prepared.Close() //nolint:errcheck
+					scan = prepared.Scan
 				}
 
 				if !rows.Next() {

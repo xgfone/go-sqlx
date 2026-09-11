@@ -292,7 +292,7 @@ func TestCustomBinderBeforeFallback(t *testing.T) {
 
 		var staged [][]any
 		return RowsBindingFuncs{
-			ScanFunc: func(s RowsScanner) error {
+			ScanFunc: func(s RowCursor) error {
 				called = true
 				for s.Next() {
 					var v any

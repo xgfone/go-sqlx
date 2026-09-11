@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -39,7 +40,7 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 		columns []string
 		value   func(int) []driver.Value
 		config  BindConfig
-		run     func(Rows) error
+		run     func(*Rows) error
 	}{
 		{
 			"wide",
@@ -48,7 +49,7 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
 			},
 			BindConfig{Binder: SliceRowsBinder{}},
-			func(r Rows) error { var v []performanceRecord; return r.Bind(&v) },
+			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"wide_typed",
@@ -57,28 +58,28 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
 			},
 			BindConfig{Binder: NewSliceRowsBinder[[]performanceRecord]()},
-			func(r Rows) error { var v []performanceRecord; return r.Bind(&v) },
+			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"map_pairs",
 			[]string{"id", "value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
 			BindConfig{Binder: NewMapPairsBinder[map[int64]int64]()},
-			func(r Rows) error { var v map[int64]int64; return r.Bind(&v) },
+			func(r *Rows) error { var v map[int64]int64; return r.Bind(&v) },
 		},
 		{
 			"map_index",
 			[]string{"id", "a"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
 			BindConfig{Binder: NewMapIndexBinder[map[int64]performanceRecord](func(v performanceRecord) int64 { return v.ID })},
-			func(r Rows) error { var v map[int64]performanceRecord; return r.Bind(&v) },
+			func(r *Rows) error { var v map[int64]performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"map_set",
 			[]string{"id"},
 			func(i int) []driver.Value { return []driver.Value{int64(i)} },
 			BindConfig{Binder: NewMapSetBinder[map[int64]struct{}]()},
-			func(r Rows) error { var v map[int64]struct{}; return r.Bind(&v) },
+			func(r *Rows) error { var v map[int64]struct{}; return r.Bind(&v) },
 		},
 		{
 			"nullable_parent",
@@ -90,27 +91,27 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 				return []driver.Value{int64(i), int64(i)}
 			},
 			BindConfig{Binder: SliceRowsBinder{}, Scan: ScanOptions{NestedPointers: NilNullNestedPointers}},
-			func(r Rows) error { var v []parent; return r.Bind(&v) },
+			func(r *Rows) error { var v []parent; return r.Bind(&v) },
 		},
 		{
 			"pointer_duration",
 			[]string{"value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i)} },
 			BindConfig{Binder: SliceRowsBinder{}},
-			func(r Rows) error { var v []*time.Duration; return r.Bind(&v) }},
+			func(r *Rows) error { var v []*time.Duration; return r.Bind(&v) }},
 		{
 			"bytes",
 			[]string{"value"},
 			func(int) []driver.Value { return []driver.Value{[]byte("a driver-owned byte buffer")} },
 			BindConfig{},
-			func(r Rows) error { var v [][]byte; return r.Bind(&v) },
+			func(r *Rows) error { var v [][]byte; return r.Bind(&v) },
 		},
 		{
 			"custom_scanner_map",
 			[]string{"id", "value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
 			BindConfig{Binder: NewMapPairsBinder[map[int64]sql.NullInt64]()},
-			func(r Rows) error { var v map[int64]sql.NullInt64; return r.Bind(&v) },
+			func(r *Rows) error { var v map[int64]sql.NullInt64; return r.Bind(&v) },
 		},
 	}
 
@@ -193,6 +194,42 @@ func BenchmarkBindingSetup(b *testing.B) {
 				}
 			}
 			if err := r.Err(); err != nil {
+				b.Fatal(err)
+			}
+			if err := r.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+
+	b.Run("prepared", func(b *testing.B) {
+		f := &bindFixture{columns: []string{"id", "a"}}
+		for i := range 1000 {
+			f.values = append(f.values, []driver.Value{int64(i), int64(i)})
+		}
+
+		db := bindTestDB(b, f)
+		b.ReportAllocs()
+		for b.Loop() {
+			var v performanceRecord
+			r := db.QueryRowsContext(context.Background(), "q")
+			scan, err := PrepareScan(r, reflect.TypeFor[*performanceRecord]())
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			// Reuse the argument vector across calls through the scanner interface.
+			args := []any{&v}
+			for r.Next() {
+				if err := scan.Scan(args...); err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			if err := r.Err(); err != nil {
+				b.Fatal(err)
+			}
+			if err := scan.Close(); err != nil {
 				b.Fatal(err)
 			}
 			if err := r.Close(); err != nil {

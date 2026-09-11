@@ -65,7 +65,7 @@ func TestDefaultMapRegistrations(t *testing.T) {
 }
 
 func TestDefaultMapDestinationAndCommit(t *testing.T) {
-	query := func(values ...[]driver.Value) Rows {
+	query := func(values ...[]driver.Value) *Rows {
 		return bindTestDB(t, &bindFixture{
 			columns: []string{"key", "value"},
 			values:  values,
@@ -187,7 +187,7 @@ func TestMixRowsBinderRegistration(t *testing.T) {
 	}
 
 	var slice []int64
-	if _, err := registry.Prepare(&slice, BindOptions{}); err != nil {
+	if _, err := registry.Prepare(&slice, BindOptions{Columns: []string{"value"}}); err != nil {
 		t.Fatal("missing slice fallback", err)
 	}
 	if _, err := registry.Prepare(nil, BindOptions{}); !IsUnsupportedTypeError(err) {
@@ -269,17 +269,17 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 
 	ctx := context.Background()
 	queries := []struct {
-		rows func() Rows
+		rows func() *Rows
 		want *countingRowsBinder
 	}{
-		{func() Rows { return db.QueryRowsContext(ctx, "q") }, global},
-		{func() Rows { return o.SelectStruct().QueryRowsContext(ctx) }, global},
-		{func() Rows { return db.WithBinder(local).QueryRowsContext(ctx, "q") }, local},
-		{func() Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx) }, local},
-		{func() Rows { return o.SelectStruct().QueryRowsContext(ctx).WithBinder(local) }, local},
-		{func() Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx).WithBinder(nil) }, global},
-		{func() Rows { return o.WithBinder(local).WithBinder(nil).SelectStruct().QueryRowsContext(ctx) }, global},
-		{func() Rows { return db.WithBinder(local).WithBinder(nil).QueryRowsContext(ctx, "q") }, global},
+		{func() *Rows { return db.QueryRowsContext(ctx, "q") }, global},
+		{func() *Rows { return o.SelectStruct().QueryRowsContext(ctx) }, global},
+		{func() *Rows { return db.WithBinder(local).QueryRowsContext(ctx, "q") }, local},
+		{func() *Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx) }, local},
+		{func() *Rows { return o.SelectStruct().QueryRowsContext(ctx).WithBinder(local) }, local},
+		{func() *Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx).WithBinder(nil) }, global},
+		{func() *Rows { return o.WithBinder(local).WithBinder(nil).SelectStruct().QueryRowsContext(ctx) }, global},
+		{func() *Rows { return db.WithBinder(local).WithBinder(nil).QueryRowsContext(ctx, "q") }, global},
 	}
 
 	for i, query := range queries {
@@ -406,7 +406,7 @@ func TestRegistryReplacementDoesNotChangePreparedBinding(t *testing.T) {
 	registry.RegisterType[*[]int64](NewSliceRowsBinder[[]int64]())
 
 	var got []int64
-	binding, err := registry.Prepare(&got, BindOptions{})
+	binding, err := registry.Prepare(&got, BindOptions{Columns: []string{"value"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestRegistryReplacementDoesNotChangePreparedBinding(t *testing.T) {
 	rows, _ := bindTestRows(t, int64(7))
 	defer rows.Close() //nolint:errcheck
 
-	if err := binding.Scan(rows); err != nil {
+	if err := binding.Scan(rows.rows); err != nil {
 		t.Fatal(err)
 	}
 	if got != nil {

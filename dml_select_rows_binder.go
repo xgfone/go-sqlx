@@ -34,7 +34,8 @@ func IsUnsupportedTypeError(err error) bool {
 	return ok
 }
 
-// RowsBinder selects a destination without access to a cursor. Prepare must not
+// RowsBinder prepares an immutable mapping from the supplied columns and scan
+// options without accessing a cursor or borrowing execution scratch. It must not
 // mutate dst. Once it succeeds, no fallback is attempted, whatever Scan returns.
 // Implementations may be shared by concurrent queries; each prepared binding
 // must own its state and scratch storage.
@@ -52,11 +53,12 @@ func (f RowsBinderFunc) Prepare(dst any, options BindOptions) (RowsBinding, erro
 }
 
 // RowsBinding is a single-use staged operation. Scan reads into independent
-// storage, validates the result and returns iteration errors. Commit publishes
+// storage using a raw cursor matching the prepared column order and returns
+// iteration errors. BindOptions supplies conversion policies. Commit publishes
 // it and must not fail or perform I/O. Call Commit only after Scan and any owning
 // result's Close have succeeded. Custom side effects are the binder's responsibility.
 type RowsBinding interface {
-	Scan(RowsScanner) error
+	Scan(RowCursor) error
 	Commit()
 }
 
@@ -65,11 +67,11 @@ type RowsBinding interface {
 // For allocation-sensitive binders, let the per-result state implement
 // RowsBinding directly instead of creating method-value callbacks.
 type RowsBindingFuncs struct {
-	ScanFunc   func(RowsScanner) error
+	ScanFunc   func(RowCursor) error
 	CommitFunc func()
 }
 
-func (b RowsBindingFuncs) Scan(rows RowsScanner) error {
+func (b RowsBindingFuncs) Scan(rows RowCursor) error {
 	if b.ScanFunc == nil || b.CommitFunc == nil {
 		return errors.New("sqlx: incomplete rows binding")
 	}
@@ -146,7 +148,14 @@ func (SliceRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error
 		return nil, err
 	}
 
+	types := []reflect.Type{reflect.PointerTo(v.Type().Elem().Elem())}
+	mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+	if err != nil {
+		return nil, err
+	}
+
 	return &sliceRowsBinding{
+		mapping:  mapping,
 		pointer:  v,
 		capacity: options.capacity(),
 		mode:     options.Mode,
@@ -154,8 +163,10 @@ func (SliceRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error
 }
 
 type sliceRowsBinding struct {
+	mapping  rowbind.Mapping
 	pointer  reflect.Value
 	staged   reflect.Value
+	args     [1]any
 	capacity int
 	mode     BindMode
 }
@@ -164,13 +175,15 @@ func (b *sliceRowsBinding) Commit() {
 	b.pointer.Elem().Set(b.staged)
 }
 
-func (b *sliceRowsBinding) Scan(scanner RowsScanner) error {
+func (b *sliceRowsBinding) Scan(cursor RowCursor) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+		return b.scanRows(cursor, scan)
+	})
+}
+
+func (b *sliceRowsBinding) scanRows(scanner RowCursor, scan func(...any) error) error {
+	defer clear(b.args[:])
 	t := b.pointer.Elem().Type()
-	scan, err := prepareBindingScan(scanner, reflect.PointerTo(t.Elem()))
-	if err != nil {
-		return err
-	}
-	defer rowbind.Release(scan)
 
 	base := 0
 	if b.mode == BindAppend {
@@ -180,8 +193,6 @@ func (b *sliceRowsBinding) Scan(scanner RowsScanner) error {
 		return errors.New("sqlx: slice capacity overflow")
 	}
 
-	// The plan copies the destinations, so this argument vector can stay local.
-	args := []any{nil}
 	staged := reflect.New(t).Elem()
 
 	row := 0
@@ -201,8 +212,8 @@ func (b *sliceRowsBinding) Scan(scanner RowsScanner) error {
 			staged.SetLen(staged.Cap())
 		}
 
-		args[0] = staged.Index(base + row - 1).Addr().Interface()
-		if err := scan.ScanCurrent(args...); err != nil {
+		b.args[0] = staged.Index(base + row - 1).Addr().Interface()
+		if err := scan(b.args[:]...); err != nil {
 			return &BindError{row, err}
 		}
 	}
@@ -260,7 +271,15 @@ func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedS
 	if err := validateSliceOptions(options); err != nil {
 		return nil, err
 	}
+
+	types := []reflect.Type{reflect.TypeFor[*T]()}
+	mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+	if err != nil {
+		return nil, err
+	}
+
 	return &typedSliceBinding[S, T]{
+		mapping:  mapping,
 		pointer:  pointer,
 		capacity: options.capacity(),
 		mode:     options.Mode,
@@ -268,6 +287,7 @@ func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedS
 }
 
 type typedSliceBinding[S ~[]T, T any] struct {
+	mapping  rowbind.Mapping
 	pointer  *S
 	staged   S
 	args     [1]any
@@ -277,13 +297,13 @@ type typedSliceBinding[S ~[]T, T any] struct {
 
 func (b *typedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
 
-func (b *typedSliceBinding[S, T]) Scan(scanner RowsScanner) error {
-	scan, err := prepareBindingScan(scanner, reflect.TypeFor[*T]())
-	if err != nil {
-		return err
-	}
+func (b *typedSliceBinding[S, T]) Scan(cursor RowCursor) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+		return b.scanRows(cursor, scan)
+	})
+}
 
-	defer rowbind.Release(scan)
+func (b *typedSliceBinding[S, T]) scanRows(scanner RowCursor, scan func(...any) error) error {
 	defer clear(b.args[:])
 
 	b.staged = make(S, 0)
@@ -306,7 +326,7 @@ func (b *typedSliceBinding[S, T]) Scan(scanner RowsScanner) error {
 
 		b.staged = append(b.staged, zero)
 		b.args[0] = &b.staged[len(b.staged)-1]
-		if err := scan.ScanCurrent(b.args[:]...); err != nil {
+		if err := scan(b.args[:]...); err != nil {
 			return &BindError{row, err}
 		}
 	}
@@ -323,14 +343,9 @@ func (b *typedSliceBinding[S, T]) Scan(scanner RowsScanner) error {
 // NewMapPairsBinder scans two positional columns as key and value. Duplicate
 // keys fail by default. Only a non-nil pointer to M is accepted.
 func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
-	return mapRowsBinder[M](false, nil, func(scanner RowsScanner) (func() (K, V, error), *rowbind.Plan, error) {
-		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*K](), reflect.TypeFor[*V]())
-		if err != nil {
-			return nil, nil, err
-		}
-
+	return mapRowsBinder[M](false, nil, []reflect.Type{reflect.TypeFor[*K](), reflect.TypeFor[*V]()}, func(scan func(...any) error, reusable bool) func() (K, V, error) {
 		args := make([]any, 2)
-		if scan.ReusableMapValues() {
+		if reusable {
 			var key K
 			var value V
 			args[0], args[1] = &key, &value
@@ -338,16 +353,16 @@ func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
 				var zeroK K
 				var zeroV V
 				key, value = zeroK, zeroV
-				err := scan.ScanCurrent(args...)
+				err := scan(args...)
 				return key, value, err
-			}, scan, nil
+			}
 		}
 
 		return func() (key K, value V, err error) {
 			args[0], args[1] = &key, &value
-			err = scan.ScanCurrent(args...)
+			err = scan(args...)
 			return
-		}, scan, nil
+		}
 	})
 }
 
@@ -359,67 +374,61 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 		configError = errors.New("sqlx: nil map key function")
 	}
 
-	return mapRowsBinder[M](false, configError, func(scanner RowsScanner) (func() (K, V, error), *rowbind.Plan, error) {
-		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*V]())
-		if err != nil {
-			return nil, nil, err
-		}
-
+	return mapRowsBinder[M](false, configError, []reflect.Type{reflect.TypeFor[*V]()}, func(scan func(...any) error, reusable bool) func() (K, V, error) {
 		args := []any{nil}
-		if scan.ReusableMapValues() {
+		if reusable {
 			var value V
 			args[0] = &value
 			return func() (k K, v V, err error) {
 				var zero V
 				value = zero
-				if err = scan.ScanCurrent(args...); err == nil {
+				if err = scan(args...); err == nil {
 					k = key(value)
 				}
 				return k, value, err
-			}, scan, nil
+			}
 		}
 
 		return func() (k K, value V, err error) {
 			args[0] = &value
-			if err = scan.ScanCurrent(args...); err == nil {
+			if err = scan(args...); err == nil {
 				k = key(value)
 			}
 			return
-		}, scan, nil
+		}
 	})
 }
 
 // NewMapSetBinder scans each row as a set key. Duplicate keys are intentionally
 // deduplicated, including during Merge. Use map[K]struct{} to express a set.
 func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
-	return mapRowsBinder[M](true, nil, func(scanner RowsScanner) (func() (K, struct{}, error), *rowbind.Plan, error) {
-		scan, err := prepareBindingScan(scanner, reflect.TypeFor[*K]())
-		if err != nil {
-			return nil, nil, err
-		}
-
+	types := []reflect.Type{reflect.TypeFor[*K]()}
+	return mapRowsBinder[M](true, nil, types, func(scan func(...any) error, reusable bool) func() (K, struct{}, error) {
 		args := []any{nil}
-		if scan.ReusableMapValues() {
+		if reusable {
 			var key K
 			args[0] = &key
 			return func() (K, struct{}, error) {
 				var zero K
 				key = zero
-				err := scan.ScanCurrent(args...)
+				err := scan(args...)
 				return key, struct{}{}, err
-			}, scan, nil
+			}
 		}
 
 		return func() (key K, value struct{}, err error) {
 			args[0] = &key
-			err = scan.ScanCurrent(args...)
+			err = scan(args...)
 			return
-		}, scan, nil
+		}
 	})
 }
 
-func mapRowsBinder[M ~map[K]V, K comparable, V any](set bool, configError error,
-	prepare func(RowsScanner) (func() (K, V, error), *rowbind.Plan, error),
+func mapRowsBinder[M ~map[K]V, K comparable, V any](
+	set bool,
+	configError error,
+	types []reflect.Type,
+	makeScan func(func(...any) error, bool) func() (K, V, error),
 ) RowsBinder {
 	checkKey := dynamicMapKey(reflect.TypeFor[K]())
 	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
@@ -441,9 +450,20 @@ func mapRowsBinder[M ~map[K]V, K comparable, V any](set bool, configError error,
 			return nil, configError
 		}
 
+		mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+		if err != nil {
+			return nil, err
+		}
+
 		return &mapRowsBinding[M, K, V]{
-			pointer: pointer, prepare: prepare, capacity: options.capacity(), mode: options.Mode,
-			duplicates: options.DuplicateKeys, set: set, checkKey: checkKey,
+			mapping:    mapping,
+			pointer:    pointer,
+			makeScan:   makeScan,
+			capacity:   options.capacity(),
+			duplicates: options.DuplicateKeys,
+			bindMode:   options.Mode,
+			checkKey:   checkKey,
+			set:        set,
 		}, nil
 	})
 }
@@ -451,25 +471,26 @@ func mapRowsBinder[M ~map[K]V, K comparable, V any](set bool, configError error,
 type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
 	pointer    *M
 	staged     M
-	prepare    func(RowsScanner) (func() (K, V, error), *rowbind.Plan, error)
+	mapping    rowbind.Mapping
+	makeScan   func(func(...any) error, bool) func() (K, V, error)
 	capacity   int
-	mode       BindMode
 	duplicates DuplicateKeyPolicy
-	set        bool
+	bindMode   BindMode
 	checkKey   bool
+	set        bool
 }
 
 func (b *mapRowsBinding[M, K, V]) Commit() { *b.pointer = b.staged }
 
-func (b *mapRowsBinding[M, K, V]) Scan(scanner RowsScanner) error {
-	scan, plan, err := b.prepare(scanner)
-	if err != nil {
-		return err
-	}
-	defer rowbind.Release(plan)
+func (b *mapRowsBinding[M, K, V]) Scan(cursor RowCursor) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, reusable bool) error {
+		return b.scanRows(cursor, b.makeScan(scan, reusable))
+	})
+}
 
+func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func() (K, V, error)) error {
 	base := 0
-	if b.mode == BindMerge {
+	if b.bindMode == BindMerge {
 		base = len(*b.pointer)
 	}
 	if base > int(^uint(0)>>1)-b.capacity {
@@ -481,7 +502,7 @@ func (b *mapRowsBinding[M, K, V]) Scan(scanner RowsScanner) error {
 		row++
 		if row == 1 {
 			b.staged = make(M, base+b.capacity)
-			if b.mode == BindMerge {
+			if b.bindMode == BindMerge {
 				maps.Copy(b.staged, *b.pointer)
 			}
 		}
@@ -514,7 +535,7 @@ func (b *mapRowsBinding[M, K, V]) Scan(scanner RowsScanner) error {
 	}
 
 	if row == 0 {
-		if b.mode == BindMerge {
+		if b.bindMode == BindMerge {
 			b.staged = *b.pointer
 		}
 		if b.staged == nil {

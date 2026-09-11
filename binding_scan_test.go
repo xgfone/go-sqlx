@@ -279,20 +279,20 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 	base := bindTestDB(t, f)
 	config := BindConfig{Capacity: 73, Scan: ScanOptions{DurationUnit: time.Second}}
 	db := base.WithBindConfig(config)
-	queries := []func() Rows{
-		func() Rows { return db.QueryRowsContext(context.Background(), "q") },
-		func() Rows { return db.Select("value").From("t").QueryRowsContext(context.Background()) },
-		func() Rows { return db.WithExecutor(db.Executor).QueryRowsContext(context.Background(), "q") },
-		func() Rows {
+	queries := []func() *Rows{
+		func() *Rows { return db.QueryRowsContext(context.Background(), "q") },
+		func() *Rows { return db.Select("value").From("t").QueryRowsContext(context.Background()) },
+		func() *Rows { return db.WithExecutor(db.Executor).QueryRowsContext(context.Background(), "q") },
+		func() *Rows {
 			return NewOper[time.Duration]("t").WithDB(db).Select("value").QueryRowsContext(context.Background())
 		},
-		func() Rows {
+		func() *Rows {
 			return db.Insert().Into("t").Row(ColValue("value", 1)).Returning("value").QueryRowsContext(context.Background())
 		},
-		func() Rows {
+		func() *Rows {
 			return db.Update().Table("t").Set(Set("value", 1)).Returning("value").QueryRowsContext(context.Background())
 		},
-		func() Rows { return db.Delete().From("t").Returning("value").QueryRowsContext(context.Background()) },
+		func() *Rows { return db.Delete().From("t").Returning("value").QueryRowsContext(context.Background()) },
 	}
 
 	for i, query := range queries {
@@ -358,15 +358,16 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 		rows = rows.WithScanOptions(ScanOptions{DurationUnit: time.Second})
 		defer rows.Close() //nolint:errcheck
 
-		var scanner RowScanner = &rows
+		var scanner RowScanner = rows
 		if raw {
-			scanner = rows.cursor.rows
+			scanner = rows.rows
 		}
 
 		scan, err := PrepareScan(scanner, reflect.TypeFor[**time.Duration]())
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer scan.Close() //nolint:errcheck
 		if !rows.Next() {
 			t.Fatal("missing row")
 		}
@@ -376,19 +377,19 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 		if raw {
 			want = time.Second
 		}
-		if err := scan(&dst); err != nil || *dst != want {
+		if err := scan.Scan(&dst); err != nil || *dst != want {
 			t.Fatal(dst, err)
 		}
 
 		var wrong int
-		if err := scan(&wrong); err == nil {
+		if err := scan.Scan(&wrong); err == nil {
 			t.Fatal("changed type accepted")
 		}
 	}
 
 	rows, _ := bindTestRows(t, int64(1))
-	row := NewRow(rows.cursor.rows, nil, nil)
-	if _, ok := any(row).(RowsScanner); ok {
+	row := NewRow(rows.rows, nil, nil)
+	if _, ok := any(row).(RowCursor); ok {
 		t.Fatal("Row must not be an iterator")
 	}
 	if _, err := PrepareScan(row, reflect.TypeFor[*int]()); err == nil {
@@ -496,7 +497,7 @@ func TestEarlyCustomBindingCloseErrorDoesNotCommit(t *testing.T) {
 	got := 7
 	binder := RowsBinderFunc(func(dst any, _ BindOptions) (RowsBinding, error) {
 		return RowsBindingFuncs{
-			ScanFunc:   func(RowsScanner) error { return nil },
+			ScanFunc:   func(RowCursor) error { return nil },
 			CommitFunc: func() { *dst.(*int) = 9 },
 		}, nil
 	})
@@ -535,7 +536,7 @@ func TestSingleRowPlanReuseDoesNotLeakPolicyOrTypes(t *testing.T) {
 
 		var wrong record
 		rows, _ := bindTestRows(t, int64(7))
-		err := NewRow(rows.cursor.rows, nil, nil).Scan(&wrong)
+		err := NewRow(rows.rows, nil, nil).Scan(&wrong)
 		if err == nil {
 			t.Fatal("bad label accepted")
 		}
@@ -545,7 +546,7 @@ func TestSingleRowPlanReuseDoesNotLeakPolicyOrTypes(t *testing.T) {
 			Value int `sql:"value"`
 		}
 
-		err = NewRow(rows.cursor.rows, nil, nil).Scan(&correct)
+		err = NewRow(rows.rows, nil, nil).Scan(&correct)
 		if err != nil || correct.Value != 8 {
 			t.Fatal(correct, err)
 		}
@@ -563,7 +564,7 @@ func TestRecursivePointerDestinationsAreRejected(t *testing.T) {
 
 	var value recursivePointer
 	rows, _ = bindTestRows(t, int64(1))
-	if err := NewRow(rows.cursor.rows, nil, nil).Scan(&value); err == nil {
+	if err := NewRow(rows.rows, nil, nil).Scan(&value); err == nil {
 		t.Fatal("recursive pointer accepted")
 	}
 	if err := (GeneralScanner{Value: &value}).Scan(1); err == nil {

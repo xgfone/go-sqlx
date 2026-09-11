@@ -179,7 +179,7 @@ func TestCompiledFieldsReleaseDestinationsAndKeepByteOwnership(t *testing.T) {
 		Text  string           `sql:"text"`
 	}
 
-	p, err := NewPlan(
+	p, err := initRowScanPlan(&scanPlan{},
 		[]string{"bytes", "named", "any", "text"},
 		[]reflect.Type{reflect.TypeFor[*model]()},
 		ScanOptions{},
@@ -206,7 +206,7 @@ func TestCompiledFieldsReleaseDestinationsAndKeepByteOwnership(t *testing.T) {
 		}
 	}
 
-	Release(p)
+	releasePlan(p)
 	for _, scanner := range p.fieldScanners {
 		if scanner.options != nil || scanner.setter != nil || scanner.value.IsValid() {
 			t.Fatal("pool retained configuration or destination")

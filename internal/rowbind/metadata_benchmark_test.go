@@ -15,7 +15,7 @@ func BenchmarkStructScanPreparation(b *testing.B) {
 	columns := performanceColumns
 	for _, mode := range []string{"reused", "fresh", "alternating", "cold"} {
 		b.Run(mode, func(b *testing.B) {
-			p := &Plan{}
+			p := &scanPlan{}
 			reversed := append([]string(nil), columns...)
 			for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
 				reversed[i], reversed[j] = reversed[j], reversed[i]
@@ -35,7 +35,7 @@ func BenchmarkStructScanPreparation(b *testing.B) {
 					structCache.Delete(typ)
 				}
 				if mode == "fresh" || mode == "cold" {
-					p = &Plan{}
+					p = &scanPlan{}
 				}
 
 				cols := columns

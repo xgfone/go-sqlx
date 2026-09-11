@@ -70,7 +70,7 @@ func (c resultSetsConnector) Connect(context.Context) (driver.Conn, error) {
 	return &resultSetsConn{&fixtureConn{}, c.rows}, nil
 }
 
-func newResultSets(t *testing.T, sets []resultSetFixture, nextErr error) Rows {
+func newResultSets(t *testing.T, sets []resultSetFixture, nextErr error) *Rows {
 	t.Helper()
 	std := sql.OpenDB(resultSetsConnector{&resultSetsRows{sets: sets, nextErr: nextErr}})
 	t.Cleanup(func() { _ = std.Close() })
@@ -81,20 +81,22 @@ func newResultSets(t *testing.T, sets []resultSetFixture, nextErr error) Rows {
 	return rows
 }
 
-func TestRowsResultSetMappingAcrossViews(t *testing.T) {
+func TestRowsResultSetMappingAcrossAliases(t *testing.T) {
 	sets := []resultSetFixture{
 		{[]string{"a", "b"}, [][]driver.Value{{int64(1), int64(2)}}},
-		{[]string{"b", "a"}, [][]driver.Value{{int64(20), int64(10)}}},
-		{[]string{"b"}, [][]driver.Value{{int64(200)}}},
+		// Identical driver labels still represent a new set and expire overrides.
+		{[]string{"a", "b"}, [][]driver.Value{{int64(10), int64(20)}}},
+		{[]string{"b", "a"}, [][]driver.Value{{int64(200), int64(100)}}},
+		{[]string{"b"}, [][]driver.Value{{int64(2000)}}},
 	}
 
 	rows := newResultSets(t, sets, nil)
-	views := []Rows{
-		rows,
-		rows.WithBindConfig(BindConfig{Scan: ScanOptions{DurationUnit: time.Second}}),
-		rows.WithScanOptions(ScanOptions{DurationUnit: time.Minute}),
-		rows.WithBinder(nil),
-		rows.WithColumns("b", "a"),
+	alias := rows
+	if rows.SetBindConfig(BindConfig{}) != rows ||
+		rows.SetScanOptions(ScanOptions{DurationUnit: time.Second}) != rows ||
+		rows.SetBinder(nil) != rows ||
+		rows.SetColumns("b", "a") != rows {
+		t.Fatal("setters must return the same object")
 	}
 
 	type model struct {
@@ -102,72 +104,61 @@ func TestRowsResultSetMappingAcrossViews(t *testing.T) {
 		B int `sql:"b"`
 	}
 
-	wants := []model{{1, 2}, {10, 20}, {0, 200}}
-	scans := make([]RowScanFunc, len(views))
-	for i := range views {
-		var source RowScanner = views[i]
-		if i%2 == 0 {
-			source = &views[i]
-		}
-		var err error
-		scans[i], err = PrepareScan(source, reflect.TypeFor[*model]())
-		if err != nil {
-			t.Fatal(err)
-		}
+	scan, err := PrepareScan(alias, reflect.TypeFor[*model]())
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer scan.Close() //nolint:errcheck
 
+	wants := []model{{2, 1}, {10, 20}, {100, 200}, {0, 2000}}
 	for set, f := range sets {
 		if !rows.Next() {
 			t.Fatal("missing row", rows.Err())
 		}
 
-		for i, view := range views {
-			labels, want := f.columns, wants[set]
-			if set == 0 && i == len(views)-1 {
-				labels, want = []string{"b", "a"}, model{2, 1}
-			}
+		labels := f.columns
+		if set == 0 {
+			labels = []string{"b", "a"}
+		}
 
-			gotLabels, err := view.Columns()
-			if err != nil || !reflect.DeepEqual(gotLabels, labels) {
-				t.Fatalf("set %d view %d labels=%v err=%v", set, i, gotLabels, err)
-			}
+		gotLabels, err := alias.Columns()
+		if err != nil || !reflect.DeepEqual(gotLabels, labels) {
+			t.Fatal(gotLabels, err)
+		}
 
-			gotLabels[0] = "caller mutation"
-			metadata, err := view.ColumnTypes()
-			if err != nil || len(metadata) != len(f.columns) {
-				t.Fatalf("set %d view %d metadata=%v err=%v", set, i, metadata, err)
-			}
+		gotLabels[0] = "caller mutation"
+		metadata, err := alias.ColumnTypes()
+		if err != nil || len(metadata) != len(f.columns) {
+			t.Fatal(metadata, err)
+		}
 
-			for col, typ := range metadata {
-				nullable, ok := typ.Nullable()
-				if typ.Name() != f.columns[col] || typ.DatabaseTypeName() != "BIGINT" ||
-					typ.ScanType() != reflect.TypeFor[int64]() || !ok || !nullable {
-					t.Fatalf("unexpected ColumnTypes metadata: %+v", typ)
-				}
+		for col, typ := range metadata {
+			nullable, ok := typ.Nullable()
+			if typ.Name() != f.columns[col] || typ.DatabaseTypeName() != "BIGINT" ||
+				typ.ScanType() != reflect.TypeFor[int64]() || !ok || !nullable {
+				t.Fatalf("unexpected column metadata: %+v", typ)
 			}
+		}
 
-			for _, scan := range []RowScanFunc{view.Scan, scans[i]} {
-				var got model
-				if err := scan(&got); err != nil || got != want {
-					t.Fatalf("set %d view %d got=%+v want=%+v err=%v", set, i, got, want, err)
-				}
+		for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scan.Scan} {
+			var got model
+			if err := scan(&got); err != nil || got != wants[set] {
+				t.Fatalf("set %d: got %+v, err %v", set, got, err)
 			}
 		}
 
 		if rows.Next() {
 			t.Fatal("unexpected extra row")
 		}
-
-		// Advance through different configured views, including the label view.
-		if got := views[len(views)-1-set].NextResultSet(); got != (set+1 < len(sets)) {
-			t.Fatal("unexpected NextResultSet result", got, rows.Err())
+		if got := alias.NextResultSet(); got != (set+1 < len(sets)) {
+			t.Fatal(got, rows.Err())
 		}
 	}
 
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rows.ColumnTypes(); err == nil {
+	if _, err := alias.ColumnTypes(); err == nil {
 		t.Fatal("closed cursor returned metadata")
 	}
 }
@@ -182,6 +173,7 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer scan.Close() //nolint:errcheck
 
 	var a, b int
 	if !rows.Next() {
@@ -194,7 +186,7 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 		t.Fatal("missing second set")
 	}
 
-	for _, scan := range []RowScanFunc{rows.Scan, scan} {
+	for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
 		if err := scan(&a, &b); err == nil {
 			t.Fatal("stale two-column plan accepted one-column result")
 		}
@@ -203,7 +195,7 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 	if err := rows.WithColumns("a", "b").Scan(&a, &b); err == nil {
 		t.Fatal("invalid current-set labels accepted")
 	}
-	if err := rows.Scan(&b); err != nil || b != 3 {
+	if err := rows.SetColumns().Scan(&b); err != nil || b != 3 {
 		t.Fatal(b, err)
 	}
 }
@@ -242,7 +234,7 @@ func TestRowsResultSetErrorsAndEmptySet(t *testing.T) {
 }
 
 func TestRowsPublicMethodsAndZeroValue(t *testing.T) {
-	standard, wrapper := reflect.TypeFor[*sql.Rows](), reflect.TypeFor[Rows]()
+	standard, wrapper := reflect.TypeFor[*sql.Rows](), reflect.TypeFor[*Rows]()
 	for method := range standard.Methods() {
 		got, ok := wrapper.MethodByName(method.Name)
 		if !ok || got.Type.NumIn() != method.Type.NumIn() ||
@@ -264,7 +256,8 @@ func TestRowsPublicMethodsAndZeroValue(t *testing.T) {
 		}
 	}
 
-	for _, rows := range []Rows{
+	for _, rows := range []*Rows{
+		nil,
 		{},
 		NewRows(nil, nil, nil),
 		NewRows(nil, nil, errors.New("query failed")),

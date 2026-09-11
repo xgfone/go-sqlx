@@ -5,6 +5,7 @@ package sqlx
 
 import (
 	"errors"
+	"reflect"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -62,9 +63,14 @@ const DefaultRowsCapacity = 20
 
 // BindOptions is passed to RowsBinder.Prepare. Implementations must leave the
 // destination unchanged until Commit, including its shared backing storage.
+// Columns is the ordered binding-label snapshot for the current result set.
+// Scan supplies the conversion policy; it is not inferred from the raw cursor.
+// Built-in binders prepare the mapping here, so supply Columns before Prepare.
 type BindOptions struct {
-	Mode          BindMode
 	Capacity      int
+	Columns       []string
+	Scan          ScanOptions
+	Mode          BindMode
 	DuplicateKeys DuplicateKeyPolicy
 }
 
@@ -78,7 +84,37 @@ func (o BindOptions) validate() error {
 	if o.DuplicateKeys > DuplicateKeyLast {
 		return errors.New("sqlx: invalid duplicate key policy")
 	}
-	return nil
+	return validateScanOptions(o.Scan)
+}
+
+// RowMapping is immutable preparation for one ordered result shape. Copies can
+// be shared concurrently; scanners created from it own independent state.
+type RowMapping struct{ mapping rowbind.Mapping }
+
+// PrepareMapping lets a custom binder prepare conversion and struct mapping
+// before it receives a cursor. It snapshots mutable option slices and does not
+// allocate execution scratch or change any destination.
+func (o BindOptions) PrepareMapping(types ...reflect.Type) (RowMapping, error) {
+	mapping, err := rowbind.Prepare(o.Columns, types, o.Scan)
+	return RowMapping{mapping: mapping}, err
+}
+
+// Scanner creates an independent current-row scanner for a raw cursor matching
+// this mapping's column order. Prepare it once before iteration. Destinations may
+// change addresses but must retain their prepared types. Call Close on the
+// scanner to release its scratch; this does not close the cursor. Do not use the
+// scanner concurrently or on another result set. The cursor must obey RowCursor's
+// raw-scan contract; passing *Rows would apply an additional conversion layer.
+func (m RowMapping) Scanner(cursor RowCursor) (PreparedScanner, error) {
+	if nilBindingValue(cursor) {
+		return nil, errors.New("sqlx: nil row cursor")
+	}
+
+	scanner, err := m.mapping.Scanner(cursor.Scan)
+	if err != nil {
+		return nil, err
+	}
+	return scanner, nil
 }
 
 func (o BindOptions) capacity() int {
@@ -109,6 +145,7 @@ func (c BindConfig) clone() BindConfig {
 }
 func (c BindConfig) options(mode BindMode) BindOptions {
 	return BindOptions{
+		Scan:          cloneScanOptions(c.Scan),
 		Mode:          mode,
 		Capacity:      c.Capacity,
 		DuplicateKeys: c.DuplicateKeys,

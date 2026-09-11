@@ -61,10 +61,12 @@ func TestNullableParentOwnsCapturedBytes(t *testing.T) {
 				defer rows.Close() //nolint:errcheck
 				scan := rows.Scan
 				if mode == "PrepareScan" {
-					scan, err = PrepareScan(rows, reflect.TypeOf(&got))
+					prepared, err := PrepareScan(rows, reflect.TypeOf(&got))
 					if err != nil {
 						t.Fatal(err)
 					}
+					defer prepared.Close() //nolint:errcheck
+					scan = prepared.Scan
 				}
 				if !rows.Next() {
 					t.Fatal("missing row", rows.Err())

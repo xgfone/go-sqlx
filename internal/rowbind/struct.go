@@ -28,7 +28,7 @@ func fieldScanMode(t reflect.Type) uint8 {
 	return scanFieldUnsupported
 }
 
-func initStructScanPlan(p *Plan, columns []string, dstType, t reflect.Type, options ScanOptions) (*Plan, error) {
+func prepareStructLayout(columns []string, t reflect.Type, options ScanOptions) (*structScanLayout, error) {
 	m, err := Describe(t)
 	if err != nil {
 		return nil, err
@@ -42,15 +42,23 @@ func initStructScanPlan(p *Plan, columns []string, dstType, t reflect.Type, opti
 		flags |= scanNullParents
 	}
 
-	layout, err := m.scanLayout(t, columns, flags)
+	return m.scanLayout(t, columns, flags)
+}
+
+func initStructScanPlan(p *scanPlan, columns []string, dstType, t reflect.Type, options ScanOptions) (*scanPlan, error) {
+	layout, err := prepareStructLayout(columns, t, options)
 	if err != nil {
 		return nil, err
 	}
+	return initStructLayout(p, layout, dstType, options), nil
+}
 
-	p.initStorage(len(columns), nil, options)
+func initStructLayout(p *scanPlan, layout *structScanLayout, dstType reflect.Type, options ScanOptions) *scanPlan {
+	count := len(layout.columns)
+	p.initStorage(count, nil, options)
 	p.structDstType = dstType
 	p.layout = layout
-	p.fieldScanners = reuseScanStorage(p.fieldScanners, len(columns))
+	p.fieldScanners = reuseScanStorage(p.fieldScanners, count)
 	for i, field := range layout.fields {
 		p.fieldScanners[i] = fieldScanner{options: &p.options}
 		if field != nil {
@@ -67,11 +75,11 @@ func initStructScanPlan(p *Plan, columns []string, dstType, t reflect.Type, opti
 	}
 
 	if len(layout.groups) > 0 {
-		p.captured = reuseScanStorage(p.captured, len(columns))
-		p.skip = reuseScanStorage(p.skip, len(columns))
+		p.captured = reuseScanStorage(p.captured, count)
+		p.skip = reuseScanStorage(p.skip, count)
 	}
 
-	return p, nil
+	return p
 }
 
 func structDestination(dst any) (reflect.Value, error) {
@@ -106,7 +114,7 @@ func structDestination(dst any) (reflect.Value, error) {
 	return v, nil
 }
 
-func (p *Plan) mapStruct(v reflect.Value, adapt bool) error {
+func (p *scanPlan) mapStruct(v reflect.Value, adapt bool) error {
 	for i, f := range p.layout.fields {
 		if f == nil {
 			if !adapt {
@@ -139,7 +147,7 @@ func (p *Plan) mapStruct(v reflect.Value, adapt bool) error {
 	return nil
 }
 
-func (p *Plan) scanStruct(scan func(...any) error, dst any) error {
+func (p *scanPlan) scanStruct(scan func(...any) error, dst any) error {
 	v := reflect.ValueOf(dst)
 	if v.IsNil() {
 		return errors.New("sqlx: expected non-nil pointer to struct")
@@ -237,7 +245,10 @@ func (p *Plan) scanStruct(scan func(...any) error, dst any) error {
 
 // ScanColumnsToStruct is a low-level field mapper: it supplies field addresses
 // to scan without adapting scalar conversions. Unknown/duplicate columns are
-// errors. Use Rows.Scan or PrepareScan for conversion policies and cached plans.
+// errors. The callback borrows its destination slice for the duration of the
+// call; it must clone the slice before retaining it or any subslice. The cloned
+// entries refer to the caller's fields. Scratch is released on return or panic.
+// Use [Rows.Scan] or [PrepareScan] for conversion policies and cached plans.
 func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
 	if scan == nil {
 		return errors.New("sqlx: nil scan function")
@@ -260,9 +271,12 @@ func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) err
 		return err
 	}
 
-	// The callback may retain its argument slice, so this public mapper owns
-	// fresh destination storage. Only the immutable layout is shared.
-	p := &Plan{layout: layout, values: make([]any, len(columns))}
+	p := scanPlanPool.Get().(*scanPlan)
+	defer releasePlan(p)
+
+	// Raw mapping needs field addresses only, without conversion scanners.
+	p.initStorage(len(columns), nil, ScanOptions{})
+	p.layout = layout
 
 	if err := p.mapStruct(v, false); err != nil {
 		return err

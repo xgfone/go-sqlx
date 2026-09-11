@@ -13,7 +13,7 @@ import (
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) Rows {
+func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) *Rows {
 	return db.binding().rows(db.queryRowsContext(ctx, query, args...))
 }
 
@@ -40,63 +40,49 @@ func (db *DB) queryRowsContext(ctx context.Context, query string, args ...any) (
 	return rows, columns, nil
 }
 
-func (b *SelectBuilder) QueryRowsContext(ctx context.Context) Rows {
+func (b *SelectBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	return b.binding().rows(queryStatement(ctx, b, &b.builderBase))
 }
 
-func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) Rows {
-	// Internal configurations already own their layout slices and are immutable.
-	return Rows{
-		err:    err,
-		config: c,
-		state:  &rowScanState{},
-		cursor: &rowsCursor{
-			rows:    rows,
-			columns: slices.Clone(columns),
-		},
-	}
+func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) *Rows {
+	return &Rows{err: err, config: c, rows: rows, columns: slices.Clone(columns)}
 }
 
-// All views share the cursor and its metadata generation. Per-view scan plans
-// and label overrides must be refreshed when any view advances the result set.
-type rowsCursor struct {
-	columns []string
-	rows    *sql.Rows
-	set     uint64
-}
+// noCopy lets go vet's copylocks analyzer detect accidental copies. It must be
+// a named field so Rows does not acquire Lock and Unlock methods.
+// This is a static-analysis marker, not a mutex or a compiler restriction.
+type noCopy struct{}
 
-// The indirection keeps plan assignments visible across value-receiver Scan
-// calls and Rows copies, without allocating a plan before manual scanning.
-type rowScanState struct {
-	plan *rowbind.Plan
-	set  uint64
-}
+func (*noCopy) Lock()   {}
+func (*noCopy) Unlock() {}
 
-// Rows owns a forward-only SQL result. Bind/Append/Merge close it automatically.
-// For manual iteration defer Close, then check Err after Next returns false.
-// Copies and With methods share the SQL cursor; they are not independent results
-// and must not be scanned concurrently.
+// Rows owns a forward-only SQL result and must not be copied. Pass *Rows to
+// share the cursor. Set methods mutate this object and all aliases observe the
+// changes. It must not be used concurrently. Bind/Append/Merge close it
+// automatically; for manual iteration defer Close and check Err after Next.
 type Rows struct {
-	err    error
-	config BindConfig
-	cursor *rowsCursor
-	state  *rowScanState
+	noCopy noCopy
 
+	err      error
+	rows     *sql.Rows
+	config   BindConfig
 	labels   []string
-	labelSet uint64
+	columns  []string
+	revision uint64
+	scan     rowbind.ScanState
 }
 
 // NewRows takes ownership of rows and uses zero BindConfig. Nil columns use the
 // driver's metadata; non-nil columns override labels for the current result set.
 // Advance through the returned Rows to keep cached metadata synchronized.
 // The result should be closed even when err is non-nil.
-func NewRows(rows *sql.Rows, columns []string, err error) Rows {
+func NewRows(rows *sql.Rows, columns []string, err error) *Rows {
 	r := (BindConfig{}).rows(rows, nil, err)
 	r.labels = slices.Clone(columns)
 	return r
 }
 
-func (r Rows) Columns() ([]string, error) {
+func (r *Rows) Columns() ([]string, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
@@ -108,73 +94,93 @@ func (r Rows) Columns() ([]string, error) {
 	return slices.Clone(columns), err
 }
 
-// ColumnTypes returns the current result set's driver metadata. WithColumns
+// ColumnTypes returns the current result set's driver metadata. SetColumns
 // changes binding labels only; it does not alter the names in this metadata.
-func (r Rows) ColumnTypes() ([]*sql.ColumnType, error) {
+func (r *Rows) ColumnTypes() ([]*sql.ColumnType, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
-	return r.cursor.rows.ColumnTypes()
+	return r.rows.ColumnTypes()
 }
 
-// WithColumns overrides labels for the current result set only. Labels are
-// copied and validated against the driver column count when preparing a scan.
-// Nil columns restore driver labels. NextResultSet expires existing overrides.
-func (r Rows) WithColumns(columns ...string) Rows {
+// SetColumns changes this result's binding labels and returns r. Labels are
+// copied and checked against the driver count when preparing a scan. Nil restores
+// driver labels. NextResultSet clears the override for every alias of r.
+func (r *Rows) SetColumns(columns ...string) *Rows {
 	r.labels = slices.Clone(columns)
-	if r.cursor != nil {
-		r.labelSet = r.cursor.set
-	}
-	r.state = &rowScanState{}
+	r.revision++
+	r.scan.Reset()
 	return r
 }
 
-func (r Rows) hasLabels() bool {
-	return r.labels != nil && r.cursor != nil && r.labelSet == r.cursor.set
-}
+func (r *Rows) hasLabels() bool { return r != nil && r.labels != nil }
 
-func (r Rows) WithBindConfig(config BindConfig) Rows {
+// SetBindConfig replaces this result's configuration and returns r.
+func (r *Rows) SetBindConfig(config BindConfig) *Rows {
 	r.config = config.clone()
-	r.state = &rowScanState{}
+	r.revision++
+	r.scan.Reset()
 	return r
 }
 
-func (r Rows) WithScanOptions(options ScanOptions) Rows {
+// SetScanOptions replaces this result's conversion options and returns r.
+func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
 	r.config.Scan = cloneScanOptions(options)
-	r.state = &rowScanState{}
+	r.revision++
+	r.scan.Reset()
 	return r
 }
 
-// WithBinder selects an explicit binder, preserving all other options. A nil
-// binder restores DefaultMixRowsBinder. The binder itself is shared, not cloned.
-func (r Rows) WithBinder(binder RowsBinder) Rows {
+// SetBinder selects this result's binder and returns r. Nil restores the default
+// registry. The binder is shared and must support concurrent preparation.
+func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 	r.config.Binder = binder
 	return r
 }
 
-func (r Rows) Err() error {
-	if r.err != nil {
+// WithColumns mutates r; it does not create an independent view.
+//
+// Deprecated: use SetColumns.
+func (r *Rows) WithColumns(columns ...string) *Rows { return r.SetColumns(columns...) }
+
+// WithBindConfig mutates r; it does not create an independent view.
+//
+// Deprecated: use SetBindConfig.
+func (r *Rows) WithBindConfig(config BindConfig) *Rows { return r.SetBindConfig(config) }
+
+// WithScanOptions mutates r; it does not create an independent view.
+//
+// Deprecated: use SetScanOptions.
+func (r *Rows) WithScanOptions(options ScanOptions) *Rows { return r.SetScanOptions(options) }
+
+// WithBinder mutates r; it does not create an independent view.
+//
+// Deprecated: use SetBinder.
+func (r *Rows) WithBinder(binder RowsBinder) *Rows { return r.SetBinder(binder) }
+
+func (r *Rows) Err() error {
+	if r != nil && r.err != nil {
 		return r.err
 	}
-	if r.cursor == nil || r.cursor.rows == nil {
+	if r == nil || r.rows == nil {
 		return errors.New("sqlx: nil rows")
 	}
-	return r.cursor.rows.Err()
+	return r.rows.Err()
 }
 
 // Bind replaces a collection. Built-in binders publish a non-nil empty
 // collection for an empty result. Errors leave the original destination intact.
-func (r Rows) Bind(dst any) error { return r.bind(dst, BindReplace) }
+func (r *Rows) Bind(dst any) error { return r.bind(dst, BindReplace) }
 
 // Append appends to a slice using independent storage, preserving aliases to
 // the original backing array. Errors leave the original destination intact.
-func (r Rows) Append(dst any) error { return r.bind(dst, BindAppend) }
+func (r *Rows) Append(dst any) error { return r.bind(dst, BindAppend) }
 
 // Merge merges into a map using independent storage. DuplicateKeys controls
 // collisions with existing entries as well as duplicates in the result.
-func (r Rows) Merge(dst any) error { return r.bind(dst, BindMerge) }
+func (r *Rows) Merge(dst any) error { return r.bind(dst, BindMerge) }
 
-func (r Rows) bind(dst any, mode BindMode) (err error) {
+func (r *Rows) bind(dst any, mode BindMode) (err error) {
 	defer func() {
 		if e := r.Close(); err == nil {
 			err = e
@@ -189,6 +195,13 @@ func (r Rows) bind(dst any, mode BindMode) (err error) {
 	}
 
 	options := r.config.options(mode)
+	if options.Columns, err = r.scanColumns(); err != nil {
+		return err
+	}
+
+	// This single-use operation can transfer its already-owned labels. Every
+	// result snapshots driver/override columns, and Close drops our reference.
+	// Configuration layouts still need a copy because they can be shared by DBs.
 	if err = options.validate(); err != nil {
 		return err
 	}
@@ -212,7 +225,7 @@ func (r Rows) bind(dst any, mode BindMode) (err error) {
 	if nilBindingValue(binding) {
 		return errors.New("sqlx: nil rows binding")
 	}
-	if err = binding.Scan(r); err != nil {
+	if err = binding.Scan(r.rows); err != nil {
 		return err
 	}
 
@@ -230,43 +243,19 @@ func (r Rows) bind(dst any, mode BindMode) (err error) {
 	return nil
 }
 
-// Scan scans the current row, caching a plan for the destination types. Like
-// database/sql.Rows.Scan, individual columns may have been written on error.
-// Custom scanner panics propagate; collection helpers still close the result.
-func (r Rows) Scan(dst ...any) error {
-	if err := r.Err(); err != nil {
+// Scan scans the current row, reusing rowbind's private preparation and scratch
+// while destination types match. Individual columns may have been written on
+// error; custom scanner panics propagate. The destination slice is borrowed
+// only for the call and is not retained after returning.
+func (r *Rows) Scan(dst ...any) error {
+	columns, err := r.scanColumns()
+	if err != nil {
 		return err
 	}
-
-	state := r.state
-	if state == nil {
-		state = &rowScanState{}
-	}
-
-	if state.plan == nil || state.set != r.cursor.set || !state.plan.Matches(dst) {
-		columns, err := r.scanColumns()
-		if err != nil {
-			return err
-		}
-
-		types := make([]reflect.Type, len(dst))
-		for i, d := range dst {
-			types[i] = reflect.TypeOf(d)
-		}
-
-		p, err := rowbind.NewPlan(columns, types, r.config.Scan)
-		if err != nil {
-			return err
-		}
-
-		state.plan = p
-		state.set = r.cursor.set
-	}
-
-	return state.plan.ScanValues(r.cursor.rows.Scan, dst)
+	return r.scan.Scan(r.rows.Scan, columns, dst, r.config.Scan)
 }
 
-func (r Rows) scanColumns() ([]string, error) {
+func (r *Rows) scanColumns() ([]string, error) {
 	if err := r.Err(); err != nil {
 		return nil, err
 	}
@@ -285,43 +274,47 @@ func (r Rows) scanColumns() ([]string, error) {
 	return r.labels, nil
 }
 
-func (r Rows) driverColumns() ([]string, error) {
-	if r.cursor.columns == nil {
-		columns, err := r.cursor.rows.Columns()
+func (r *Rows) driverColumns() ([]string, error) {
+	if r.columns == nil {
+		columns, err := r.rows.Columns()
 		if err != nil {
 			return nil, err
 		}
-		r.cursor.columns = slices.Clone(columns)
+		r.columns = slices.Clone(columns)
 	}
-	return r.cursor.columns, nil
+	return r.columns, nil
 }
 
-func (r Rows) Next() bool {
-	return r.err == nil && r.cursor != nil && r.cursor.rows != nil && r.cursor.rows.Next()
+func (r *Rows) Next() bool {
+	return r != nil && r.err == nil && r.rows != nil && r.rows.Next()
 }
 
-// NextResultSet advances to the next result set, invalidating cached labels and
-// scan plans in all copies and With views. Call Next before scanning its rows.
-// A false result means exhaustion or failure; check Err to distinguish them.
-func (r Rows) NextResultSet() bool {
-	if r.err != nil || r.cursor == nil || r.cursor.rows == nil {
+// NextResultSet advances to the next result set and invalidates cached labels
+// and prepared scans. All aliases refer to this same object. Call Next before
+// scanning its rows; check Err when the result is false.
+func (r *Rows) NextResultSet() bool {
+	if r == nil || r.err != nil || r.rows == nil {
 		return false
 	}
 
-	r.cursor.columns = nil
-	r.cursor.set++
-	return r.cursor.rows.NextResultSet()
+	r.labels = nil
+	r.columns = nil
+	r.revision++
+	r.scan.Reset()
+	return r.rows.NextResultSet()
 }
 
-func (r Rows) Close() error {
-	if r.state != nil {
-		r.state.plan = nil
-	}
-	if r.cursor == nil || r.cursor.rows == nil {
+func (r *Rows) Close() error {
+	if r == nil {
 		return nil
 	}
 
-	r.cursor.columns = nil
-	r.cursor.set++
-	return r.cursor.rows.Close()
+	r.labels = nil
+	r.columns = nil
+	r.revision++
+	r.scan.Reset()
+	if r.rows == nil {
+		return nil
+	}
+	return r.rows.Close()
 }

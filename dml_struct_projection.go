@@ -14,8 +14,8 @@ import (
 const Sep = rowbind.Sep
 
 type modelProjection struct {
-	meta    *rowbind.Metadata
 	columns []selectedColumn
+	meta    *rowbind.Metadata
 	err     error
 }
 

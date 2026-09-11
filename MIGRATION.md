@@ -322,7 +322,10 @@ use row scanning, not RowsBinder.
 | `RowsBinding{Scan: scan, Commit: commit}`                                            | `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`, or a state pointer implementing `RowsBinding` |
 | `Row.Next`                                                                           | Removed: Row no longer implements the iterator interface                                              |
 
-`RowScanner` now contains only Columns and Scan. `RowsScanner` adds Next and Err.
+`RowScanner` contains only Columns and Scan. `RowsScanner` has been removed;
+`RowCursor` supplies Next, raw positional Scan and Err for binding execution.
+Although `*Rows` satisfies that method set, its Scan applies sqlx mapping and
+must not be used as a raw cursor. Rows.Bind passes its underlying `*sql.Rows`.
 `RowsBinderFunc` is a preparation function, not a scanning function. Prepare
 receives no cursor, so unsupported-type fallback cannot skip already-read rows.
 Both value and pointer forms of `UnsupportedTypeError` are recognized, including
@@ -391,16 +394,33 @@ validation. It does not perform scalar conversion. Use `PrepareScan` for raw
 `*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
 for single-use results. Result labels and WithColumns inputs are copied.
 
+All `Scan(dst ...any) error` implementations and matching callbacks now borrow
+the destination slice only for the call. Replace saved slice assignments such
+as `saved = dst` (including subslices) with `saved = slices.Clone(dst)` or an
+equivalent copy. The copy does not extend the lifetime of temporary adapters or
+driver buffers. `ScanColumnsToStruct` now borrows and automatically returns its
+scan plan on success, error or panic; a clone of its destination slice still
+contains the caller's actual field addresses. Prepared scanners continue to
+reuse their plans until Close.
+
 `Rows` no longer embeds or exposes `*sql.Rows`. Replace `rows.Rows.Method(...)`
 with `rows.Method(...)`; all seven public cursor methods remain available:
 `Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`, and `Close`.
 Construct wrappers with `NewRows` instead of a struct literal. After transferring
 ownership, advance through the wrapper so its metadata stays synchronized.
-`NextResultSet` refreshes mappings for all shared copies and scan functions
-prepared from `Rows`; `WithColumns` and `NewRows` label overrides expire at the
+`NextResultSet` refreshes mappings for aliases of the same `*Rows` and scanners
+prepared from it; `SetColumns` and `NewRows` label overrides expire at the
 next result set. `ColumnTypes` returns driver names and types independently of
 label overrides. Recreate prepared scans from raw `*sql.Rows` after switching
 sets. Collection helpers consume the current set and close the entire result.
+
+`PrepareScan` now returns `PreparedScanner` instead of `RowScanFunc`. Replace
+`scan(dst...)` with `scanner.Scan(dst...)` and defer `scanner.Close()` after
+successful preparation. `RowMapping.ScanFunc(cursor)` is renamed to
+`RowMapping.Scanner(cursor)` and returns the same interface. Closing a prepared
+scanner releases its private scratch and source references; it does not close
+or advance the cursor. Close the cursor separately. Close is idempotent and Scan
+after Close fails; the scanner must not be used concurrently.
 
 Struct metadata, column layouts, compiled setters and scan plans now live in
 `internal/rowbind`, together with the shared scalar conversion rules. The root
@@ -411,7 +431,7 @@ Binding alone no longer creates SQL projection expressions. `ScanOptions`,
 Their defining package reported by reflection is now `internal/rowbind`.
 No metadata cache, setter or scan-plan API is exported from the root package.
 
-`RowsBinding` is now an interface with `Scan(RowsScanner) error` and `Commit()`
+`RowsBinding` is now an interface with `Scan(RowCursor) error` and `Commit()`
 methods. Successful Prepare calls must return an independent, non-nil operation;
 error returns should use `nil, err`. Nil underlying pointers are also rejected
 before scanning. `RowsBindingFuncs.Scan` validates both callbacks before invoking

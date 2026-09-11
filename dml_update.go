@@ -192,7 +192,7 @@ func (b *UpdateBuilder) ReturningExpr(e Expression, alias string) *UpdateBuilder
 	return b
 }
 
-func (b *UpdateBuilder) QueryRowsContext(ctx context.Context) Rows {
+func (b *UpdateBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	if len(b.returning) == 0 {
 		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}

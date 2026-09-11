@@ -413,7 +413,7 @@ func (b *InsertBuilder) ReturningExpr(e Expression, alias string) *InsertBuilder
 	return b
 }
 
-func (b *InsertBuilder) QueryRowsContext(ctx context.Context) Rows {
+func (b *InsertBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	if len(b.returning) == 0 {
 		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}

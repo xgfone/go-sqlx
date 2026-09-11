@@ -135,17 +135,17 @@ var (
 // Two positional columns: key and value.
 var names map[int64]string
 err := db.Select("id", "name").From("users").QueryRowsContext(ctx).
-    WithBinder(namesBinder).Bind(&names)
+    SetBinder(namesBinder).Bind(&names)
 
 // Whole rows indexed by a key derived from the scanned value.
 var byID map[int64]User
 err = db.Select("id", "name").From("users").QueryRowsContext(ctx).
-    WithBinder(usersBinder).Bind(&byID)
+    SetBinder(usersBinder).Bind(&byID)
 
 // A set of scanned keys; repeats are deduplicated.
 var ids map[int64]struct{}
 err = db.Select("id").From("users").QueryRowsContext(ctx).
-    WithBinder(idsBinder).Bind(&ids)
+    SetBinder(idsBinder).Bind(&ids)
 ```
 
 Map destinations must be non-nil pointers; their underlying maps may be nil.
@@ -179,9 +179,9 @@ errors are returned without retrying the general slice fallback. An independent
 registrations and only the general slice fallback. Unregistering a default map
 binder makes that destination unsupported unless a local binder is selected.
 
-`DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` share the supplied
+`DB.WithBinder`, `Oper.WithBinder`, and `Rows.SetBinder` share the supplied
 binder while preserving the other options. A nil binder restores the shared
-registry. Applying `Rows.WithBinder` immediately before Bind needs no binder
+registry. Applying `Rows.SetBinder` immediately before Bind needs no binder
 clone or configuration allocation. Collection binders are reusable; their
 per-query `RowsBinding` state and destination storage remain independent.
 
@@ -200,8 +200,8 @@ db = db.WithBindConfig(sqlx.BindConfig{
 })
 ```
 
-Use `SetBindConfig` on a builder, `WithBindConfig` on an Oper or Rows, or
-`WithScanOptions` on Row/Rows for a local override. Configurations replace the
+Use `SetBindConfig` on a builder or Rows, `WithBindConfig` on an Oper,
+`Rows.SetScanOptions`, or `Row.WithScanOptions` for a local override. Configurations replace the
 whole prior configuration and copy `TimeLayouts`. Capacity and scan policies
 remain per-configuration; the binder registry is shared. `WithExecutor` preserves
 the DB configuration. Builder `Clone` and `Reset` preserve its explicit override.
@@ -215,30 +215,84 @@ pointers to scanners remain nil on NULL. Custom scanners control their conversio
 Built-in byte destinations (including `sql.RawBytes` and pointer chains) receive
 owned copies; a custom scanner must copy driver buffers it retains.
 
-`RowScanner` describes scanning a row; `RowsScanner` additionally supplies
-`Next` and `Err`. Row is not an iterator. `PrepareScan` validates column/type
-mapping before iteration and returns a reusable scan function. Struct mappings
+`NewRows` and all `QueryRowsContext` methods return `*Rows`. A Rows object
+must not be copied or used concurrently; pass its pointer to share it. A named
+`noCopy` marker lets `go vet` detect accidental value copies with its `copylocks`
+check. This is a static-analysis check, not a compiler error or runtime lock.
+
+`Rows.SetColumns`, `SetScanOptions`, `SetBindConfig`, and `SetBinder` mutate the
+same object and return its pointer. All aliases observe these changes. The old
+`Rows.With...` methods remain deprecated aliases with the same mutation semantics;
+they no longer create independent views. DB/Oper `With...` and single-row `Row`
+configuration keep their value semantics.
+
+All `Scan(dst ...any) error` implementations and matching scan callbacks borrow
+`dst` only for the call. They must not retain the slice or a subslice after
+returning. Use `saved = slices.Clone(dst)` when an independent slice is needed.
+This is a shallow copy: temporary scanner adapters and driver-owned buffers
+still obey their own lifetimes.
+
+`ScanColumnsToStruct` supplies actual field addresses to its callback and
+returns its private scan plan to the scratch pool on success, error, or panic.
+A cloned destination slice keeps those field addresses without retaining pooled
+slice storage. Prepared scanners instead hold their plans until `Close` so they
+can reuse preparation across rows.
+
+`RowScanner` supplies `Columns` and `Scan`; `RowCursor` supplies `Next`, raw
+`Scan`, and `Err` for binding execution. Row is not an iterator. `PrepareScan`
+validates column/type mapping before iteration and returns a `PreparedScanner`
+with `Scan(...any) error` and `Close() error`. Struct mappings
 are cached across results by model type, ordered result labels, and mapping
-policies. Collection binders keep mutable scan state per result; manual
-`Rows.Scan` reuses its current destination setup. `Row.Scan`/`Rows.Scan` may
-partially update a row on error, as in
-`database/sql`; collection binding provides the staged commit guarantee.
+policies. Manual `Rows.Scan` reuses preparation and scratch through a
+`rowbind.ScanState` value in Rows; its plan pointer and implementation remain
+private to `rowbind`. Configuration changes, result-set changes, and `Close`
+release this state. Each prepared scanner holds independent scratch until its
+`Close`, which releases scanning resources without closing or advancing the
+underlying cursor. Close it even after scan errors or panics, normally using
+`defer scanner.Close()` immediately after successful preparation. Repeated Close
+calls are harmless; Scan after Close fails. The handle and its cursor must not
+be used concurrently. `Row.Scan`/`Rows.Scan`
+may partially update a row on error, as in `database/sql`; collection binding
+provides the staged commit guarantee.
+
 `Rows` exposes `Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`,
 and `Close`, while keeping the underlying `*sql.Rows` private. `NextResultSet`
-refreshes column mappings for all shared copies and prepared scans made from
-`Rows`. Call `Next` before scanning each result set. `WithColumns` overrides
-only the current set's labels; `ColumnTypes` always returns driver metadata.
-For a scan prepared from raw `*sql.Rows`, call `PrepareScan` again after switching
-result sets. Collection helpers consume the current set and close the cursor.
-Single-row `Row.Bind` uses the row scanner and does not invoke `RowsBinder`;
-customize field conversion with `sql.Scanner` or `WithScanOptions`.
+clears cached columns and label overrides even if the next set has identical
+column names. Prepared scans from `*Rows` follow result-set and scan-configuration
+changes made through any alias of that object. Call `Next` before scanning each
+result set. `SetColumns` overrides only the current set's labels; `ColumnTypes`
+always returns driver metadata. For a scan prepared from raw `*sql.Rows`, call
+`PrepareScan` again after switching result sets. Collection helpers consume the
+current set and close the cursor. Single-row `Row.Bind` uses the row scanner and
+does not invoke `RowsBinder`; customize field conversion with `sql.Scanner` or
+`Row.WithScanOptions`.
 
 Extensions implement `RowsBinder.Prepare(dst, BindOptions)`, returning
-an independent, non-nil `RowsBinding` with `Scan(RowsScanner) error` and
-`Commit()` methods. Built-in Slice and Map states implement this interface
-directly. Callback implementations can return
+an independent, non-nil `RowsBinding` with `Scan(RowCursor) error` and `Commit()`
+methods. `BindOptions.Columns` supplies ordered binding labels, including overrides;
+`BindOptions.Scan` supplies conversion policies. Direct callers of Prepare must
+supply the result columns themselves. Built-in binders prepare an immutable mapping
+without accessing a cursor, borrowing execution scratch, or changing the destination.
+Mappings snapshot mutable input slices. Shape errors occur during Prepare and do
+not trigger fallback after a destination is recognized.
+
+`RowCursor` requires only `Next`, raw `Scan`, and `Err`. `Rows.Bind` passes its
+underlying `*sql.Rows`. The raw Scan must write positional source values into the
+supplied destinations, honoring `sql.Scanner`, without applying another sqlx
+mapping or conversion layer. Do not pass `*Rows`: its method set fits `RowCursor`,
+but its Scan applies those policies again. Retaining the argument slice requires
+a clone; adapter scanners must still be consumed synchronously, even if their
+containing slice was cloned.
+When invoking a binding directly, pass a raw cursor matching the
+prepared column order and do not change result sets between Prepare and Scan.
+Built-in Scan operations borrow scratch until they return, including on errors or
+panics. Custom binders can call `options.PrepareMapping(types...)` during Prepare,
+then `mapping.Scanner(cursor)` once at the start of Scan to obtain an independent,
+type-checked `PreparedScanner`; defer its Close to return scratch to the pool.
+Callback implementations can return
 `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`; both callbacks are required.
-Preparation has no cursor and must not mutate the destination.
+The owner still closes the cursor before Commit; direct callers own that close.
+
 `ComposeRowsBinders` tries preparation in order, falling through
 only on `UnsupportedTypeError`. Once selected, scan errors never trigger another
 binder. Put `SliceRowsBinder{}` last for a general slice fallback. Custom binders

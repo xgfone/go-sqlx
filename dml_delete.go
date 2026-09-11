@@ -170,7 +170,7 @@ func (b *DeleteBuilder) ReturningExpr(e Expression, alias string) *DeleteBuilder
 	return b
 }
 
-func (b *DeleteBuilder) QueryRowsContext(ctx context.Context) Rows {
+func (b *DeleteBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	if len(b.returning) == 0 {
 		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}

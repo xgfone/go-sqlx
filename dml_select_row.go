@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"slices"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -31,28 +32,51 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 }
 
 func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
-	return Row{rows: c.rows(rows, columns, err)}
+	return Row{
+		err:     err,
+		rows:    rows,
+		columns: slices.Clone(columns),
+		options: c.Scan,
+	}
 }
 
 // Row owns a single-use rows. Scan and Bind close it automatically. It is not
 // an iterator; close an unread Row explicitly to release the connection.
-type Row struct{ rows Rows }
+type Row struct {
+	err     error
+	rows    *sql.Rows
+	options ScanOptions
+	columns []string
+	labels  []string
+}
+
+// Build a fresh adapter rather than copying Rows or sharing mutable options
+// between the value-returning Row.With methods. Row never advances result sets.
+func (r Row) result() *Rows {
+	return &Rows{
+		err:     r.err,
+		rows:    r.rows,
+		config:  BindConfig{Scan: r.options},
+		columns: r.columns,
+		labels:  r.labels,
+	}
+}
 
 func NewRow(rows *sql.Rows, columns []string, err error) Row {
-	return Row{rows: NewRows(rows, columns, err)}
+	return Row{rows: rows, labels: slices.Clone(columns), err: err}
 }
 
 func (r Row) Columns() ([]string, error) {
-	return r.rows.Columns()
+	return r.result().Columns()
 }
 
 func (r Row) WithColumns(columns ...string) Row {
-	r.rows = r.rows.WithColumns(columns...)
+	r.labels = slices.Clone(columns)
 	return r
 }
 
 func (r Row) WithScanOptions(options ScanOptions) Row {
-	r.rows.config.Scan = cloneScanOptions(options)
+	r.options = cloneScanOptions(options)
 	return r
 }
 
@@ -63,37 +87,39 @@ func (r Row) Bind(dst ...any) (bool, error) {
 
 // Scan uses the same conversion rules as Rows.Scan and returns sql.ErrNoRows
 // for an empty result. As with database/sql, row scans are not atomic.
+// It borrows dst for the call and does not retain the slice after returning.
 func (r Row) Scan(dst ...any) (err error) {
+	rows := r.result()
 	defer func() {
-		if e := r.Close(); err == nil {
+		if e := rows.Close(); err == nil {
 			err = e
 		}
 	}()
 
-	if err = r.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return err
 	}
-	if err = validateScanOptions(r.rows.config.Scan); err != nil {
+	if err = validateScanOptions(r.options); err != nil {
 		return err
 	}
-	if r.rows.hasLabels() {
-		if _, err = r.rows.scanColumns(); err != nil {
+	if rows.hasLabels() {
+		if _, err = rows.scanColumns(); err != nil {
 			return err
 		}
 	}
 
-	if !r.rows.Next() {
-		if err := r.Err(); err != nil {
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
 			return err
 		}
 		return sql.ErrNoRows
 	}
 
 	if len(dst) == 1 && dst[0] != nil && !rowbind.IsScalarDestination(reflect.TypeOf(dst[0])) {
-		return scanSingleStruct(r.rows, dst)
+		return scanSingleStruct(rows, dst)
 	}
-	return rowbind.ScanScalarRow(r.rows.cursor.rows.Scan, dst, r.rows.config.Scan)
+	return rowbind.ScanScalarRow(r.rows.Scan, dst, r.options)
 }
 
-func (r Row) Err() error   { return r.rows.Err() }
-func (r Row) Close() error { return r.rows.Close() }
+func (r Row) Err() error   { return r.result().Err() }
+func (r Row) Close() error { return r.result().Close() }

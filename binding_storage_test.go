@@ -24,7 +24,7 @@ func (v *selfRetainingScanner) Scan(src any) error {
 func TestMapScannerDestinationsRemainIndependent(t *testing.T) {
 	for _, pairs := range []bool{false, true} {
 		var binder RowsBinder
-		var rows Rows
+		var rows *Rows
 		if pairs {
 			binder = NewMapPairsBinder[map[int64]selfRetainingScanner]()
 			rows = bindTestDB(t, &bindFixture{
@@ -118,6 +118,7 @@ func TestPreparedScanSurvivesInterleavedBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer scan.Close() //nolint:errcheck
 
 	for _, want := range []int64{1, 2} {
 		if !r.Next() {
@@ -135,21 +136,21 @@ func TestPreparedScanSurvivesInterleavedBindings(t *testing.T) {
 		}
 
 		var got int64
-		if err := scan(&got); err != nil || got != want {
+		if err := scan.Scan(&got); err != nil || got != want {
 			t.Fatalf("%d: %v", got, err)
 		}
 	}
 }
 
-type retainingRowsScanner struct {
+type retainingRowCursor struct {
 	index   int
 	targets []*int64
 }
 
-func (*retainingRowsScanner) Columns() ([]string, error) { return []string{"value"}, nil }
-func (r *retainingRowsScanner) Next() bool               { r.index++; return r.index <= 2 }
-func (*retainingRowsScanner) Err() error                 { return nil }
-func (r *retainingRowsScanner) Scan(dst ...any) error {
+func (*retainingRowCursor) Columns() ([]string, error) { return []string{"value"}, nil }
+func (r *retainingRowCursor) Next() bool               { r.index++; return r.index <= 2 }
+func (*retainingRowCursor) Err() error                 { return nil }
+func (r *retainingRowCursor) Scan(dst ...any) error {
 	s := dst[0].(*GeneralScanner)
 	r.targets = append(r.targets, s.Value.(*int64))
 	return s.Scan(int64(r.index))
@@ -157,12 +158,12 @@ func (r *retainingRowsScanner) Scan(dst ...any) error {
 
 func TestCustomRowScannerKeepsFreshMapDestinations(t *testing.T) {
 	var got map[int64]struct{}
-	binding, err := NewMapSetBinder[map[int64]struct{}]().Prepare(&got, BindOptions{})
+	binding, err := NewMapSetBinder[map[int64]struct{}]().Prepare(&got, BindOptions{Columns: []string{"value"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	source := &retainingRowsScanner{}
+	source := &retainingRowCursor{}
 	if err := binding.Scan(source); err != nil {
 		t.Fatal(err)
 	}

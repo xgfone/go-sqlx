@@ -103,7 +103,7 @@ func bindTestDB(t testing.TB, f *bindFixture) *DB {
 	return &DB{Dialect: dialect.SQLite, Executor: std}
 }
 
-func bindTestRows(t testing.TB, values ...driver.Value) (Rows, *bindFixture) {
+func bindTestRows(t testing.TB, values ...driver.Value) (*Rows, *bindFixture) {
 	t.Helper()
 	f := &bindFixture{columns: []string{"value"}}
 	for _, value := range values {

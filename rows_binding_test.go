@@ -30,8 +30,8 @@ func TestTypedSlicePreparationErrorsReturnNilOperation(t *testing.T) {
 
 type nilRowsBinding struct{}
 
-func (*nilRowsBinding) Scan(RowsScanner) error { panic("nil binding was scanned") }
-func (*nilRowsBinding) Commit()                { panic("nil binding was committed") }
+func (*nilRowsBinding) Scan(RowCursor) error { panic("nil binding was scanned") }
+func (*nilRowsBinding) Commit()              { panic("nil binding was committed") }
 
 func TestRowsBindingRejectsNilAndIncompleteOperations(t *testing.T) {
 	for _, name := range []string{"nil", "typed_nil", "nil_funcs_pointer", "no_callbacks", "no_scan", "no_commit"} {
@@ -39,7 +39,7 @@ func TestRowsBindingRejectsNilAndIncompleteOperations(t *testing.T) {
 			rows, fixture := bindTestRows(t, int64(1))
 			got := 7
 			scans, commits := 0, 0
-			scan := func(RowsScanner) error { scans++; return nil }
+			scan := func(RowCursor) error { scans++; return nil }
 			commit := func() { commits++; got = 9 }
 			binder := RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
 				switch name {
@@ -78,7 +78,7 @@ func TestRowsBindingRejectsNilAndIncompleteOperations(t *testing.T) {
 func TestRowsBindingFuncsPreservesScanError(t *testing.T) {
 	want := errors.New("custom scan failed")
 	binding := RowsBindingFuncs{
-		ScanFunc:   func(RowsScanner) error { return want },
+		ScanFunc:   func(RowCursor) error { return want },
 		CommitFunc: func() { t.Fatal("unexpected commit") },
 	}
 	if got := binding.Scan(nil); !errors.Is(got, want) {
