@@ -36,6 +36,7 @@ type BuildContext struct {
 	statementDepth int
 	insertedAlias  string
 	conflictScope  bool
+	compiling      bool
 	bufferInUse    bool
 	buffer         strings.Builder
 }
@@ -74,6 +75,7 @@ func releaseBuildContext(a *BuildContext) {
 	a.statementDepth = 0
 	a.insertedAlias = ""
 	a.conflictScope = false
+	a.compiling = false
 	a.windows = nil
 	a.named = nil
 	a.dialect = nil
@@ -166,7 +168,28 @@ func (a *BuildContext) writeArg(buf *strings.Builder, arg any) {
 }
 
 func (a *BuildContext) namedArg(d Dialect, arg any) (value any, placeholder string, named bool) {
-	if na, ok := arg.(sql.NamedArg); ok {
+	switch na := arg.(type) {
+	case templateParam:
+		if !a.compiling {
+			panic("sqlx.Param requires Compile")
+		}
+		if na < 0 {
+			panic("sqlx.Param index must be nonnegative")
+		}
+
+	case Expression:
+		if na.kind == parameterExpression {
+			return a.namedArg(d, na.args[0])
+		}
+
+	case sql.NamedArg:
+		if e, ok := na.Value.(Expression); ok && e.kind == parameterExpression {
+			panic("sqlx.Param inside sql.Named is not supported; use a positional Param")
+		}
+		if _, ok := na.Value.(templateParam); ok {
+			panic("sqlx.Param inside sql.Named is not supported; use a positional Param")
+		}
+
 		if na.Name != "" {
 			if !validParameterName(na.Name) {
 				panic(fmt.Sprintf("sqlx: invalid parameter name %q", na.Name))

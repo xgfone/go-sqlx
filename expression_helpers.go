@@ -17,11 +17,12 @@ type expressionKind uint8
 const (
 	plainExpression expressionKind = iota
 	defaultExpression
+	pathExpression
 	tupleExpression
-	aggregateExpression
 	windowExpression
 	windowFunctionExpression
-	pathExpression
+	aggregateExpression
+	parameterExpression
 )
 
 func sqlWordByte(b byte) bool {

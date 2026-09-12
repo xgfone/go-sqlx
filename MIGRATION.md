@@ -450,3 +450,31 @@ Unregistered model slices continue to work through the reflection fallback.
 Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()` for construction
 without registration, or `table.NewRegisteredOper[T]()` to opt in.
 Both table methods preserve the table name and database.
+
+### Optional compiled statement templates
+
+Existing builder and binding signatures are unchanged. To reuse a fixed SQL
+shape, replace changing values with `Param(0)`, `Param(1)`, etc., call `Compile`
+once, then call `StatementTemplate.Bind` or its execution methods with one input
+per index. All four DML builders support compilation. `StatementTemplate` does
+not implement `SQLBuilder`: its `Bind` explicitly accepts runtime parameters.
+
+Do not call ordinary Build/Exec on a builder containing Param. Runtime nil is a
+bound SQL NULL and never changes an equality into IS NULL; choose the desired
+SQL shape explicitly. Runtime expressions and named arguments cannot replace
+slots. Variable IN lengths, parameterized pagination and database prepared
+statement caching are not implicit features of Compile.
+
+Pass a DB explicitly when executing a template, including `db.WithExecutor(tx)`
+for a transaction. The builder's DB and SetExecutor are not captured. Reuse the
+compiled dialect configuration (structurally equal configurations are also
+accepted); a matching Name alone is not enough. An explicit builder BindConfig
+is snapshotted, while an inherited DB configuration is resolved from the DB
+passed at execution. Result-level overrides and bounded LIMIT capacity hints
+retain their existing precedence.
+
+SELECT and RETURNING templates use QueryRowsContext; DML without RETURNING uses
+ExecContext. Templates do not narrow a limit automatically or invoke custom
+renderers again on each request. Compile a new template when its SQL shape must
+change. Arguments remain shallow snapshots; mutable constants must not be changed
+while the template is being shared. See README for a complete example.

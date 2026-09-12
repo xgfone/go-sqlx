@@ -47,6 +47,67 @@ builders too. A custom builder chooses its own dialect and placeholders; pass
 its SQL and arguments to `Executor.ExecContext` or `DB.QueryRowsContext` after
 checking the build error.
 
+For a SQL statement whose shape stays fixed, compile it once and fill explicit
+parameter slots on each execution:
+
+```go
+query, err := db.Select("id", "name").From("users").
+    Where(sqlx.Eq("tenant_id", sqlx.Param(0))).Limit(100).Compile()
+if err != nil {
+    return err
+}
+
+// Reuse query across requests, including with db.WithExecutor(tx).
+var users []User
+err = query.QueryRowsContext(ctx, db, tenantID).Bind(&users)
+
+// Or obtain independent SQL/arguments for a separate execution API.
+sqlText, args, err := query.Bind(tenantID)
+```
+
+`SelectBuilder`, `InsertBuilder`, `UpdateBuilder`, and `DeleteBuilder` all expose
+`Compile() (*StatementTemplate, error)`. Compilation renders once and validates the
+SQL with the chosen dialect; it does not execute SQL or create a `sql.Stmt`.
+Subsequent `Bind` and execution fill argument positions without rebuilding SQL.
+Custom clause renderers run only during compilation. Compile a new template
+when conditions, projection, ordering, pagination, IN length or INSERT row count
+change. Existing `Build` callers do not need to migrate.
+
+Parameter indexes must be contiguous from zero. A repeated `Param(0)` reuses the
+first input value at every corresponding placeholder; the driver argument list
+can therefore be longer than the input list. Supply exactly one value per index.
+Static values can be mixed with slots. Slots hold data, so runtime `Expression`,
+`SQLBuilder` and `sql.NamedArg` values are rejected. Static named values retain
+ordinary Build semantics; `sql.Named("name", sqlx.Param(0))` is unsupported.
+An unbound `Param` passed to ordinary Build or builder execution is an error.
+
+SQL structure does not depend on runtime values. In particular,
+`Eq("id", Param(0))` stays `id = ?` (or its dialect equivalent) when passed nil;
+it does not become `IS NULL`. Use `IsNull` in a separate template or an explicit
+null-safe comparison when NULL should match. Raw SQL's native placeholders are
+not inferred as slots: declare runtime values with `Param`.
+
+Use `QueryRowsContext` for SELECT and INSERT/UPDATE/DELETE with RETURNING; use
+`ExecContext(ctx, db, params...)` for DML without RETURNING. Using the wrong
+execution method fails before issuing SQL. Templates execute using the supplied
+DB's executor, not the original builder's DB or SetExecutor override. The DB must
+use the same or a structurally equal immutable dialect configuration; matching
+only the dialect name is insufficient. Share custom dialects containing
+functions by pointer. Dialect compatibility is checked, not translated.
+
+An explicit builder BindConfig is captured at Compile, including an explicit zero
+configuration. Otherwise the execution DB supplies binding configuration. A
+result's SetBindConfig still takes precedence. SELECT's fixed positive LIMIT
+supplies the usual bounded capacity hint; RETURNING does not infer a result count
+from an INSERT batch. The actual driver columns are read on every execution.
+
+Templates own their SQL and argument-slot storage, and executions use separate
+scratch. Bind returns an independent argument slice; argument objects are shallow
+snapshots, as with Build. To share a template concurrently, keep its constant
+objects, dialect and binder unchanged and safe to share, and pass mutable request
+values through slots. Valuer conversion remains execution-time work. Returned
+Rows follow the normal closing and binding rules below.
+
 `CTEBody` is the open interface for the body inside `WITH name AS (...)`:
 
 ```go

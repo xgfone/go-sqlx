@@ -72,6 +72,10 @@ func (b *builderBase) runner() (Executor, error) {
 }
 
 func buildBorrowed(s statementWriter, b *builderBase) (query string, ctx *BuildContext, err error) {
+	return renderStatement(s, b, false)
+}
+
+func renderStatement(s statementWriter, b *builderBase, compiling bool) (query string, ctx *BuildContext, err error) {
 	if b.err != nil {
 		return "", nil, b.err
 	}
@@ -97,6 +101,7 @@ func buildBorrowed(s statementWriter, b *builderBase) (query string, ctx *BuildC
 	}
 
 	ctx = acquireBuildContext(d)
+	ctx.compiling = compiling
 	buf := ctx.acquireBuffer()
 	defer ctx.releaseBuffer(buf)
 	s.writeTo(buf, ctx)
