@@ -297,6 +297,58 @@ scans directly into staged elements. It returns nil on any error, including
 finalization errors; built-in binding returns a non-nil empty slice on empty
 success. `Rows.Bind` remains useful for named slices and existing destinations.
 
+`Rows.CollectInto(storage)` reuses a caller-owned slice, preserving named slice
+types. Save the returned slice because it can grow:
+
+```go
+var page []User
+for pageNumber := 1; pageNumber <= 10; pageNumber++ {
+    var err error
+    page, err = db.Select("id", "name").From("users").
+        Paginate(pageNumber, 100).QueryRowsContext(ctx).CollectInto(page)
+    if err != nil {
+        // page contains only the successfully scanned prefix.
+        return err
+    }
+    // Consume page before reusing its storage in the next query.
+}
+```
+
+The caller grants exclusive write access through `cap(storage)`, including
+unused elements. Old aliases may change. The failed scan slot and unused
+capacity are cleared, including on preparation failure or panic. Existing
+capacity is used before allocating more; when growth is necessary, the result's
+capacity hint supplies a minimum reservation. Empty results retain existing
+storage, and a nil buffer stays nil. Scan, iteration and close errors return the
+successful prefix. Ordinary `Bind`/`Collect` keep their atomic publication contract.
+
+`Rows.Visit` consumes rows without building a collection:
+
+```go
+err := db.Select("id", "name").From("users").QueryRowsContext(ctx).
+    Visit(func(user User) (bool, error) {
+        // Return false, nil to stop normally, or return an error to abort.
+        return processUser(user)
+    })
+```
+
+Callback values may be saved; later rows do not overwrite them. Pointer and byte
+fields still require their own storage, and custom Scanners must copy buffers
+they retain. A callback must not advance, scan, close, reconfigure or concurrently
+use the same Rows. Callback side effects are not rolled back.
+
+Both new methods use the result's column labels and `ScanOptions` directly,
+like `Rows.Scan`; collection-level `RowsBinder` registrations are not applied.
+`Visit` also ignores collection capacity and duplicate-key settings. They consume
+only the current result set and always close it, including on early stop or
+panic. Scan/callback errors report the current row through `BindError`; iteration
+errors report the next row. Close errors are returned or joined with an earlier
+error, so `errors.Is` can inspect both. Custom Scanner panics propagate after
+cleanup: these entry points execute application conversions after the underlying
+SQL read returns, copying raw bytes first where necessary for cancellation safety.
+This extra capture cost applies to custom conversions; ordinary types retain
+the direct scanning path.
+
 Scalar pointers and values use the same conversions: both `time.Duration` and
 `*time.Duration` interpret numeric sources in the configured unit. NULL clears
 scalar values by default; `NullError` rejects NULL for non-nullable scalars.

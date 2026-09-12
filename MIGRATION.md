@@ -512,6 +512,24 @@ the internal SQL cursor. Custom Scanner targets and unknown raw cursor types
 keep fresh temporary addresses where required. No Scanner signature change or
 new ownership promise is imposed on existing implementations.
 
+### Reusing result slices and visiting rows
+
+`rows.CollectInto(storage)` and `rows.Visit(yield)` are opt-in alternatives to
+atomic collection binding. Existing Bind/Append/Merge/Collect behavior is unchanged.
+
+- CollectInto overwrites exclusively owned storage through its capacity, returns
+  the successfully scanned prefix on errors, and clears failed/unused slots.
+  Always save its return value after growth. It does not preserve old aliases.
+- Visit delivers retainable values and closes the result after completion,
+  early stop, errors or panic. Returning false stops normally; callback errors
+  are wrapped with the current row number. Callbacks must not control the cursor.
+- Both use labels and ScanOptions directly; RowsBinder registrations do not
+  apply. Visit does not use Capacity or DuplicateKeys. Close errors are joined
+  with an earlier error instead of being discarded.
+- Custom Scanner methods execute after the underlying SQL read where needed
+  for panic/cancellation cleanup. This can add raw-value storage and byte copies.
+  Ordinary byte values remain owned; no borrowed-byte API is introduced.
+
 ### Oper construction and registration
 
 `NewOper[T](name)` no longer registers a model slice binder. Use
