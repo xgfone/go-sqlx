@@ -62,8 +62,8 @@ func (*noCopy) Unlock() {}
 
 // Rows owns a forward-only SQL result and must not be copied. Pass *Rows to
 // share the cursor. Set methods mutate this object and all aliases observe the
-// changes. It must not be used concurrently. Bind/Append/Merge close it
-// automatically; for manual iteration defer Close and check Err after Next.
+// changes. It must not be used concurrently. Collection methods and Visit close
+// it automatically; for manual iteration defer Close and check Err after Next.
 type Rows struct {
 	noCopy noCopy
 

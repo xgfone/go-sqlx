@@ -13,14 +13,17 @@ import (
 	"sync/atomic"
 )
 
-// A layout contains only immutable metadata. It never retains a destination,
-// SQL cursor, conversion configuration, or mutable scanner scratch storage.
+// A layout contains immutable mapping metadata and a lazily cached scanner
+// classification. It never retains a destination, SQL cursor, conversion
+// configuration, or mutable scanner scratch storage.
 type structScanLayout struct {
 	columns  []string
 	fields   []*Field
 	groups   []nullStructGroup
 	flags    structScanFlags
 	reusable bool
+
+	scannerKind atomic.Uint32
 }
 
 type structScanFlags uint8
