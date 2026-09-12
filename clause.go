@@ -9,30 +9,42 @@ import (
 	"strings"
 )
 
-// Condition builds a predicate without WHERE, HAVING or ON. The result must
-// preserve its own precedence (parenthesize an OR expression, for example).
-// Use the supplied context for all identifiers, values and nested expressions.
-// The context is borrowed: do not retain it or use it concurrently. Rendering
-// failures may panic; statement Build converts panics into errors.
+// Condition writes a predicate without WHERE, HAVING, or ON. It must preserve
+// its own precedence (parenthesize OR when necessary). Return true after writing
+// nonempty SQL; false must have no SQL or argument side effects. An explicit
+// error or panic aborts the whole build. The writer is borrowed for this call.
+// Each callback is evaluated once per occurrence, never to estimate output.
 type Condition interface {
-	BuildCondition(*BuildContext) string
+	WriteCondition(*SQLWriter) (emitted bool, err error)
 }
 
-// ConditionFunc implements Condition with a function.
+// ConditionFunc adapts a legacy string-returning callback. Empty SQL must not
+// append arguments. Prefer ConditionWriterFunc to avoid intermediate strings.
 type ConditionFunc func(*BuildContext) string
 
 func (f ConditionFunc) BuildCondition(c *BuildContext) string { return f(c) }
-
-// Updater builds one or more comma-separated assignments, without SET.
-// It has the same context lifetime and failure contract as Condition.
-type Updater interface {
-	BuildUpdate(*BuildContext) string
+func (f ConditionFunc) WriteCondition(w *SQLWriter) (bool, error) {
+	s := f(w.ctx)
+	w.Raw(s)
+	return s != "", nil
 }
 
-// UpdaterFunc implements Updater with a function.
+// Updater writes comma-separated assignments without SET. It shares Condition's
+// emission, error, precedence, and borrowed-writer contract.
+type Updater interface {
+	WriteUpdate(*SQLWriter) (emitted bool, err error)
+}
+
+// UpdaterFunc adapts a legacy string-returning callback. Empty SQL must not
+// append arguments. Prefer UpdaterWriterFunc to avoid intermediate strings.
 type UpdaterFunc func(*BuildContext) string
 
 func (f UpdaterFunc) BuildUpdate(c *BuildContext) string { return f(c) }
+func (f UpdaterFunc) WriteUpdate(w *SQLWriter) (bool, error) {
+	s := f(w.ctx)
+	w.Raw(s)
+	return s != "", nil
+}
 
 // Sorter supplies ordering terms. SelectBuilder copies the returned slice;
 // expression values and their arguments remain shallow copies.
@@ -107,7 +119,7 @@ func (g conditionGroup) nativeCount() (count int, known bool) {
 	for _, condition := range g.conditions {
 		switch v := condition.(type) {
 		case nil:
-		case conditionWriterFunc:
+		case nativeCondition:
 			count++
 
 		case conditionGroup:
@@ -129,29 +141,44 @@ func (g conditionGroup) nativeCount() (count int, known bool) {
 	return count, true
 }
 
-func (g conditionGroup) BuildCondition(c *BuildContext) string {
-	if len(g.conditions) == 0 {
-		return ""
+func (g conditionGroup) WriteCondition(w *SQLWriter) (bool, error) {
+	prefix := w.takePrefix()
+	emitted := g.writeGroup(w.buf, w.ctx, prefix)
+	if !emitted {
+		w.prefix = prefixCode(prefix)
+	}
+	return emitted, nil
+}
+
+// Unknown empty children need a temporary group so parentheses are determined
+// after their one rendering. Individual custom predicates stream directly.
+func (g conditionGroup) writeGroup(buf *strings.Builder, c *BuildContext, prefix string) bool {
+	if count, known := g.nativeCount(); known {
+		return g.writeNative(buf, c, prefix, count)
 	}
 	if len(g.conditions) == 1 {
-		if g.conditions[0] == nil {
-			return ""
-		}
-		return g.conditions[0].BuildCondition(c)
+		return writeCondition(buf, c, g.conditions[0], prefix)
 	}
 
-	buf := c.acquireBuffer()
-	defer c.releaseBuffer(buf)
-	if count, known := g.nativeCount(); known {
-		g.writeNative(buf, c, "", count)
-		return buf.String()
+	nested := c.acquireBuffer()
+	defer c.releaseBuffer(nested)
+
+	count := g.writeConditions(nested, c, 0)
+	if count == 0 {
+		return false
 	}
 
-	count := g.writeConditions(buf, c, 0)
+	_, _ = buf.WriteString(prefix)
 	if count > 1 {
-		return "(" + buf.String() + ")"
+		_ = buf.WriteByte('(')
 	}
-	return buf.String()
+
+	_, _ = buf.WriteString(nested.String())
+	if count > 1 {
+		_ = buf.WriteByte(')')
+	}
+
+	return true
 }
 
 // Flatten native AND groups without constructing another slice at render time.

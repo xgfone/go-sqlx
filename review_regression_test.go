@@ -114,10 +114,14 @@ func TestStreamingPaginationPreservesCustomDialect(t *testing.T) {
 
 func TestInsertCapacityEstimationDoesNotEvaluateExpressions(t *testing.T) {
 	calls := 0
-	e := Expression{custom: func(s *strings.Builder, c *BuildContext) {
-		calls++
-		c.writeArg(s, 1)
-	}}
+	e := Expression{
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				calls++
+				c.writeArg(s, 1)
+			},
+		},
+	}
 
 	values := make([]any, 128)
 	for i := range values {

@@ -77,12 +77,14 @@ func (b *SelectBuilder) selectStructType(t reflect.Type, qualifier string) {
 	width := len(prefix) + 1
 	parts := make([]string, len(m.meta.Fields())*width)
 	exprs := make([]Expression, len(m.meta.Fields()))
+	identities := make([]expressionIdent, len(exprs))
 	b.columns = slices.Grow(b.columns, len(m.meta.Fields()))
 	for i, f := range m.meta.Fields() {
 		names := parts[i*width : (i+1)*width : (i+1)*width]
 		copy(names, prefix)
 		names[len(prefix)] = f.Column
-		exprs[i].parts = names
+		identities[i].parts = names
+		exprs[i].node = &identities[i]
 		b.columns = append(b.columns, selectedColumn{
 			Column: exprs[i].String(),
 			Expr:   &exprs[i],

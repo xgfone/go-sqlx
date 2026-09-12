@@ -13,16 +13,26 @@ func writeInt64(buf *strings.Builder, value int64) {
 	_, _ = buf.Write(strconv.AppendInt(digits[:0], value, 10))
 }
 
-// Native predicates and assignments write directly into their parent's SQL
-// buffer. Public Condition/Updater implementations keep their string contract.
-// Writer implementations must produce nonempty SQL or panic.
+// Native nodes guarantee nonempty output without evaluating user callbacks.
+// This private fast path cannot be claimed by third-party implementations.
+type nativeCondition interface {
+	writeCondition(*strings.Builder, *BuildContext)
+	Condition
+}
+
 type conditionWriterFunc func(*strings.Builder, *BuildContext)
 
-func (f conditionWriterFunc) BuildCondition(c *BuildContext) string {
-	buf := c.acquireBuffer()
-	defer c.releaseBuffer(buf)
-	f(buf, c)
-	return buf.String()
+func (f conditionWriterFunc) writeCondition(buf *strings.Builder, c *BuildContext) { f(buf, c) }
+func (f conditionWriterFunc) WriteCondition(w *SQLWriter) (bool, error) {
+	w.start()
+	f(w.buf, w.ctx)
+	return true, nil
+}
+
+func (w *SQLWriter) takePrefix() string {
+	prefix := w.prefix.String()
+	w.prefix = 0
+	return prefix
 }
 
 func writeCondition(buf *strings.Builder, c *BuildContext, condition Condition, prefix string) bool {
@@ -30,47 +40,34 @@ func writeCondition(buf *strings.Builder, c *BuildContext, condition Condition, 
 		return false
 	}
 	if group, ok := condition.(conditionGroup); ok {
-		if count, known := group.nativeCount(); known {
-			return group.writeNative(buf, c, prefix, count)
-		}
+		return group.writeGroup(buf, c, prefix)
 	}
-
-	if write, ok := condition.(conditionWriterFunc); ok {
+	if native, ok := condition.(nativeCondition); ok {
 		_, _ = buf.WriteString(prefix)
-		write(buf, c)
+		native.writeCondition(buf, c)
 		return true
 	}
 
-	s := condition.BuildCondition(c)
-	if s == "" {
-		return false
-	}
+	// Reentrant calls restore the enclosing writer. No writer or user reference
+	// survives the callback, including when it panics.
+	saved := c.writer
+	c.writer = SQLWriter{buf: buf, ctx: c, prefix: prefixCode(prefix)}
+	defer func() { c.writer = saved }()
 
-	_, _ = buf.WriteString(prefix)
-	_, _ = buf.WriteString(s)
-	return true
+	beforeSQL, beforeArgs := buf.Len(), len(c.args)
+	emitted, err := condition.WriteCondition(&c.writer)
+	verifyEmission("Condition", emitted, err, beforeSQL, beforeArgs, &c.writer)
+	return emitted
 }
 
 func writeRequiredConditions(buf *strings.Builder, c *BuildContext, name string, conditions []Condition) {
 	if len(conditions) == 1 {
-		if !writeCondition(buf, c, conditions[0], "") {
-			panic(name + " contains no effective conditions")
-		}
-		return
-	}
-
-	// Keep this temporary group concrete. Boxing it as Condition would force
-	// even the single-element CASE/FILTER slices above to escape to the heap.
-	group := conditionGroup{conditions, " AND "}
-	if count, known := group.nativeCount(); known {
-		if group.writeNative(buf, c, "", count) {
+		if writeCondition(buf, c, conditions[0], "") {
 			return
 		}
-	} else if sql := group.BuildCondition(c); sql != "" {
-		_, _ = buf.WriteString(sql)
+	} else if (conditionGroup{conditions, " AND "}).writeGroup(buf, c, "") {
 		return
 	}
-
 	panic(name + " contains no effective conditions")
 }
 
@@ -94,38 +91,44 @@ func (g conditionGroup) writeNative(buf *strings.Builder, c *BuildContext, prefi
 
 type updaterWriterFunc func(*strings.Builder, *BuildContext)
 
-func (f updaterWriterFunc) BuildUpdate(c *BuildContext) string {
-	buf := c.acquireBuffer()
-	defer c.releaseBuffer(buf)
-	f(buf, c)
-	return buf.String()
+func (f updaterWriterFunc) WriteUpdate(w *SQLWriter) (bool, error) {
+	w.start()
+	f(w.buf, w.ctx)
+	return true, nil
+}
+
+func writeUpdater(buf *strings.Builder, c *BuildContext, updater Updater, prefix string) bool {
+	if updater == nil {
+		return false
+	}
+
+	if native, ok := updater.(updaterWriterFunc); ok {
+		_, _ = buf.WriteString(prefix)
+		native(buf, c)
+		return true
+	}
+
+	saved := c.writer
+	c.writer = SQLWriter{buf: buf, ctx: c, prefix: prefixCode(prefix)}
+	defer func() { c.writer = saved }()
+
+	beforeSQL, beforeArgs := buf.Len(), len(c.args)
+	emitted, err := updater.WriteUpdate(&c.writer)
+	verifyEmission("Updater", emitted, err, beforeSQL, beforeArgs, &c.writer)
+	return emitted
 }
 
 func writeUpdaters(buf *strings.Builder, c *BuildContext, updaters []Updater) {
 	wrote := false
 	for _, updater := range updaters {
-		if updater == nil {
-			continue
+		prefix := ""
+		if wrote {
+			prefix = ", "
 		}
-
-		if write, ok := updater.(updaterWriterFunc); ok {
-			if wrote {
-				_, _ = buf.WriteString(", ")
-			}
-			write(buf, c)
-		} else {
-			s := updater.BuildUpdate(c)
-			if s == "" {
-				continue
-			}
-			if wrote {
-				_, _ = buf.WriteString(", ")
-			}
-			_, _ = buf.WriteString(s)
+		if writeUpdater(buf, c, updater, prefix) {
+			wrote = true
 		}
-		wrote = true
 	}
-
 	if !wrote {
 		panic("sqlx: update setters are empty")
 	}

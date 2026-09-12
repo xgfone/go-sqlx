@@ -22,11 +22,18 @@ func benchmarkExpressionHelper(b *testing.B, d Dialect, render func(*BuildContex
 	}
 }
 
+func conditionRenderer(condition Condition) func(*BuildContext) string {
+	return func(c *BuildContext) string { return BuildCondition(c, condition) }
+}
+func updaterRenderer(updater Updater) func(*BuildContext) string {
+	return func(c *BuildContext) string { return BuildUpdate(c, updater) }
+}
+
 func BenchmarkExpressionHelpers(b *testing.B) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.SQLite} {
 		b.Run(d.Name(), func(b *testing.B) {
 			b.Run("Between", func(b *testing.B) {
-				benchmarkExpressionHelper(b, d, Between("score", 10, 100).BuildCondition)
+				benchmarkExpressionHelper(b, d, conditionRenderer(Between("score", 10, 100)))
 			})
 
 			for _, n := range []int{2, 16, 128} {
@@ -44,10 +51,10 @@ func BenchmarkExpressionHelpers(b *testing.B) {
 					name   string
 					render func(*BuildContext) string
 				}{
-					{"In", In("id", values...).BuildCondition},
+					{"In", conditionRenderer(In("id", values...))},
 					{"Case", searched.Else(-1).End().render},
 					{"CaseValue", simple.Else(-1).End().render},
-					{"SetRow", SetRow(columns, values...).BuildUpdate},
+					{"SetRow", updaterRenderer(SetRow(columns, values...))},
 				} {
 					b.Run(helper.name+"/"+strconv.Itoa(n), func(b *testing.B) {
 						benchmarkExpressionHelper(b, d, helper.render)

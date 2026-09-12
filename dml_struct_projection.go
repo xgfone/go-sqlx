@@ -58,10 +58,8 @@ func projectionFor(t reflect.Type) (*modelProjection, error) {
 func structProjection(fields []rowbind.Field) []selectedColumn {
 	columns := make([]selectedColumn, len(fields))
 	exprs := make([]Expression, len(fields))
-	parts := make([]string, len(fields))
 	for i, f := range fields {
-		parts[i] = f.Column
-		exprs[i].parts = parts[i : i+1 : i+1]
+		exprs[i] = Ident(f.Column)
 		columns[i] = selectedColumn{Column: f.Column, Expr: &exprs[i]}
 	}
 	return columns

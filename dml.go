@@ -116,13 +116,5 @@ func On(left, right string) Condition {
 // OnArg compares an identifier path to a value or expression. A nil value,
 // including a typed nil pointer, uses IS NULL.
 func OnArg(left string, right any) Condition {
-	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		writeQuotedPath(s, c.Dialect(), left)
-		if isNil(right) {
-			_, _ = s.WriteString(" IS NULL")
-			return
-		}
-		_ = s.WriteByte('=')
-		writeValue(s, c, right)
-	})
+	return pathComparison{left: left, right: right, op: compareEqual}
 }

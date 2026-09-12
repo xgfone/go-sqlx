@@ -68,7 +68,7 @@ func TestStreamingNamedArgumentReuse(t *testing.T) {
 
 func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 	custom := ConditionFunc(func(c *BuildContext) string {
-		return Eq("a", 1).BuildCondition(c)
+		return BuildCondition(c, Eq("a", 1))
 	})
 
 	q := Select().SelectExpr(Case().When(custom, 2).Else(3).End()).SetDialect(dialect.Postgres)
@@ -78,7 +78,7 @@ func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 	}
 	defer releaseBuildContext(c)
 
-	second := Between("b", 4, 5).BuildCondition(c)
+	second := BuildCondition(c, Between("b", 4, 5))
 	if first != `SELECT CASE WHEN ("a" = $1) THEN $2 ELSE $3 END` || second != `("b" BETWEEN $4 AND $5)` {
 		t.Fatalf("buffer reuse changed SQL: %q, %q", first, second)
 	}
@@ -95,7 +95,7 @@ func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 	if c.bufferInUse || c.buffer.Len() != 0 {
 		t.Fatal("rendering panic retained the borrowed buffer")
 	}
-	if got := Eq("c", 6).BuildCondition(c); got != `("c" = $6)` {
+	if got := BuildCondition(c, Eq("c", 6)); got != `("c" = $6)` {
 		t.Fatalf("rendering after panic: %q", got)
 	}
 	if first != `SELECT CASE WHEN ("a" = $1) THEN $2 ELSE $3 END` {

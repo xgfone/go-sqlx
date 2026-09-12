@@ -247,9 +247,9 @@ func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColu
 	requireFeature(ctx, dialect.Returning, "RETURNING")
 	for _, col := range cols {
 		if e := col.Expr; e != nil &&
-			(e.function != "" ||
-				e.kind == aggregateExpression ||
-				e.kind == windowExpression) {
+			(e.function() != "" ||
+				e.kind() == aggregateExpression ||
+				e.kind() == windowExpression) {
 			panic("RETURNING cannot contain a top-level aggregate or window function")
 		}
 	}

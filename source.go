@@ -23,10 +23,10 @@ func TableSource(table, alias string) Source {
 // column alias list replaces its output names where supported.
 func QuerySource(q *SelectBuilder, alias string, columns ...string) Source {
 	if q == nil {
-		return ExpressionSource(Expression{
-			custom: func(*strings.Builder, *BuildContext) { panic("nil source query") },
-		}, alias)
+		write := func(*strings.Builder, *BuildContext) { panic("nil source query") }
+		return ExpressionSource(Expression{node: &expressionWriter{write: write}}, alias)
 	}
+
 	return Source{table: sqlTable{
 		Query:   q.Clone(),
 		Alias:   alias,

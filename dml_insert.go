@@ -236,7 +236,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		panic("cannot combine insert mode with conflict policy")
 	}
 
-	s.Grow(b.renderSizeHint())
+	reserveSQL(s, s.Len()+b.renderSizeHint())
 	oldAlias, oldConflict := c.insertedAlias, c.conflictScope
 	c.insertedAlias = b.rowsAlias
 	c.conflictScope = false
@@ -340,8 +340,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 				}
 
 				if e, ok := v.(Expression); ok &&
-					(e.kind == defaultExpression || e.sql == "DEFAULT" &&
-						e.custom == nil && e.function == "" && len(e.args) == 0) {
+					(e.kind() == defaultExpression || e.node == nil && e.sql == "DEFAULT") {
 					requireFeature(c, dialect.DefaultInValues, "DEFAULT in VALUES")
 					_, _ = s.WriteString("DEFAULT")
 					continue

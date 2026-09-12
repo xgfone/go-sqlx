@@ -234,25 +234,23 @@ func (w WindowSpec) writeTo(s *strings.Builder, c *BuildContext) {
 // Over applies a window to an aggregate or function expression.
 func (e Expression) Over(w WindowSpec) Expression {
 	return Expression{
-		kind:     windowExpression,
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if e.distinct {
-				requireFeature(c, dialect.WindowDistinct, "DISTINCT window aggregate")
-			}
-			if e.kind == windowExpression {
-				panic("expression already has OVER")
-			}
+		node: &expressionWriter{
+			sizeHint: e.renderSizeHint() + 8 + w.renderSizeHint(),
 
-			base := e
-			if base.kind == windowFunctionExpression {
-				base.kind = plainExpression
-			}
+			kind: windowExpression,
+			write: func(s *strings.Builder, c *BuildContext) {
+				if e.isDistinct() {
+					requireFeature(c, dialect.WindowDistinct, "DISTINCT window aggregate")
+				}
+				if e.kind() == windowExpression {
+					panic("expression already has OVER")
+				}
 
-			base.writeTo(s, c)
-			_, _ = s.WriteString(" OVER (")
-			w.writeTo(s, c)
-			_ = s.WriteByte(')')
+				e.writeBody(s, c)
+				_, _ = s.WriteString(" OVER (")
+				w.writeTo(s, c)
+				_ = s.WriteByte(')')
+			},
 		},
 	}
 }
@@ -260,28 +258,26 @@ func (e Expression) Over(w WindowSpec) Expression {
 // OverName applies a named window defined in the SELECT's WINDOW clause.
 func (e Expression) OverName(name string) Expression {
 	return Expression{
-		kind:     windowExpression,
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			requireFeature(c, dialect.WindowFunctions, "window functions")
-			if _, ok := c.windows[name]; !ok {
-				panic("unknown window name")
-			}
-			if e.distinct {
-				requireFeature(c, dialect.WindowDistinct, "DISTINCT window aggregate")
-			}
-			if e.kind == windowExpression {
-				panic("expression already has OVER")
-			}
+		node: &expressionWriter{
+			sizeHint: e.renderSizeHint() + 8 + len(name),
 
-			base := e
-			if base.kind == windowFunctionExpression {
-				base.kind = plainExpression
-			}
+			kind: windowExpression,
+			write: func(s *strings.Builder, c *BuildContext) {
+				requireFeature(c, dialect.WindowFunctions, "window functions")
+				if _, ok := c.windows[name]; !ok {
+					panic("unknown window name")
+				}
+				if e.isDistinct() {
+					requireFeature(c, dialect.WindowDistinct, "DISTINCT window aggregate")
+				}
+				if e.kind() == windowExpression {
+					panic("expression already has OVER")
+				}
 
-			base.writeTo(s, c)
-			_, _ = s.WriteString(" OVER ")
-			dialect.WriteIdent(s, c.Dialect(), name)
+				e.writeBody(s, c)
+				_, _ = s.WriteString(" OVER ")
+				dialect.WriteIdent(s, c.Dialect(), name)
+			},
 		},
 	}
 }
@@ -289,21 +285,21 @@ func (e Expression) OverName(name string) Expression {
 // RowNumber returns the ROW_NUMBER function; apply Over or OverName before use.
 func RowNumber() Expression {
 	e := Func("ROW_NUMBER")
-	e.kind = windowFunctionExpression
+	e.node.(*expressionFunction).window = true
 	return e
 }
 
 // Rank returns the RANK function; apply Over or OverName before use.
 func Rank() Expression {
 	e := Func("RANK")
-	e.kind = windowFunctionExpression
+	e.node.(*expressionFunction).window = true
 	return e
 }
 
 // DenseRank returns the DENSE_RANK function; apply Over or OverName before use.
 func DenseRank() Expression {
 	e := Func("DENSE_RANK")
-	e.kind = windowFunctionExpression
+	e.node.(*expressionFunction).window = true
 	return e
 }
 
@@ -320,13 +316,14 @@ func Lead(value any, options ...any) Expression {
 func offsetFunction(name string, value any, options []any) Expression {
 	e := Func(name, append([]any{value}, options...)...)
 	return Expression{
-		kind:     windowFunctionExpression,
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if len(options) > 2 {
-				panic(name + " accepts offset and default only")
-			}
-			e.writeTo(s, c)
+		node: &expressionWriter{
+			kind: windowFunctionExpression,
+			write: func(s *strings.Builder, c *BuildContext) {
+				if len(options) > 2 {
+					panic(name + " accepts offset and default only")
+				}
+				e.writeTo(s, c)
+			},
 		},
 	}
 }

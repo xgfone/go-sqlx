@@ -349,7 +349,9 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		panic(b.err)
 	}
 
-	s.Grow(b.renderSizeHint())
+	// A nested statement starts at the current end of the shared buffer.
+	// Its estimate describes this fragment, not the entire enclosing SQL.
+	reserveSQL(s, s.Len()+b.renderSizeHint())
 	writeCTEs(s, c, b.ctes)
 	b.prepareWindows(c)
 
@@ -416,9 +418,9 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		}
 
 		for _, col := range b.columns {
-			if col.Expr != nil && (col.Expr.function != "" ||
-				col.Expr.kind == aggregateExpression ||
-				col.Expr.kind == windowExpression) {
+			if col.Expr != nil && (col.Expr.function() != "" ||
+				col.Expr.kind() == aggregateExpression ||
+				col.Expr.kind() == windowExpression) {
 				panic("row locking aggregate queries is unsupported")
 			}
 		}
@@ -458,9 +460,19 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 // Estimate from immutable query descriptions only; never evaluate custom
 // expressions or conditions twice just to determine a buffer size.
 func (b *SelectBuilder) renderSizeHint() int {
-	n := 32 + 24*(len(b.wheres)+len(b.havings))
+	n := 32
+	for _, condition := range b.wheres {
+		n += conditionSizeHint(condition)
+	}
+	for _, condition := range b.havings {
+		n += conditionSizeHint(condition)
+	}
 	for _, col := range b.columns {
-		n += quotedPathSize(col.Column) + 2
+		if col.Expr != nil {
+			n += col.Expr.renderSizeHint() + 2
+		} else {
+			n += quotedPathSize(col.Column) + 2
+		}
 		if col.Alias != "" {
 			n += len(col.Alias) + 6
 		}

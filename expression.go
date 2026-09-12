@@ -13,17 +13,11 @@ import (
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
 // Expr must be trusted; values belong in bound parameters, not SQL strings.
 type Expression struct {
-	identity  *byte // Stable identity for reusing immutable custom expressions.
-	kind      expressionKind
-	rowValues []any
-	filtered  bool
-	distinct  bool
+	// Keep this field first: a trailing zero-sized field adds padding.
+	_ [0]func() // Preserve non-comparability; SQL equivalence is context-dependent.
 
-	sql      string
-	args     []any
-	parts    []string
-	function string
-	custom   func(*strings.Builder, *BuildContext)
+	sql  string
+	node any // nil, an inline expressionKind, or an immutable typed payload.
 }
 
 // Expr represents trusted SQL with optional arguments. With arguments, sql is
@@ -76,179 +70,304 @@ type Expression struct {
 // that failure as an error. Raw SQL must be trusted: supply untrusted values
 // through arguments instead of concatenating them into sql.
 func Expr(sql string, args ...any) Expression {
-	e := Expression{sql: sql, args: append([]any(nil), args...)}
-	if len(args) > 0 {
-		e.identity = new(byte)
+	if len(args) == 0 {
+		return Expression{sql: sql}
 	}
-	return e
+
+	node := &expressionArgs{args: append([]any(nil), args...)}
+	return Expression{sql: sql, node: node}
 }
 
 // Ident represents an identifier with explicit qualification boundaries.
 // Ident("a.b") quotes one name; Ident("a", "b") quotes two components.
 func Ident(parts ...string) Expression {
-	if len(parts) == 0 {
-		return Expression{
-			custom: func(*strings.Builder, *BuildContext) {
-				panic("sqlx.Ident: no identifier")
-			},
-		}
+	switch len(parts) {
+	case 0:
+		write := func(*strings.Builder, *BuildContext) { panic("sqlx.Ident: no identifier") }
+		return Expression{node: &expressionWriter{write: write}}
+
+	case 1:
+		return Expression{sql: parts[0], node: identifierExpression}
+
+	default:
+		node := &expressionIdent{parts: append([]string(nil), parts...)}
+		return Expression{node: node}
 	}
-	return Expression{parts: append([]string(nil), parts...)}
 }
 
 // String returns the expression's unquoted display name.
 func (e Expression) String() string {
 	s := e.sql
-	if e.parts != nil {
-		s = strings.Join(e.parts, ".")
+	if n, ok := e.node.(*expressionIdent); ok {
+		s = strings.Join(n.parts, ".")
 	}
-	if e.distinct {
+	if e.isDistinct() {
 		s = "DISTINCT " + s
 	}
-	if e.function != "" {
-		s = e.function + "(" + s + ")"
+	if f := e.function(); f != "" {
+		s = f + "(" + s + ")"
 	}
 	return s
 }
 
+// The inline tag costs no allocation. Complex descriptions carry only their
+// own data; pointer identity preserves reuse without a separate identity token.
+type expressionArgs struct {
+	kind expressionKind
+	args []any
+}
+type expressionIdent struct{ parts []string }
+type expressionValue struct{ value any }
+type expressionWriter struct {
+	write func(*strings.Builder, *BuildContext)
+	kind  expressionKind
+
+	filtered bool
+	distinct bool
+	sizeHint int
+}
+
+func (e Expression) kind() expressionKind {
+	switch n := e.node.(type) {
+	case expressionKind:
+		return n
+
+	case *expressionArgs:
+		return n.kind
+
+	case *expressionWriter:
+		return n.kind
+
+	case *expressionIdent:
+		return identifierExpression
+
+	case *expressionFunction:
+		if n.window {
+			return windowFunctionExpression
+		}
+		return plainExpression
+
+	default:
+		return plainExpression
+	}
+}
+
+func (e Expression) function() string {
+	n, ok := e.node.(expressionKind)
+	if !ok {
+		return ""
+	}
+
+	switch n {
+	case countExpression, countDistinctExpression:
+		return "COUNT"
+
+	case sumExpression:
+		return "SUM"
+
+	case minExpression:
+		return "MIN"
+
+	case maxExpression:
+		return "MAX"
+
+	case avgExpression:
+		return "AVG"
+	}
+
+	return ""
+}
+
+func (e Expression) isDistinct() bool {
+	if n, ok := e.node.(*expressionWriter); ok {
+		return n.distinct
+	}
+	return e.node == countDistinctExpression
+}
+
+func (e Expression) isFiltered() bool {
+	n, ok := e.node.(*expressionWriter)
+	return ok && n.filtered
+}
+
+func (e Expression) args() []any {
+	n, ok := e.node.(*expressionArgs)
+	if ok {
+		return n.args
+	}
+	return nil
+}
+
+func (e Expression) isCustom() bool {
+	switch e.node.(type) {
+	case *expressionWriter, *expressionValue, *expressionFunction, *CaseBuilder:
+		return true
+	}
+	return e.kind() == tupleExpression
+}
+
+func (e Expression) isIdentifier() bool {
+	return e.kind() == identifierExpression
+}
+
 func (e Expression) build(d Dialect) string {
-	if e.kind == pathExpression {
+	if e.node == nil {
+		return e.sql
+	}
+	if e.node == pathExpression {
 		return quotePath(d, e.sql)
 	}
-
-	if e.function == "" && !e.distinct {
-		if e.parts == nil {
-			return e.sql
-		}
-		if len(e.parts) == 1 {
-			return d.QuoteIdent(e.parts[0])
-		}
+	if e.node == identifierExpression {
+		return d.QuoteIdent(e.sql)
 	}
-
-	// A simple aggregate is already a single concatenation; no builder is needed.
-	if e.parts == nil && !e.distinct && !strings.Contains(e.sql, ".") {
-		return e.function + "(" + quotePath(d, e.sql) + ")"
-	}
-
-	size := quotedPathSize(e.sql)
-	if e.parts != nil {
-		size = len(e.parts) - 1
-		for _, part := range e.parts {
-			size += len(part) + 2
-		}
-	}
-
-	if e.function != "" {
-		size += len(e.function) + 2
-	}
-	if e.distinct {
-		size += len("DISTINCT ")
+	if f := e.function(); f != "" && !e.isDistinct() && !strings.Contains(e.sql, ".") {
+		return f + "(" + quotePath(d, e.sql) + ")"
 	}
 
 	var buf strings.Builder
-	buf.Grow(size)
-	if e.function != "" {
-		_, _ = buf.WriteString(e.function)
+	size := quotedPathSize(e.sql)
+	if n, ok := e.node.(*expressionIdent); ok {
+		size = 0
+		for _, part := range n.parts {
+			size += len(part) + 3
+		}
+	}
+
+	function := e.function()
+	if function != "" {
+		size += len(function) + 2
+	}
+
+	if e.isDistinct() {
+		size += len("DISTINCT ")
+	}
+
+	reserveSQL(&buf, size)
+
+	if function != "" {
+		_, _ = buf.WriteString(function)
 		_ = buf.WriteByte('(')
 	}
-	if e.distinct {
+	if e.isDistinct() {
 		_, _ = buf.WriteString("DISTINCT ")
 	}
 
-	if e.parts != nil {
-		for i, part := range e.parts {
+	if n, ok := e.node.(*expressionIdent); ok {
+		for i, part := range n.parts {
 			if i > 0 {
 				_ = buf.WriteByte('.')
 			}
 			dialect.WriteIdent(&buf, d, part)
 		}
-	} else if e.function != "" {
-		writeQuotedPath(&buf, d, e.sql)
 	} else {
-		_, _ = buf.WriteString(e.sql)
+		writeQuotedPath(&buf, d, e.sql)
 	}
-
-	if e.function != "" {
+	if function != "" {
 		_ = buf.WriteByte(')')
 	}
 
 	return buf.String()
 }
 
-// render uses one context for an entire statement, including nested queries.
-func (e Expression) render(ctx *BuildContext) string {
-	if e.kind == windowFunctionExpression {
-		panic("window function requires OVER")
-	}
-	if e.kind == defaultExpression {
-		panic("DEFAULT is only valid as a direct inserted or assigned value")
-	}
-	if e.custom != nil {
-		buf := ctx.acquireBuffer()
-		defer ctx.releaseBuffer(buf)
-		e.custom(buf, ctx)
-		return buf.String()
+// render and writeTo share dispatch and validation, including nested context.
+func (e Expression) render(c *BuildContext) string {
+	if !e.isCustom() && len(e.args()) == 0 {
+		if e.kind() == defaultExpression {
+			panic("DEFAULT is only valid as a direct inserted or assigned value")
+		}
+		if !e.isIdentifier() && e.function() == "" && strings.TrimSpace(e.sql) == "" {
+			panic("sqlx.Expression: empty SQL expression")
+		}
+		return e.build(c.Dialect())
 	}
 
-	if e.parts == nil && e.function == "" && strings.TrimSpace(e.sql) == "" {
-		panic("sqlx.Expression: empty SQL expression")
-	}
+	buf := c.acquireBuffer()
+	defer c.releaseBuffer(buf)
 
-	if len(e.args) > 0 {
-		return bindExpression(ctx, e.sql, e.args)
-	}
-	return e.build(ctx.Dialect())
+	reserveSQL(buf, e.renderSizeHint())
+	e.writeTo(buf, c)
+	return buf.String()
 }
 
-func (e Expression) writeTo(buf *strings.Builder, ctx *BuildContext) {
-	if e.kind == pathExpression {
-		writeQuotedPath(buf, ctx.Dialect(), e.sql)
-		return
-	}
-
-	if e.kind == windowFunctionExpression {
+func (e Expression) writeTo(buf *strings.Builder, c *BuildContext) {
+	if e.kind() == windowFunctionExpression {
 		panic("window function requires OVER")
 	}
-	if e.kind == defaultExpression {
-		panic("DEFAULT is only valid as a direct inserted or assigned value")
+	e.writeBody(buf, c)
+}
+
+// OVER alone may render a bare window function. All other validation remains.
+func (e Expression) writeBody(buf *strings.Builder, c *BuildContext) {
+	switch n := e.node.(type) {
+	case *expressionFunction:
+		n.writeTo(buf, c)
+		return
+
+	case *CaseBuilder:
+		n.writeTo(buf, c)
+		return
+
+	case *expressionWriter:
+		n.write(buf, c)
+		return
+
+	case *expressionValue:
+		c.writeArg(buf, n.value)
+		return
+
+	case *expressionIdent:
+		for i, part := range n.parts {
+			if i > 0 {
+				_ = buf.WriteByte('.')
+			}
+			dialect.WriteIdent(buf, c.Dialect(), part)
+		}
+		return
+
+	case *expressionArgs:
+		if n.kind == tupleExpression {
+			if len(n.args) < 2 {
+				panic("tuple requires at least two values")
+			}
+			_ = buf.WriteByte('(')
+			writeArguments(buf, c, n.args)
+			_ = buf.WriteByte(')')
+		} else {
+			writeBoundExpression(buf, c, e.sql, n.args)
+		}
+		return
+
+	case expressionKind:
+		switch n {
+		case defaultExpression:
+			panic("DEFAULT is only valid as a direct inserted or assigned value")
+
+		case identifierExpression:
+			dialect.WriteIdent(buf, c.Dialect(), e.sql)
+			return
+
+		case pathExpression:
+			writeQuotedPath(buf, c.Dialect(), e.sql)
+			return
+		}
+
+		if f := e.function(); f != "" {
+			_, _ = buf.WriteString(f)
+			_ = buf.WriteByte('(')
+			if e.isDistinct() {
+				_, _ = buf.WriteString("DISTINCT ")
+			}
+			writeQuotedPath(buf, c.Dialect(), e.sql)
+			_ = buf.WriteByte(')')
+			return
+		}
 	}
 
-	if e.custom != nil {
-		e.custom(buf, ctx)
-		return
-	}
-	if len(e.args) > 0 {
-		writeBoundExpression(buf, ctx, e.sql, e.args)
-		return
-	}
-
-	if e.parts == nil && e.function == "" && strings.TrimSpace(e.sql) == "" {
+	if strings.TrimSpace(e.sql) == "" {
 		panic("sqlx.Expression: empty SQL expression")
 	}
 
-	if e.function != "" {
-		_, _ = buf.WriteString(e.function)
-		_ = buf.WriteByte('(')
-	}
-	if e.distinct {
-		_, _ = buf.WriteString("DISTINCT ")
-	}
-	if e.parts != nil {
-		for i, part := range e.parts {
-			if i != 0 {
-				_ = buf.WriteByte('.')
-			}
-			dialect.WriteIdent(buf, ctx.Dialect(), part)
-		}
-	} else if e.function != "" {
-		writeQuotedPath(buf, ctx.Dialect(), e.sql)
-	} else {
-		_, _ = buf.WriteString(e.sql)
-	}
-
-	if e.function != "" {
-		_ = buf.WriteByte(')')
-	}
+	_, _ = buf.WriteString(e.sql)
 }
 
 // Condition adapts an expression to a grouped WHERE, HAVING or JOIN predicate.
@@ -267,14 +386,16 @@ func Subquery(q *SelectBuilder) Expression {
 	}
 
 	return Expression{
-		identity: new(byte),
-		custom: func(buf *strings.Builder, c *BuildContext) {
-			if q == nil {
-				panic("nil subquery")
-			}
-			_ = buf.WriteByte('(')
-			q.writeTo(buf, c)
-			_ = buf.WriteByte(')')
+		node: &expressionWriter{
+			write: func(buf *strings.Builder, c *BuildContext) {
+				if q == nil {
+					panic("nil subquery")
+				}
+
+				_ = buf.WriteByte('(')
+				q.writeTo(buf, c)
+				_ = buf.WriteByte(')')
+			},
 		},
 	}
 }
@@ -291,31 +412,25 @@ func NotExists(q *SelectBuilder) Condition {
 
 // Default represents SQL DEFAULT, not a parameter value.
 func Default() Expression {
-	return Expression{sql: "DEFAULT", kind: defaultExpression}
+	return Expression{sql: "DEFAULT", node: defaultExpression}
 }
 
 // Value explicitly binds a value, including nil as SQL NULL.
 func Value(v any) Expression {
-	return Expression{
-		identity: new(byte),
-		custom: func(buf *strings.Builder, c *BuildContext) {
-			c.writeArg(buf, v)
-		},
-	}
+	return Expression{node: &expressionValue{value: v}}
 }
 
 func Count(field string) Expression {
-	return Expression{sql: field, function: "COUNT"}
+	return Expression{sql: field, node: countExpression}
 }
-
 func CountDistinct(field string) Expression {
-	return Expression{sql: field, function: "COUNT", distinct: true}
+	return Expression{sql: field, node: countDistinctExpression}
 }
 
-func Sum(field string) Expression { return Expression{sql: field, function: "SUM"} }
-func Min(field string) Expression { return Expression{sql: field, function: "MIN"} }
-func Max(field string) Expression { return Expression{sql: field, function: "MAX"} }
-func Avg(field string) Expression { return Expression{sql: field, function: "AVG"} }
+func Sum(field string) Expression { return Expression{sql: field, node: sumExpression} }
+func Min(field string) Expression { return Expression{sql: field, node: minExpression} }
+func Max(field string) Expression { return Expression{sql: field, node: maxExpression} }
+func Avg(field string) Expression { return Expression{sql: field, node: avgExpression} }
 
 func renderValue(c *BuildContext, v any) string {
 	if e, ok := v.(Expression); ok {
@@ -332,17 +447,8 @@ func writeValue(buf *strings.Builder, c *BuildContext, v any) {
 	}
 }
 
-// bindExpression recognizes quoted literals/identifiers, comments and PostgreSQL
+// writeBoundExpression recognizes quoted literals/identifiers, comments and PostgreSQL
 // dollar quotes. ?? escapes a literal question mark (e.g. a PostgreSQL JSON operator).
-func bindExpression(c *BuildContext, s string, args []any) string {
-	out := c.acquireBuffer()
-	defer c.releaseBuffer(out)
-
-	out.Grow(len(s))
-	writeBoundExpression(out, c, s, args)
-	return out.String()
-}
-
 func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args []any) {
 	rules := c.Dialect().LexicalRules()
 

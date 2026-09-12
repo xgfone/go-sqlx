@@ -108,15 +108,17 @@ func (b *InsertBuilder) ClearRowsAlias() *InsertBuilder {
 // Excluded references PostgreSQL/SQLite's proposed value in a conflict update.
 func Excluded(column string) Expression {
 	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			requireFeature(c, dialect.OnConflict, "EXCLUDED")
-			if !c.conflictScope {
-				panic("EXCLUDED requires a conflict update")
-			}
-			dialect.WriteIdent(s, c.Dialect(), "excluded")
-			_ = s.WriteByte('.')
-			dialect.WriteIdent(s, c.Dialect(), column)
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				requireFeature(c, dialect.OnConflict, "EXCLUDED")
+				if !c.conflictScope {
+					panic("EXCLUDED requires a conflict update")
+				}
+
+				dialect.WriteIdent(s, c.Dialect(), "excluded")
+				_ = s.WriteByte('.')
+				dialect.WriteIdent(s, c.Dialect(), column)
+			},
 		},
 	}
 }
@@ -125,15 +127,17 @@ func Excluded(column string) Expression {
 // Configure RowsAlias and a MySQL version of at least 8.0.19 first.
 func Inserted(column string) Expression {
 	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			requireFeature(c, dialect.InsertRowAlias, "inserted-row references")
-			if !c.conflictScope || c.insertedAlias == "" {
-				panic("Inserted requires RowsAlias and ON DUPLICATE KEY UPDATE")
-			}
-			dialect.WriteIdent(s, c.Dialect(), c.insertedAlias)
-			_ = s.WriteByte('.')
-			dialect.WriteIdent(s, c.Dialect(), column)
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				requireFeature(c, dialect.InsertRowAlias, "inserted-row references")
+				if !c.conflictScope || c.insertedAlias == "" {
+					panic("Inserted requires RowsAlias and ON DUPLICATE KEY UPDATE")
+				}
+
+				dialect.WriteIdent(s, c.Dialect(), c.insertedAlias)
+				_ = s.WriteByte('.')
+				dialect.WriteIdent(s, c.Dialect(), column)
+			},
 		},
 	}
 }
@@ -174,7 +178,8 @@ func (t ConflictTarget) writeTo(s *strings.Builder, c *BuildContext) {
 			if i > 0 || len(t.columns) > 0 {
 				_, _ = s.WriteString(", ")
 			}
-			if e.parts != nil {
+
+			if e.isIdentifier() {
 				e.writeTo(s, c)
 			} else {
 				_ = s.WriteByte('(')

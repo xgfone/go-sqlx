@@ -124,7 +124,7 @@ func (b *UpdateBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		panic("UPDATE JOIN requires FROM")
 	}
 
-	s.Grow(128)
+	reserveSQL(s, s.Len()+128)
 	writeCTEs(s, c, b.ctes)
 
 	_, _ = s.WriteString("UPDATE ")

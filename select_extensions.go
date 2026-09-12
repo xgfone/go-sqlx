@@ -18,9 +18,7 @@ import (
 // order within the key prefix may differ. Combine neither with Distinct nor locks.
 func (b *SelectBuilder) DistinctOn(columns ...string) *SelectBuilder {
 	for _, col := range columns {
-		b.distinctOn = append(b.distinctOn, Expression{
-			parts: strings.Split(col, "."),
-		})
+		b.distinctOn = append(b.distinctOn, Ident(strings.Split(col, ".")...))
 	}
 	return b
 }
@@ -202,11 +200,34 @@ func (b *SelectBuilder) renderSetOperations(s *strings.Builder, c *BuildContext)
 }
 
 func equivalentExpression(a, b Expression) bool {
-	if a.identity != nil && a.identity == b.identity {
+	if a.sql == b.sql && a.node == b.node {
 		return true
 	}
-	if a.custom != nil || b.custom != nil {
-		return a.identity != nil && a.identity == b.identity
+	if a.isCustom() || b.isCustom() {
+		return false
+	}
+	if a.sql != b.sql || a.kind() != b.kind() {
+		return false
+	}
+
+	// Do not let reflection compare nested custom payloads by their fields:
+	// independently constructed nodes must retain their distinct identities.
+	left, right := a.args(), b.args()
+	if len(left) != len(right) {
+		return false
+	}
+	if len(left) > 0 {
+		for i, value := range left {
+			if e, ok := value.(Expression); ok {
+				other, ok := right[i].(Expression)
+				if !ok || !equivalentExpression(e, other) {
+					return false
+				}
+			} else if !reflect.DeepEqual(value, right[i]) {
+				return false
+			}
+		}
+		return true
 	}
 	return reflect.DeepEqual(a, b)
 }
@@ -218,22 +239,22 @@ func (b *SelectBuilder) outputExpression(e Expression) Expression {
 		if col.Expr != nil {
 			return *col.Expr
 		}
-		return Expression{parts: strings.Split(col.Column, ".")}
+		return Ident(strings.Split(col.Column, ".")...)
 	}
 
-	if e.custom == nil && e.function == "" && len(e.args) == 0 {
-		if e.parts == nil {
+	if !e.isCustom() && e.function() == "" && len(e.args()) == 0 {
+		if !e.isIdentifier() {
 			n, err := strconv.Atoi(strings.TrimSpace(e.sql))
 			if err == nil && n > 0 && n <= len(b.columns) {
 				return column(b.columns[n-1])
 			}
-		} else if len(e.parts) == 1 {
+		} else if e.node == identifierExpression {
 			for _, col := range b.columns {
 				name := col.Alias
 				if name == "" && col.Expr == nil {
 					name = extractName(col.Column)
 				}
-				if name == e.parts[0] {
+				if name == e.sql {
 					return column(col)
 				}
 			}
@@ -258,7 +279,7 @@ func (b *SelectBuilder) validateDistinctOn() {
 		if term.Expr != nil {
 			e = *term.Expr
 		} else {
-			e.parts = strings.Split(term.Column, ".")
+			e = Ident(strings.Split(term.Column, ".")...)
 		}
 
 		found := false
@@ -303,7 +324,7 @@ func (b *SelectBuilder) renderDistinctOn(c *BuildContext) (string, []SortColumn)
 		if o.Expr != nil {
 			e = *o.Expr
 		} else {
-			e.parts = strings.Split(o.Column, ".")
+			e = Ident(strings.Split(o.Column, ".")...)
 		}
 
 		for j, key := range b.distinctOn {

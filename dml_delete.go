@@ -86,7 +86,7 @@ func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		panic("DELETE requires target")
 	}
 
-	s.Grow(128)
+	reserveSQL(s, s.Len()+128)
 	writeCTEs(s, c, b.ctes)
 
 	_, _ = s.WriteString("DELETE ")

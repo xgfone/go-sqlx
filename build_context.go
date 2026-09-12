@@ -29,6 +29,7 @@ var buildContextPool = sync.Pool{New: func() any {
 // copy or retain them or use them concurrently. Pool ownership is internal to sqlx.
 type BuildContext struct {
 	dialect Dialect
+	writer  SQLWriter
 	named   map[string]int
 	args    []any
 
@@ -70,6 +71,7 @@ func releaseBuildContext(a *BuildContext) {
 		a.args = a.args[:0]
 	}
 
+	a.writer = SQLWriter{}
 	a.buffer.Reset()
 	a.bufferInUse = false
 	a.statementDepth = 0
@@ -178,12 +180,12 @@ func (a *BuildContext) namedArg(d Dialect, arg any) (value any, placeholder stri
 		}
 
 	case Expression:
-		if na.kind == parameterExpression {
-			return a.namedArg(d, na.args[0])
+		if na.kind() == parameterExpression {
+			return a.namedArg(d, na.args()[0])
 		}
 
 	case sql.NamedArg:
-		if e, ok := na.Value.(Expression); ok && e.kind == parameterExpression {
+		if e, ok := na.Value.(Expression); ok && e.kind() == parameterExpression {
 			panic("sqlx.Param inside sql.Named is not supported; use a positional Param")
 		}
 		if _, ok := na.Value.(templateParam); ok {

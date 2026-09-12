@@ -23,7 +23,7 @@ import (
 // fixed when compiled. sql.Named cannot contain a Param.
 func Param(index int) Expression {
 	e := Expr("?", templateParam(index))
-	e.kind = parameterExpression
+	e.node.(*expressionArgs).kind = parameterExpression
 	return e
 }
 

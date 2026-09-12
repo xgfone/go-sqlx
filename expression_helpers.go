@@ -23,6 +23,13 @@ const (
 	windowFunctionExpression
 	aggregateExpression
 	parameterExpression
+	identifierExpression
+	countDistinctExpression
+	countExpression
+	sumExpression
+	minExpression
+	maxExpression
+	avgExpression
 )
 
 func sqlWordByte(b byte) bool {
@@ -33,7 +40,7 @@ func sqlWordByte(b byte) bool {
 }
 
 func writeAssignment(buf *strings.Builder, c *BuildContext, value any) {
-	if e, ok := value.(Expression); ok && e.kind == defaultExpression {
+	if e, ok := value.(Expression); ok && e.kind() == defaultExpression {
 		requireFeature(c, dialect.DefaultInSet, "DEFAULT in SET")
 		_, _ = buf.WriteString("DEFAULT")
 		return
@@ -54,61 +61,149 @@ func operand[T Operand](v T) Expression {
 		return value
 
 	case string:
-		return Expression{kind: pathExpression, sql: value}
+		return Expression{node: pathExpression, sql: value}
 
 	default:
 		// The constraint guarantees that every remaining type is a defined string.
-		return Expression{kind: pathExpression, sql: reflect.ValueOf(v).String()}
+		return Expression{node: pathExpression, sql: reflect.ValueOf(v).String()}
 	}
 }
 
-func compare[T Operand](left T, right any, op string) Condition {
-	l := operand(left)
-	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
-		if l.kind == tupleExpression {
-			if r, ok := right.(Expression); ok && r.kind == tupleExpression && len(l.rowValues) != len(r.rowValues) {
-				panic("row comparison requires equal widths")
-			}
-		}
+type comparisonOp uint8
 
-		buf.Grow(32)
+const (
+	compareEqual comparisonOp = iota
+	compareNotEqual
+	compareGreater
+	compareGreaterEqual
+	compareLess
+	compareLessEqual
+)
+
+func (op comparisonOp) String() string {
+	return [...]string{"=", "<>", ">", ">=", "<", "<="}[op]
+}
+
+type pathComparison struct {
+	left  string
+	right any
+
+	op      comparisonOp
+	grouped bool
+}
+
+func (n pathComparison) WriteCondition(w *SQLWriter) (bool, error) {
+	w.start()
+	n.writeCondition(w.buf, w.ctx)
+	return true, nil
+}
+
+func (n pathComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
+	if n.grouped {
 		_ = buf.WriteByte('(')
-		l.writeTo(buf, c)
-		if isNil(right) && (op == "=" || op == "<>") {
-			if op == "=" {
-				_, _ = buf.WriteString(" IS NULL)")
-			} else {
-				_, _ = buf.WriteString(" IS NOT NULL)")
-			}
-			return
+	}
+	writeQuotedPath(buf, c.Dialect(), n.left)
+	writeComparisonRight(buf, c, n.right, n.op, n.grouped)
+}
+
+type expressionComparison struct {
+	left  Expression
+	right any
+	op    comparisonOp
+}
+
+func (n expressionComparison) WriteCondition(w *SQLWriter) (bool, error) {
+	w.start()
+	n.writeCondition(w.buf, w.ctx)
+	return true, nil
+}
+
+func (n expressionComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
+	if n.left.kind() == tupleExpression {
+		r, ok := n.right.(Expression)
+		if ok && r.kind() == tupleExpression && len(n.left.args()) != len(r.args()) {
+			panic("row comparison requires equal widths")
+		}
+	}
+
+	_ = buf.WriteByte('(')
+	n.left.writeTo(buf, c)
+	writeComparisonRight(buf, c, n.right, n.op, true)
+}
+
+func writeComparisonRight(buf *strings.Builder, c *BuildContext, right any, op comparisonOp, grouped bool) {
+	if (op == compareEqual || op == compareNotEqual) && isNil(right) {
+		if op == compareEqual {
+			_, _ = buf.WriteString(" IS NULL")
+		} else {
+			_, _ = buf.WriteString(" IS NOT NULL")
+		}
+	} else {
+		if grouped {
+			_ = buf.WriteByte(' ')
 		}
 
-		_ = buf.WriteByte(' ')
-		_, _ = buf.WriteString(op)
-		_ = buf.WriteByte(' ')
+		_, _ = buf.WriteString(op.String())
+		if grouped {
+			_ = buf.WriteByte(' ')
+		}
+
 		writeValue(buf, c, right)
+	}
+
+	if grouped {
 		_ = buf.WriteByte(')')
-	})
+	}
+}
+
+func compare[T Operand](left T, right any, op comparisonOp) Condition {
+	switch value := any(left).(type) {
+	case Expression:
+		return expressionComparison{
+			left:  value,
+			right: right,
+
+			op: op,
+		}
+
+	case string:
+		return pathComparison{
+			left:  value,
+			right: right,
+
+			op:      op,
+			grouped: true,
+		}
+
+	default:
+		return pathComparison{
+			left:  reflect.ValueOf(left).String(),
+			right: right,
+
+			op:      op,
+			grouped: true,
+		}
+	}
 }
 
 // Eq compares a column path or Expression to a bound value or Expression.
 // A nil right operand means IS NULL. Use Ident on the right to compare columns.
-func Eq[T Operand](left T, right any) Condition { return compare(left, right, "=") }
+func Eq[T Operand](left T, right any) Condition { return compare(left, right, compareEqual) }
 
 // Ne is the unequal comparison; a nil right operand means IS NOT NULL.
-func Ne[T Operand](left T, right any) Condition { return compare(left, right, "<>") }
+func Ne[T Operand](left T, right any) Condition { return compare(left, right, compareNotEqual) }
 
 // Gt compares a column path or Expression to a value using >.
-func Gt[T Operand](left T, right any) Condition { return compare(left, right, ">") }
+func Gt[T Operand](left T, right any) Condition { return compare(left, right, compareGreater) }
 
 // Ge compares a column path or Expression to a value using >=.
-func Ge[T Operand](left T, right any) Condition { return compare(left, right, ">=") }
+func Ge[T Operand](left T, right any) Condition { return compare(left, right, compareGreaterEqual) }
 
 // Lt compares a column path or Expression to a value using <.
-func Lt[T Operand](left T, right any) Condition { return compare(left, right, "<") }
+func Lt[T Operand](left T, right any) Condition { return compare(left, right, compareLess) }
 
 // Le compares a column path or Expression to a value using <=.
-func Le[T Operand](left T, right any) Condition { return compare(left, right, "<=") }
+func Le[T Operand](left T, right any) Condition { return compare(left, right, compareLessEqual) }
 
 // IsNull tests a column path or Expression for NULL.
 func IsNull[T Operand](left T) Condition { return Eq(left, nil) }
@@ -129,7 +224,7 @@ func Not(condition Condition) Condition {
 func Between[T Operand](left T, low, high any) Condition {
 	l := operand(left)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		s.Grow(32)
+		reserveSQL(s, 32)
 		_ = s.WriteByte('(')
 		l.writeTo(s, c)
 		_, _ = s.WriteString(" BETWEEN ")
@@ -164,7 +259,7 @@ func like[T Operand](left T, pattern any, op string, escape []string) Condition 
 			panic("LIKE requires one escape character")
 		}
 
-		s.Grow(32)
+		reserveSQL(s, 32)
 		_ = s.WriteByte('(')
 		l.writeTo(s, c)
 		_ = s.WriteByte(' ')
@@ -190,65 +285,73 @@ func NotIn[T Operand](left T, values ...any) Condition {
 	return inList(left, true, values)
 }
 
-func inList[T Operand](left T, not bool, values []any) Condition {
-	l := operand(left)
-	values = slices.Clone(values)
-	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		if len(values) == 0 {
-			if not {
-				_, _ = s.WriteString("(1=1)")
-				return
-			}
+type inCondition struct {
+	values []any
+	left   Expression
+	not    bool
+}
+
+func (n inCondition) WriteCondition(w *SQLWriter) (bool, error) {
+	w.start()
+	n.writeCondition(w.buf, w.ctx)
+	return true, nil
+}
+
+func (n inCondition) writeCondition(s *strings.Builder, c *BuildContext) {
+	reserveSQL(s, 32+4*len(n.values))
+	if len(n.values) == 0 {
+		if n.not {
+			_, _ = s.WriteString("(1=1)")
+		} else {
 			_, _ = s.WriteString("(1=0)")
-			return
 		}
+		return
+	}
 
-		// Estimate short placeholders; expressions and tuples may grow the buffer.
-		s.Grow(32 + 4*len(values))
-		_ = s.WriteByte('(')
-		l.writeTo(s, c)
-		if not {
-			_, _ = s.WriteString(" NOT")
-		}
+	_ = s.WriteByte('(')
+	n.left.writeTo(s, c)
+	if n.not {
+		_, _ = s.WriteString(" NOT")
+	}
 
-		_, _ = s.WriteString(" IN (")
-		if l.kind == tupleExpression && c.Dialect().Grammar().RowInViaValues {
-			_, _ = s.WriteString("VALUES ")
-		}
+	_, _ = s.WriteString(" IN (")
+	if n.left.kind() == tupleExpression && c.Dialect().Grammar().RowInViaValues {
+		_, _ = s.WriteString("VALUES ")
+	}
 
-		for i, v := range values {
-			if l.kind == tupleExpression {
-				e, ok := v.(Expression)
-				if !ok || e.kind != tupleExpression || len(e.rowValues) != len(l.rowValues) {
-					panic("row IN requires equal-width tuples")
-				}
+	for i, v := range n.values {
+		if n.left.kind() == tupleExpression {
+			e, ok := v.(Expression)
+			if !ok || e.kind() != tupleExpression || len(e.args()) != len(n.left.args()) {
+				panic("row IN requires equal-width tuples")
 			}
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			writeValue(s, c, v)
 		}
 
-		_, _ = s.WriteString("))")
-	})
+		if i > 0 {
+			_, _ = s.WriteString(", ")
+		}
+
+		writeValue(s, c, v)
+	}
+
+	_, _ = s.WriteString("))")
+}
+
+func inList[T Operand](left T, not bool, values []any) Condition {
+	return inCondition{
+		values: slices.Clone(values),
+		left:   operand(left),
+		not:    not,
+	}
 }
 
 // Tuple constructs a row value containing at least two values or Expressions.
 // Use Ident for columns; strings are bound as data.
 func Tuple(values ...any) Expression {
-	values = slices.Clone(values)
 	return Expression{
-		kind:      tupleExpression,
-		identity:  new(byte),
-		rowValues: values,
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if len(values) < 2 {
-				panic("tuple requires at least two values")
-			}
-			_ = s.WriteByte('(')
-			writeArguments(s, c, values)
-			_ = s.WriteByte(')')
-		},
+		node: &expressionArgs{
+			kind: tupleExpression,
+			args: slices.Clone(values)},
 	}
 }
 
@@ -261,39 +364,53 @@ func writeArguments(buf *strings.Builder, c *BuildContext, args []any) {
 	}
 }
 
+type expressionFunction struct {
+	name string
+	args []any
+
+	valid  bool
+	window bool
+}
+
 // Func calls a SQL function. name is a trusted unquoted function path; arguments
 // are values or Expressions. Use Ident for column arguments.
 func Func(name string, args ...any) Expression {
-	args = slices.Clone(args)
 	valid := true
 	for part := range strings.SplitSeq(name, ".") {
 		valid = valid && validParameterName(part)
 	}
 	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if !valid {
-				panic("invalid SQL function name")
-			}
-			s.Grow(len(name) + 2 + 4*len(args))
-			_, _ = s.WriteString(name)
-			_ = s.WriteByte('(')
-			writeArguments(s, c, args)
-			_ = s.WriteByte(')')
+		node: &expressionFunction{
+			name: name,
+			args: slices.Clone(args),
+
+			valid: valid,
 		},
 	}
+}
+func (n *expressionFunction) writeTo(s *strings.Builder, c *BuildContext) {
+	reserveSQL(s, len(n.name)+2+5*len(n.args))
+	if !n.valid {
+		panic("invalid SQL function name")
+	}
+
+	_, _ = s.WriteString(n.name)
+	_ = s.WriteByte('(')
+	writeArguments(s, c, n.args)
+	_ = s.WriteByte(')')
 }
 
 // Coalesce returns the first non-NULL value. At least two operands are required.
 func Coalesce(values ...any) Expression {
 	e := Func("COALESCE", values...)
 	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if len(values) < 2 {
-				panic("COALESCE requires at least two operands")
-			}
-			e.writeTo(s, c)
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				if len(values) < 2 {
+					panic("COALESCE requires at least two operands")
+				}
+				e.writeTo(s, c)
+			},
 		},
 	}
 }
@@ -305,24 +422,28 @@ func NullIf(left, right any) Expression { return Func("NULLIF", left, right) }
 // such as DECIMAL(12,2). Type names are SQL syntax, not bound parameters.
 func Cast(value any, typeSQL string) Expression {
 	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if strings.TrimSpace(typeSQL) == "" {
-				panic("CAST requires a type")
-			}
-			_, _ = s.WriteString("CAST(")
-			writeValue(s, c, value)
-			_, _ = s.WriteString(" AS ")
-			_, _ = s.WriteString(typeSQL)
-			_ = s.WriteByte(')')
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				if strings.TrimSpace(typeSQL) == "" {
+					panic("CAST requires a type")
+				}
+
+				_, _ = s.WriteString("CAST(")
+				writeValue(s, c, value)
+				_, _ = s.WriteString(" AS ")
+				_, _ = s.WriteString(typeSQL)
+				_ = s.WriteByte(')')
+			},
 		},
 	}
 }
 
 type caseArm struct {
-	condition    Condition
-	match, value any
-	simple       bool
+	condition Condition
+
+	match  any
+	value  any
+	simple bool
 }
 
 // CaseBuilder builds a searched CASE, or a simple CASE when created by CaseValue.
@@ -365,45 +486,43 @@ func (b *CaseBuilder) Else(value any) *CaseBuilder {
 func (b *CaseBuilder) End() Expression {
 	v := *b
 	v.arms = slices.Clone(b.arms)
-	return Expression{
-		identity: new(byte),
-		custom: func(s *strings.Builder, c *BuildContext) {
-			if len(v.arms) == 0 {
-				panic("CASE requires WHEN")
-			}
+	return Expression{node: &v}
+}
 
-			// Reserve space for short WHEN/THEN expressions and the optional ELSE.
-			s.Grow(16 + 32*len(v.arms))
-			_, _ = s.WriteString("CASE")
-			if v.simple {
-				_ = s.WriteByte(' ')
-				writeValue(s, c, v.value)
-			}
-
-			for _, a := range v.arms {
-				if a.simple != v.simple {
-					panic("cannot mix searched and simple CASE arms")
-				}
-
-				_, _ = s.WriteString(" WHEN ")
-				if v.simple {
-					writeValue(s, c, a.match)
-				} else {
-					writeRequiredConditions(s, c, "CASE WHEN", []Condition{a.condition})
-				}
-
-				_, _ = s.WriteString(" THEN ")
-				writeValue(s, c, a.value)
-			}
-
-			if v.hasElse {
-				_, _ = s.WriteString(" ELSE ")
-				writeValue(s, c, v.otherwise)
-			}
-
-			_, _ = s.WriteString(" END")
-		},
+func (v *CaseBuilder) writeTo(s *strings.Builder, c *BuildContext) {
+	reserveSQL(s, 16+32*len(v.arms))
+	if len(v.arms) == 0 {
+		panic("CASE requires WHEN")
 	}
+
+	_, _ = s.WriteString("CASE")
+	if v.simple {
+		_ = s.WriteByte(' ')
+		writeValue(s, c, v.value)
+	}
+
+	for _, a := range v.arms {
+		if a.simple != v.simple {
+			panic("cannot mix searched and simple CASE arms")
+		}
+
+		_, _ = s.WriteString(" WHEN ")
+		if v.simple {
+			writeValue(s, c, a.match)
+		} else {
+			writeRequiredConditions(s, c, "CASE WHEN", []Condition{a.condition})
+		}
+
+		_, _ = s.WriteString(" THEN ")
+		writeValue(s, c, a.value)
+	}
+
+	if v.hasElse {
+		_, _ = s.WriteString(" ELSE ")
+		writeValue(s, c, v.otherwise)
+	}
+
+	_, _ = s.WriteString(" END")
 }
 
 // SetRow assigns equal-length column and value lists. Values may be Expressions.
@@ -422,7 +541,7 @@ func SetRow(columns []string, values ...any) Updater {
 			size += len(col)
 		}
 
-		s.Grow(size)
+		reserveSQL(s, size)
 
 		_ = s.WriteByte('(')
 		d := c.Dialect()

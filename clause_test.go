@@ -16,8 +16,11 @@ import (
 // or unexported marker methods are required by any clause interface.
 type tenantCondition int
 
-func (id tenantCondition) BuildCondition(c *sqlx.BuildContext) string {
-	return c.Quote("tenant") + "=" + c.Add(int(id))
+func (id tenantCondition) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
+	w.Path("tenant")
+	w.Raw("=")
+	w.Arg(int(id))
+	return true, nil
 }
 
 type increment struct {
@@ -25,9 +28,13 @@ type increment struct {
 	amount any
 }
 
-func (u increment) BuildUpdate(c *sqlx.BuildContext) string {
-	column := c.Quote(u.column)
-	return column + "=" + column + "+" + c.Value(u.amount)
+func (u increment) WriteUpdate(w *sqlx.SQLWriter) (bool, error) {
+	w.Path(u.column)
+	w.Raw("=")
+	w.Path(u.column)
+	w.Raw("+")
+	w.Value(u.amount)
+	return true, nil
 }
 
 type customOrder struct{ column string }

@@ -4,11 +4,23 @@
 package sqlx
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
+
+func TestExpressionLayout(t *testing.T) {
+	typ := reflect.TypeFor[Expression]()
+	want := reflect.TypeFor[string]().Size() + reflect.TypeFor[any]().Size()
+	if typ.Size() != want {
+		t.Fatalf("Expression size = %d, want %d; check field padding", typ.Size(), want)
+	}
+	if typ.Comparable() {
+		t.Fatal("Expression must remain non-comparable")
+	}
+}
 
 func TestExpressionBuild(t *testing.T) {
 	for _, test := range []struct {
@@ -97,4 +109,35 @@ func BenchmarkExpressionBuild(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestDistinctOnNestedExpressionIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		make func() Expression
+	}{
+		{"value", func() Expression { return Value(1) }},
+		{"function", func() Expression { return Func("COALESCE", Ident("v"), 1) }},
+		{"case", func() Expression { return Case().When(Eq("id", 1), 2).Else(3).End() }},
+		{"tuple", func() Expression { return Tuple(Ident("a"), Ident("b")) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Independently built custom descriptions have distinct identities,
+			// even when a template wraps them and their payloads look equal.
+			left, right := Expr("?", tc.make()), Expr("?", tc.make())
+			checkBuildError(t, Select("id").DistinctOnExpr(left).
+				OrderByExpr(right, Asc).SetDialect(dialect.Postgres))
+
+			// Reusing the complete description still reuses its parameters.
+			if _, _, err := Select("id").DistinctOnExpr(left).
+				OrderByExpr(left, Asc).SetDialect(dialect.Postgres).Build(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+	// Simple structured templates continue to compare by content.
+	checkSQL(t, Select("id").DistinctOnExpr(Expr("? + ?", Ident("v"), 1)).
+		OrderByExpr(Expr("? + ?", Ident("v"), 1), Asc).SetDialect(dialect.Postgres),
+		`SELECT DISTINCT ON ("v" + $1) "id" ORDER BY "v" + $1 ASC`, 1)
 }

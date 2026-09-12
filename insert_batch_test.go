@@ -78,9 +78,11 @@ func TestInsertBatchWidthsAndModes(t *testing.T) {
 	// A later inconsistent row must not move earlier render-time side effects.
 	calls := 0
 	q = Insert().Into("t").Values(Expression{
-		custom: func(s *strings.Builder, _ *BuildContext) {
-			calls++
-			s.WriteString("1")
+		node: &expressionWriter{
+			write: func(s *strings.Builder, _ *BuildContext) {
+				calls++
+				s.WriteString("1")
+			},
 		},
 	}).Values(2, 3)
 	_, _, err := q.Build()
