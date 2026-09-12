@@ -339,13 +339,14 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 					_, _ = s.WriteString(", ")
 				}
 
-				if e, ok := v.(Expression); ok &&
-					(e.kind() == defaultExpression || e.node == nil && e.sql == "DEFAULT") {
+				if e, ok := v.(Expression); !ok {
+					c.writeArg(s, v)
+				} else if e.kind() == defaultExpression || e.node == nil && e.sql == "DEFAULT" {
 					requireFeature(c, dialect.DefaultInValues, "DEFAULT in VALUES")
 					_, _ = s.WriteString("DEFAULT")
-					continue
+				} else {
+					e.writeTo(s, c)
 				}
-				writeValue(s, c, v)
 			}
 
 			_ = s.WriteByte(')')
