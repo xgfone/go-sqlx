@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"slices"
 )
 
 // WithScanAfterRead runs application Scanner methods after the raw Scan returns.
@@ -33,10 +34,16 @@ func (m Mapping) WithScanAfterRead(cursor Cursor, run func(func(...any) error, R
 
 	owned := capturedCursor{
 		Cursor: cursor,
-		values: make([]captureScanner, count),
+		values: make([]bufferedCaptureScanner, count),
 		args:   make([]any, count),
 	}
+	defer owned.release()
+
+	// Divide the operation's budget between columns without inspecting values
+	// or invoking application code. Byte buffers are still allocated lazily.
+	limit := min(captureColumnBytes, captureOperationBytes/max(count, 1))
 	for i := range owned.args {
+		owned.values[i].limit = limit
 		owned.args[i] = &owned.values[i]
 	}
 
@@ -98,8 +105,57 @@ func customScannerChain(t reflect.Type) bool {
 type capturedCursor struct {
 	Cursor
 
-	values []captureScanner
+	values []bufferedCaptureScanner
 	args   []any
+}
+
+// Bound scratch retained between rows, both per column and per operation.
+// Larger values still use an owned copy, released after that row's conversion.
+const (
+	captureColumnBytes    = 64 << 10
+	captureOperationBytes = 256 << 10
+)
+
+// Only ScanAfterRead uses these buffers; nullable-parent capture and ordinary
+// scans keep their existing storage. A buffer belongs to one operation/column,
+// never to a destination or a pool. Application Scanners must copy saved bytes.
+type bufferedCaptureScanner struct {
+	value  any
+	buffer []byte
+	bytes  any // Reuse the boxed slice header while its length stays the same.
+	limit  int
+}
+
+func (s *bufferedCaptureScanner) Scan(value any) error {
+	if data, ok := value.([]byte); ok {
+		switch {
+		case len(data) == 0 || len(data) > s.limit:
+			// Preserve typed nil versus non-nil empty slices. Empty clones do not
+			// retain the source's backing array, even if it has a large capacity.
+			value = slices.Clone(data)
+
+		default:
+			if len(s.buffer) != len(data) {
+				if cap(s.buffer) < len(data) {
+					s.buffer = make([]byte, len(data))
+				} else {
+					s.buffer = s.buffer[:len(data)]
+				}
+				s.bytes = s.buffer[:len(data):len(data)]
+			}
+			copy(s.buffer, data)
+			value = s.bytes
+		}
+	}
+
+	s.value = value
+	return nil
+}
+
+func (c *capturedCursor) release() {
+	clear(c.values)
+	clear(c.args)
+	c.Cursor = nil
 }
 
 func (c *capturedCursor) Scan(dst ...any) error {

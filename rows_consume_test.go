@@ -4,9 +4,11 @@
 package sqlx
 
 import (
+	"bytes"
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -14,6 +16,110 @@ import (
 )
 
 type consumePanicValue struct{ Data []byte }
+
+type consumeOwnedBytes []byte
+
+func (v *consumeOwnedBytes) Scan(src any) error {
+	if src == nil {
+		*v = nil
+	} else {
+		*v = slices.Clone(src.([]byte))
+	}
+	return nil
+}
+
+func TestConsumeRowsCapturedResultsOwnTheirBytes(t *testing.T) {
+	type model struct {
+		ID       int64             `sql:"id"`
+		First    consumeOwnedBytes `sql:"first"`
+		Ordinary []byte            `sql:"ordinary"`
+		Last     consumeOwnedBytes `sql:"last"`
+	}
+
+	for _, count := range []int{0, 1, 20, 100, 1000} {
+		for _, mode := range []string{"into", "visit", "visit_stop"} {
+			t.Run(fmt.Sprintf("%s/rows_%d", mode, count), func(t *testing.T) {
+				f := &bindFixture{columns: []string{"id", "first", "ordinary", "last"}}
+
+				var want []model
+				for i := range count {
+					size := []int{256, 4096, 0, 7}[i%4]
+					if count == 20 && i == 0 {
+						size = 1 << 20
+					}
+
+					first := bytes.Repeat([]byte{byte(i)}, size)
+					last := bytes.Repeat([]byte{byte(i + 1)}, size)
+
+					var firstValue, lastValue any = first, last
+					if i%5 == 4 {
+						firstValue, lastValue, first, last = nil, nil, nil, nil
+					}
+
+					f.values = append(f.values, []driver.Value{
+						int64(i),
+						firstValue,
+						[]byte("ordinary"),
+						lastValue,
+					})
+
+					want = append(want, model{int64(i), first, []byte("ordinary"), last})
+				}
+
+				r := bindTestDB(t, f).QueryRowsContext(context.Background(), "q")
+
+				var got []model
+				var err error
+				if mode == "into" {
+					got, err = r.CollectInto(make([]model, 0, min(count, 100)))
+				} else {
+					err = r.Visit(func(v model) (bool, error) {
+						got = append(got, v)
+						return mode != "visit_stop" || len(got) < 2, nil
+					})
+				}
+
+				if mode == "visit_stop" {
+					want = want[:min(count, 2)]
+				}
+				if err != nil || len(got) != len(want) || f.closed.Load() != 1 {
+					t.Fatal(err, len(got), len(want), f.closed.Load())
+				}
+
+				for i, v := range got {
+					w := want[i]
+					if v.ID != w.ID ||
+						!bytes.Equal(v.Last, w.Last) ||
+						!bytes.Equal(v.First, w.First) ||
+						!bytes.Equal(v.Ordinary, w.Ordinary) {
+						t.Fatal("later row or cursor close overwrote saved bytes", i)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestConsumeRowsCustomBytesConcurrentQueries(t *testing.T) {
+	f := &bindFixture{
+		columns: []string{"value"},
+		values:  [][]driver.Value{{[]byte("first")}, {[]byte("last")}},
+	}
+	db := bindTestDB(t, f)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 4 {
+				got, err := db.QueryRowsContext(context.Background(), "q").CollectInto([]consumeOwnedBytes(nil))
+				if err != nil || len(got) != 2 || string(got[0]) != "first" || string(got[1]) != "last" {
+					t.Error("query capture storage was shared", got, err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
 
 func (v *consumePanicValue) Scan(src any) error {
 	v.Data = []byte("partial")
@@ -218,6 +324,7 @@ func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
 	type model struct {
 		Trigger consumeCancelValue `sql:"trigger"`
 		Data    []byte             `sql:"data"`
+		Custom  consumeOwnedBytes  `sql:"custom"`
 	}
 	for _, mode := range []string{"into", "visit"} {
 		t.Run(mode, func(t *testing.T) {
@@ -225,8 +332,8 @@ func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
 			defer cancel()
 
 			f := &bindFixture{
-				columns:   []string{"trigger", "data"},
-				values:    [][]driver.Value{{int64(2), []byte("owned")}},
+				columns:   []string{"trigger", "data", "custom"},
+				values:    [][]driver.Value{{int64(2), []byte("owned"), []byte("custom owned")}},
 				closeDone: make(chan struct{}),
 			}
 			consumeCancel = func() {
@@ -251,7 +358,7 @@ func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
 				})
 			}
 			if !errors.Is(err, context.Canceled) || len(got) != 1 ||
-				string(got[0].Data) != "owned" {
+				string(got[0].Data) != "owned" || string(got[0].Custom) != "custom owned" {
 				t.Fatal(got, err)
 			}
 		})
