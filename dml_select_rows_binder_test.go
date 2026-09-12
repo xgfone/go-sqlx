@@ -159,7 +159,7 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 
 					rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").WithBindConfig(config)
 					got = original[:1]
-					err := rows.bind(&got, mode)
+					err := rows.bind(&got, mode, nil)
 					if err == nil || len(got) != 1 || &got[0] != &original[0] ||
 						!reflect.DeepEqual(original, []number{7, 8, 9, 10}) ||
 						f.closed.Load() != 1 {

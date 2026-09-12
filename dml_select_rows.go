@@ -75,7 +75,7 @@ type Rows struct {
 	revision uint64
 	scan     rowbind.ScanState
 
-	// Keep query hints separate so SetBindConfig can restore automatic sizing.
+	// Keep query hints separate so configuration setters can restore automatic sizing.
 	capacityHint int
 }
 
@@ -145,6 +145,16 @@ func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 	return r
 }
 
+// SetCapacity sets the incoming-row allocation hint and returns r. Positive
+// values are not capped; zero restores automatic sizing from the query's LIMIT
+// hint (up to 100), or DefaultRowsCapacity when no hint is available. Negative
+// values are rejected during collection binding. Other configuration and
+// prepared scan state are preserved.
+func (r *Rows) SetCapacity(capacity int) *Rows {
+	r.config.Capacity = capacity
+	return r
+}
+
 // WithColumns mutates r; it does not create an independent view.
 //
 // Deprecated: use SetColumns.
@@ -175,44 +185,43 @@ func (r *Rows) Err() error {
 	return r.rows.Err()
 }
 
+// Collect consumes and closes the current result set, returning a typed slice.
+// It inherits Rows' labels, ScanOptions and capacity hint. Explicit binders and
+// exact registry registrations remain authoritative, including on failure;
+// an unregistered slice uses the native typed slice binder.
+//
+// Built-in binding scans directly into staged elements and returns a non-nil
+// empty slice on an empty result. Any error returns nil, including close errors.
+func (r *Rows) Collect[T any]() ([]T, error) {
+	var values []T
+	err := r.bind(&values, BindReplace, typedSliceRowsBinder[[]T, T]{})
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
 // Bind replaces a collection. Built-in binders publish a non-nil empty
 // collection for an empty result. Errors leave the original destination intact.
-func (r *Rows) Bind(dst any) error { return r.bind(dst, BindReplace) }
+func (r *Rows) Bind(dst any) error { return r.bind(dst, BindReplace, nil) }
 
 // Append appends to a slice using independent storage, preserving aliases to
 // the original backing array. Errors leave the original destination intact.
-func (r *Rows) Append(dst any) error { return r.bind(dst, BindAppend) }
+func (r *Rows) Append(dst any) error { return r.bind(dst, BindAppend, nil) }
 
 // Merge merges into a map using independent storage. DuplicateKeys controls
 // collisions with existing entries as well as duplicates in the result.
-func (r *Rows) Merge(dst any) error { return r.bind(dst, BindMerge) }
+func (r *Rows) Merge(dst any) error { return r.bind(dst, BindMerge, nil) }
 
-func (r *Rows) bind(dst any, mode BindMode) (err error) {
+func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 	defer func() {
 		if e := r.Close(); err == nil {
 			err = e
 		}
 	}()
 
-	if err = r.Err(); err != nil {
-		return err
-	}
-	if err = validateScanOptions(r.config.Scan); err != nil {
-		return err
-	}
-
-	options := r.config.options(mode)
-	if options.Capacity == 0 {
-		options.Capacity = r.capacityHint
-	}
-	if options.Columns, err = r.scanColumns(); err != nil {
-		return err
-	}
-
-	// This single-use operation can transfer its already-owned labels. Every
-	// result snapshots driver/override columns, and Close drops our reference.
-	// Configuration layouts still need a copy because they can be shared by DBs.
-	if err = options.validate(); err != nil {
+	options, err := r.bindOptions(mode)
+	if err != nil {
 		return err
 	}
 
@@ -227,7 +236,15 @@ func (r *Rows) bind(dst any, mode BindMode) (err error) {
 
 	// Resolve only our concrete dispatchers. User wrappers still receive their
 	// public Prepare call and remain authoritative, including on failure.
-	binder = resolveRowsBinder(binder, reflect.TypeOf(dst))
+	if registry, ok := binder.(*MixRowsBinder); ok && fallback != nil {
+		binder = registry.Get(reflect.TypeOf(dst))
+		if binder == nil {
+			binder = fallback
+		}
+	} else {
+		binder = resolveRowsBinder(binder, reflect.TypeOf(dst))
+	}
+
 	binding, err := binder.Prepare(dst, options)
 	if err != nil {
 		return err
@@ -251,6 +268,33 @@ func (r *Rows) bind(dst any, mode BindMode) (err error) {
 	binding.Commit()
 
 	return nil
+}
+
+// bindOptions prepares one collection operation without consuming its cursor.
+func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
+	if err = r.Err(); err != nil {
+		return options, err
+	}
+	if err = validateScanOptions(r.config.Scan); err != nil {
+		return options, err
+	}
+
+	options = r.config.options(mode)
+	if options.Capacity == 0 {
+		options.Capacity = r.capacityHint
+	}
+	if options.Columns, err = r.scanColumns(); err != nil {
+		return options, err
+	}
+
+	// This single-use operation can transfer its already-owned labels. Every
+	// result snapshots driver/override columns, and Close drops our reference.
+	// Configuration layouts still need a copy because they can be shared by DBs.
+	if err = options.validate(); err != nil {
+		return options, err
+	}
+
+	return options, nil
 }
 
 // Scan scans the current row, reusing rowbind's private preparation and scratch

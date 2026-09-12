@@ -52,6 +52,14 @@ func TestSelectBindingCapacity(t *testing.T) {
 		{"rows_capacity", func(db *DB) *Rows {
 			return query(db).Limit(50).QueryRowsContext(ctx).SetBindConfig(BindConfig{Capacity: 250})
 		}, 250, false},
+		{"set_capacity", func(db *DB) *Rows {
+			return query(db.WithBindConfig(BindConfig{Capacity: 1})).Limit(50).QueryRowsContext(ctx).
+				SetCapacity(250)
+		}, 250, false},
+		{"reset_set_capacity", func(db *DB) *Rows {
+			return query(db).Limit(50).SetBindConfig(BindConfig{Capacity: 250}).QueryRowsContext(ctx).
+				SetCapacity(0)
+		}, 50, false},
 		{"reset_rows_capacity", func(db *DB) *Rows {
 			return query(db).Limit(50).SetBindConfig(BindConfig{Capacity: 250}).QueryRowsContext(ctx).
 				SetBindConfig(BindConfig{})
