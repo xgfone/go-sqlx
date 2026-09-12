@@ -349,6 +349,56 @@ SQL read returns, copying raw bytes first where necessary for cancellation safet
 This extra capture cost applies to custom conversions; ordinary types retain
 the direct scanning path.
 
+Standard `sql.NullInt64`, `sql.NullString` and supported `sql.Null[T]` values can
+replace nullable pointers when their conversion rules suit the model. Inline
+values avoid a separate object for each non-NULL value, but make each element
+larger even when it is NULL. Known standard nullable fields also permit reuse
+of Visit's temporary struct. Their standard Scanner behavior remains unchanged:
+for example, `sql.Null[time.Duration]` does not apply sqlx's `DurationUnit`, and
+`sql.NullTime` does not parse sqlx's configured time layouts.
+
+When a result must be `[]*User`, opt into fixed blocks of mapped structs:
+
+```go
+users, err := rows.
+    SetBinder(NewChunkedSliceRowsBinder[[]*User](100)).
+    Collect[*User]()
+```
+
+The block size must be positive. This binder supports mapped structs, including
+structs with Scanner fields; scalar elements and structs that are themselves
+Scanners use the ordinary slice binder. Blocks never move or get reused across
+queries. Capacity controls the separate pointer slice; the block size controls
+object allocation. The final block may have unused space. Retaining one pointer
+keeps its whole block and the other elements' referenced data alive. This is most
+useful when the application retains and releases the page together. Bind/Append
+still publish atomically, and empty results allocate no result storage.
+
+For synchronous byte processing, `VisitRawBytes` can borrow the SQL driver's
+current row instead of making owned copies:
+
+```go
+err := db.Select("payload").From("events").QueryRowsContext(ctx).
+    VisitRawBytes(ctx, func(row []sql.RawBytes) (bool, error) {
+        // Read row[0] here. Use bytes.Clone(row[0]) if it must be saved.
+        return processPayload(row[0])
+    })
+```
+
+The row slice and every byte view are read-only and expire when the callback
+returns. Values follow `database/sql.RawBytes` conversion; ScanOptions, struct
+mapping and collection binders do not apply. SQL NULL becomes nil, but empty
+values can also become nil. Select an extra `IS NULL` column when the distinction
+matters. Ordinary Scan/Collect/Visit continue to return owned byte values.
+
+Pass the query's context. Returning false stops normally; errors, including
+cancellation and close failures, are preserved. Only the current result set is
+consumed, and it is closed even after panic. Cancellation may wait for the
+callback to finish before closing the cursor; never wait for that close from
+inside the callback. Do not operate on the same Rows or underlying sql.Rows from
+the callback. Reentrant cursor methods return an error/false, and Set methods do
+nothing. Concurrent use remains unsupported.
+
 Scalar pointers and values use the same conversions: both `time.Duration` and
 `*time.Duration` interpret numeric sources in the configured unit. NULL clears
 scalar values by default; `NullError` rejects NULL for non-nullable scalars.

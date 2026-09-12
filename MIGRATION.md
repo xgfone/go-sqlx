@@ -528,7 +528,32 @@ atomic collection binding. Existing Bind/Append/Merge/Collect behavior is unchan
   with an earlier error instead of being discarded.
 - Custom Scanner methods execute after the underlying SQL read where needed
   for panic/cancellation cleanup. This can add raw-value storage and byte copies.
-  Ordinary byte values remain owned; no borrowed-byte API is introduced.
+  Ordinary byte values remain owned.
+
+### Optional storage layouts and borrowed bytes
+
+Known standard nullable fields now permit safe temporary-struct reuse. No new
+nullable type or conversion rule is introduced: `sql.Null[time.Duration]` keeps
+standard numeric conversion, and `sql.NullTime` keeps standard time conversion,
+independent of sqlx's DurationUnit and parsing options. Inline nullable values
+reduce non-NULL object allocations but can use more space for NULL-heavy models.
+
+`NewChunkedSliceRowsBinder[[]*Model](blockSize)` explicitly selects fixed blocks
+for pointers to mapped structs. The positive block size is separate from the
+pointer slice's Capacity. Scalar elements and structs implementing Scanner are
+rejected. Bind/Append remain atomic. A single retained pointer retains the entire
+block, including other rows' referenced objects; use ordinary allocation when
+rows must have independent retention lifetimes.
+
+`Rows.VisitRawBytes(ctx, callback)` introduces a separate borrowed-byte lifetime.
+Pass the query's context; both the row descriptor slice and its read-only bytes
+expire when the callback returns. Clone saved bytes. Conversion follows
+database/sql.RawBytes, without sqlx ScanOptions or collection binders. NULL and
+empty values can both yield nil, so use a separate NULL indicator if required.
+Cancellation cannot invalidate bytes during the callback, but closing may wait
+for the callback to return. Reentrant cursor access is rejected, Set methods are
+ignored during the callback, and concurrent use is unsupported. Ordinary byte
+scanning and P5's owned custom-Scanner capture remain unchanged.
 
 ### Oper construction and registration
 
