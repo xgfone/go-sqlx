@@ -176,7 +176,7 @@ func (b *sliceRowsBinding) Commit() {
 }
 
 func (b *sliceRowsBinding) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }
@@ -298,7 +298,7 @@ type typedSliceBinding[S ~[]T, T any] struct {
 func (b *typedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
 
 func (b *typedSliceBinding[S, T]) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }
@@ -343,27 +343,62 @@ func (b *typedSliceBinding[S, T]) scanRows(scanner RowCursor, scan func(...any) 
 // NewMapPairsBinder scans two positional columns as key and value. Duplicate
 // keys fail by default. Only a non-nil pointer to M is accepted.
 func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
-	return mapRowsBinder[M](false, nil, []reflect.Type{reflect.TypeFor[*K](), reflect.TypeFor[*V]()}, func(scan func(...any) error, reusable bool) func() (K, V, error) {
-		args := make([]any, 2)
-		if reusable {
-			var key K
-			var value V
-			args[0], args[1] = &key, &value
-			return func() (K, V, error) {
-				var zeroK K
-				var zeroV V
-				key, value = zeroK, zeroV
-				err := scan(args...)
-				return key, value, err
-			}
-		}
+	return mapRowsBinder[M](false, nil, []reflect.Type{
+		reflect.TypeFor[*K](),
+		reflect.TypeFor[*V](),
+	}, scanMapPairs[K, V])
+}
 
+func scanMapPairs[K comparable, V any](scan func(...any) error, reusable rowbind.Reuse) func() (K, V, error) {
+	args := make([]any, 2)
+	if reusable[0] && reusable[1] {
+		var key K
+		var value V
+		args[0], args[1] = &key, &value
+		return func() (K, V, error) {
+			var zeroK K
+			var zeroV V
+			key, value = zeroK, zeroV
+			err := scan(args...)
+			return key, value, err
+		}
+	}
+
+	if !reusable[0] && !reusable[1] {
 		return func() (key K, value V, err error) {
 			args[0], args[1] = &key, &value
 			err = scan(args...)
 			return
 		}
-	})
+	}
+
+	// Reuse each safe side independently. A custom Scanner on the other side
+	// still receives a fresh address, and may retain it after Scan returns.
+	var key *K
+	var value *V
+	if reusable[0] {
+		key = new(K)
+	}
+	if reusable[1] {
+		value = new(V)
+	}
+
+	return func() (K, V, error) {
+		k, v := key, value
+		if k == nil {
+			k = new(K)
+		}
+		if v == nil {
+			v = new(V)
+		}
+
+		var zeroK K
+		var zeroV V
+		*k, *v = zeroK, zeroV
+		args[0], args[1] = k, v
+		err := scan(args...)
+		return *k, *v, err
+	}
 }
 
 // NewMapIndexBinder scans each row as V and computes its key. A nil key function
@@ -374,61 +409,70 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 		configError = errors.New("sqlx: nil map key function")
 	}
 
-	return mapRowsBinder[M](false, configError, []reflect.Type{reflect.TypeFor[*V]()}, func(scan func(...any) error, reusable bool) func() (K, V, error) {
-		args := []any{nil}
-		if reusable {
-			var value V
-			args[0] = &value
-			return func() (k K, v V, err error) {
-				var zero V
-				value = zero
+	return mapRowsBinder[M](
+		false,
+		configError,
+		[]reflect.Type{reflect.TypeFor[*V]()},
+		func(scan func(...any) error, reusable rowbind.Reuse) func() (K, V, error) {
+			args := []any{nil}
+			if reusable[0] {
+				var value V
+				args[0] = &value
+				return func() (k K, v V, err error) {
+					var zero V
+					value = zero
+					if err = scan(args...); err == nil {
+						k = key(value)
+					}
+					return k, value, err
+				}
+			}
+
+			return func() (k K, value V, err error) {
+				args[0] = &value
 				if err = scan(args...); err == nil {
 					k = key(value)
 				}
-				return k, value, err
+				return
 			}
-		}
-
-		return func() (k K, value V, err error) {
-			args[0] = &value
-			if err = scan(args...); err == nil {
-				k = key(value)
-			}
-			return
-		}
-	})
+		},
+	)
 }
 
 // NewMapSetBinder scans each row as a set key. Duplicate keys are intentionally
 // deduplicated, including during Merge. Use map[K]struct{} to express a set.
 func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
-	types := []reflect.Type{reflect.TypeFor[*K]()}
-	return mapRowsBinder[M](true, nil, types, func(scan func(...any) error, reusable bool) func() (K, struct{}, error) {
-		args := []any{nil}
-		if reusable {
-			var key K
-			args[0] = &key
-			return func() (K, struct{}, error) {
-				var zero K
-				key = zero
-				err := scan(args...)
-				return key, struct{}{}, err
+	return mapRowsBinder[M](
+		true,
+		nil,
+		[]reflect.Type{reflect.TypeFor[*K]()},
+		func(scan func(...any) error, reusable rowbind.Reuse) func() (K, struct{}, error) {
+			args := []any{nil}
+			if reusable[0] {
+				var key K
+				args[0] = &key
+				return func() (K, struct{}, error) {
+					var zero K
+					key = zero
+					err := scan(args...)
+					return key, struct{}{}, err
+				}
 			}
-		}
 
-		return func() (key K, value struct{}, err error) {
-			args[0] = &key
-			err = scan(args...)
-			return
-		}
-	})
+			return func() (key K, value struct{}, err error) {
+				args[0] = &key
+				err = scan(args...)
+				return
+			}
+		},
+	)
 }
 
 func mapRowsBinder[M ~map[K]V, K comparable, V any](
 	set bool,
 	configError error,
 	types []reflect.Type,
-	makeScan func(func(...any) error, bool) func() (K, V, error),
+	makeScan scanMaker[K, V],
 ) RowsBinder {
 	checkKey := dynamicMapKey(reflect.TypeFor[K]())
 	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
@@ -468,11 +512,13 @@ func mapRowsBinder[M ~map[K]V, K comparable, V any](
 	})
 }
 
+type scanMaker[K comparable, V any] func(func(...any) error, rowbind.Reuse) func() (K, V, error)
+
 type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
 	pointer    *M
 	staged     M
 	mapping    rowbind.Mapping
-	makeScan   func(func(...any) error, bool) func() (K, V, error)
+	makeScan   scanMaker[K, V]
 	capacity   int
 	duplicates DuplicateKeyPolicy
 	bindMode   BindMode
@@ -483,12 +529,12 @@ type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
 func (b *mapRowsBinding[M, K, V]) Commit() { *b.pointer = b.staged }
 
 func (b *mapRowsBinding[M, K, V]) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, reusable bool) error {
-		return b.scanRows(cursor, b.makeScan(scan, reusable))
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, reusable rowbind.Reuse) error {
+		return b.scanRows(cursor, scan, reusable)
 	})
 }
 
-func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func() (K, V, error)) error {
+func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func(...any) error, reusable rowbind.Reuse) error {
 	base := 0
 	if b.bindMode == BindMerge {
 		base = len(*b.pointer)
@@ -497,6 +543,7 @@ func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func() (K, V,
 		return errors.New("sqlx: map capacity overflow")
 	}
 
+	var scanRow func() (K, V, error)
 	row := 0
 	for scanner.Next() {
 		row++
@@ -505,9 +552,11 @@ func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func() (K, V,
 			if b.bindMode == BindMerge {
 				maps.Copy(b.staged, *b.pointer)
 			}
+			// Empty results need neither map storage nor reusable destinations.
+			scanRow = b.makeScan(scan, reusable)
 		}
 
-		key, value, err := scan()
+		key, value, err := scanRow()
 		if err != nil {
 			return &BindError{row, err}
 		}

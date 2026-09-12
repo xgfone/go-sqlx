@@ -46,8 +46,8 @@ func TestMappingSharesOnlyImmutablePreparation(t *testing.T) {
 
 			defer owned.Close() //nolint:errcheck
 			for range 8 {
-				err := copy.WithScan(cursor, func(scan func(...any) error, reusable bool) error {
-					if reusable {
+				err := copy.WithScan(cursor, func(scan func(...any) error, reusable Reuse) error {
+					if reusable[0] {
 						t.Error("custom cursor must use fresh map destinations")
 					}
 
@@ -113,7 +113,7 @@ func TestMappingExecutionFailureDoesNotCorruptPreparedMapping(t *testing.T) {
 					return cause
 				}}
 
-				err := mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+				err := mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
 					return scan(reflect.New(typ.Elem()).Interface())
 				})
 				if !errors.Is(err, cause) {
@@ -122,7 +122,7 @@ func TestMappingExecutionFailureDoesNotCorruptPreparedMapping(t *testing.T) {
 			}()
 
 			cursor := &mappingCursor{scanCacheSource(int64(42))}
-			if err := mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+			if err := mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
 				got := reflect.New(typ.Elem())
 				if err := scan(got.Interface()); err != nil {
 					return err
@@ -175,7 +175,7 @@ func TestScalarMappingOwnsSignaturesAndSeparatesScanners(t *testing.T) {
 		defer scan.Close() //nolint:errcheck
 
 		for range 2 {
-			err := mapping.WithScan(cursor, func(scan func(...any) error, _ bool) error {
+			err := mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
 				return scan(dst...)
 			})
 			if err != nil {

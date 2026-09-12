@@ -42,9 +42,11 @@ type scalarDestination struct {
 
 type mappingFlags uint8
 
+// Paired flags stay adjacent because preparation indexes them with << i.
 const (
 	mappingPrepared mappingFlags = 1 << iota
-	mappingReusable
+	mappingReusableFirst
+	mappingReusableSecond
 	mappingWrappedFirst
 	mappingWrappedSecond
 )
@@ -84,7 +86,7 @@ func Prepare(columns []string, types []reflect.Type, options ScanOptions) (Mappi
 
 			m.types[0] = types[0]
 			if m.layout.reusable {
-				m.flags |= mappingReusable
+				m.flags |= mappingReusableFirst
 			}
 
 			return m, nil
@@ -99,15 +101,14 @@ func Prepare(columns []string, types []reflect.Type, options ScanOptions) (Mappi
 		m.extra = make([]scalarDestination, len(types))
 	}
 
-	m.flags |= mappingReusable
 	for i, t := range types {
 		wrapped, err := scalarDestinationWrapper(t, i)
 		if err != nil {
 			return Mapping{}, err
 		}
 
-		if !wrapped {
-			m.flags &^= mappingReusable
+		if i < 2 && (wrapped || reusableScannerType(t)) {
+			m.flags |= mappingReusableFirst << i
 		}
 
 		if m.extra != nil {
@@ -161,11 +162,16 @@ func (m Mapping) init(p *scanPlan) {
 	}
 }
 
+// Reuse reports independent temporary-destination safety for the first two
+// targets (MapPairs), or the single target of MapIndex/MapSet. Unknown raw
+// cursors never permit reuse even when destination types themselves are safe.
+type Reuse [2]bool
+
 // WithScan lends a current-row scan function to one synchronous operation. The
 // callback must not retain it. Destination types must match the prepared types.
 // Scratch is cleared and returned on success, error and panic. reusable reports
 // whether map temporaries may safely be reused with this mapping and cursor.
-func (m Mapping) WithScan(cursor Cursor, run func(scan func(...any) error, reusable bool) error) error {
+func (m Mapping) WithScan(cursor Cursor, run func(scan func(...any) error, reusable Reuse) error) error {
 	if m.flags&mappingPrepared == 0 || nilBindingValue(cursor) || run == nil {
 		return errors.New("sqlx: expected a prepared mapping, cursor and scan operation")
 	}
@@ -174,9 +180,15 @@ func (m Mapping) WithScan(cursor Cursor, run func(scan func(...any) error, reusa
 	defer releasePlan(p)
 	m.init(p)
 
+	var reusable Reuse
+	if _, raw := cursor.(*sql.Rows); raw {
+		reusable = Reuse{
+			m.flags&mappingReusableFirst != 0,
+			m.flags&mappingReusableSecond != 0,
+		}
+	}
+
 	source := cursor.Scan
-	_, reusable := cursor.(*sql.Rows)
-	reusable = reusable && m.flags&mappingReusable != 0
 	return run(func(dst ...any) error {
 		return p.scanValues(source, dst)
 	}, reusable)

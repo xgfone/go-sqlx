@@ -16,7 +16,7 @@ import (
 func BenchmarkPreparedScanner(b *testing.B) {
 	for _, source := range []string{"Rows", "raw", "mapping"} {
 		b.Run(source, func(b *testing.B) {
-			for _, count := range []int{0, 1, 1000} {
+			for _, count := range []int{0, 1, 20, 100, 1000} {
 				b.Run(fmt.Sprintf("rows_%d", count), func(b *testing.B) {
 					f := &bindFixture{columns: []string{"value"}}
 					for i := range count {

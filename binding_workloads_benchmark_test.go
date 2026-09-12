@@ -117,7 +117,7 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 
 	for _, c := range cases {
 		b.Run(c.name, func(b *testing.B) {
-			for _, n := range []int{0, 1, 1000} {
+			for _, n := range []int{0, 1, 20, 100, 1000} {
 				b.Run(fmt.Sprintf("rows_%d", n), func(b *testing.B) {
 					f := &bindFixture{columns: c.columns}
 					for i := range n {
