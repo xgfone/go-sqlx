@@ -478,3 +478,29 @@ ExecContext. Templates do not narrow a limit automatically or invoke custom
 renderers again on each request. Compile a new template when its SQL shape must
 change. Arguments remain shallow snapshots; mutable constants must not be changed
 while the template is being shared. See README for a complete example.
+
+### Optional compiled insert field plans
+
+Existing Values, Row, Struct and Structs signatures and shallow snapshot rules
+are unchanged. Batch storage now keeps contiguous cells and avoids copying
+preceding chunks during incremental appends. Clone owns independent cells;
+ClearValues and Reset release the builder's batch references.
+
+Use `CompileInsert[T](columns...)` once and reuse its `InsertPlan[T].AppendTo`
+for homogeneous batches. Choose T as the slice element type (`User` or `*User`),
+not the slice type or an interface. With no columns, the plan uses all mapped
+fields and Structs' DEFAULT omission semantics. Explicit columns on the plan or
+builder include zero values. Existing columns must match the plan's order and
+existing VALUES rows must match its width. Empty builders adopt the projection;
+an explicit plan makes subsequent Struct/Structs calls use explicit columns.
+
+Check AppendTo's returned error. A failed call publishes no added rows or columns
+and does not poison the builder; IsZero side effects cannot be rolled back.
+This differs from Structs, which retains earlier successful rows and records a
+sticky error. Empty slices append nothing. SQL feature validation remains at
+Build/Exec, and Valuer conversion remains with the driver. Slice and pointer
+members are not deep-copied. Plans can be shared across separate builders but
+do not make a builder or its input objects safe for concurrent mutation.
+
+This API compiles field extraction, while StatementTemplate compiles SQL shape.
+It does not add code generation, deferred/borrowed input or a global plan cache.

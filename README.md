@@ -623,6 +623,55 @@ pointers to zero retain their values. Nil top-level rows fail. Every appended ro
 must match the builder's column set; mixing inferred `Struct` and `Structs` rows
 can still fail if the single-row call omitted columns.
 
+For repeated batches of the same model, compile the field projection once:
+
+```go
+plan, err := sqlx.CompileInsert[User]("name", "age")
+if err != nil {
+    return err
+}
+
+builder := db.Insert().Into("users")
+if err := plan.AppendTo(builder, []User{{Name: "A"}, {Name: "B", Age: 20}}); err != nil {
+    return err
+}
+_, err = builder.ExecContext(ctx)
+```
+
+`CompileInsert[T]` accepts a struct or pointer to struct, including pointer
+chains; use `CompileInsert[*User]` for `[]*User`. A plan fixes the selected columns
+and their order. With no column arguments, all mapped fields are selected and
+omit-tagged zero values use DEFAULT. Explicit columns on the plan or builder
+include zero values. Existing builder columns must match the plan's order
+exactly; existing positional rows must have the same width. An explicit plan
+also makes the builder's columns explicit for later Struct/Structs calls.
+
+`AppendTo` reads values immediately and appends a shallow snapshot, preserving
+the same pointer/slice member ownership as Structs. It does not defer reading
+until execution or call `driver.Valuer.Value`; value fields needing a pointer
+Valuer receive independent addressable copies. Empty input is a no-op after
+validating the plan, builder and existing builder error.
+On error, no rows or columns are published and no sticky builder error is set;
+side effects in user IsZero methods cannot be rolled back. Existing builder
+errors are returned; nonempty input also rejects incompatible columns, nil model
+pointers and INSERT SELECT/DEFAULT VALUES sources. Check both AppendTo and
+Build/Exec errors: dialect-specific features such as DEFAULT and RETURNING are
+still validated when SQL is built.
+
+Plans own immutable metadata and can be reused with separate builders across
+goroutines. Input values and custom methods must be safe to share; do not access
+the same builder concurrently or reenter it from IsZero. Plans retain no rows,
+DB or dialect, and create no global projection cache. `StatementTemplate`
+compiles SQL shape; `InsertPlan[T]` compiles field extraction. Models with `any`
+fields can carry Param expressions; append their rows, then call builder.Compile.
+
+Structs and AppendTo reserve contiguous cell storage for each supplied batch.
+Incremental Values/Row calls use growing chunks of at most 64 rows to avoid
+copying earlier batches on each expansion. Cell counts are independent of SQL
+parameter counts: DEFAULT binds nothing, and expressions may bind several values.
+Existing Structs calls, including compatible heterogeneous interface slices,
+continue to work without creating an InsertPlan.
+
 `NewOper[T](name)` creates an operation without changing the binder registry.
 Use `NewRegisteredOper[T](name)` to opt into shared typed slice binder
 registration. Without a registration, model slices use the reflection fallback.
