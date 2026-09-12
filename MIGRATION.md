@@ -493,6 +493,25 @@ Built-in typed slices, general slices and maps implement the public interface
 with state pointers. Wrappers can return a delegated Prepare result directly,
 with no additional per-result callback allocation.
 
+### Typed collection and map temporary reuse
+
+`rows.Collect[T]()` is an optional typed alternative to declaring a slice and
+calling `rows.Bind(&slice)`. It inherits labels, conversion options, capacity
+hints and custom-binder precedence. Unregistered slices use the typed binder;
+existing exact registrations remain authoritative. No global registration is
+needed. Errors return nil, including closing failures; the built-in empty result
+is a non-nil empty slice. Existing Bind/Append/Merge calls keep their behavior.
+
+`rows.SetCapacity(n)` changes only the incoming-row allocation hint, preserving
+other configuration and prepared scan state. Positive values are uncapped;
+zero restores automatic sizing and negative values fail during collection binding.
+
+MapPairs now reuses key and value temporaries independently. Standard scalar
+and explicitly recognized database/sql nullable targets can reuse storage with
+the internal SQL cursor. Custom Scanner targets and unknown raw cursor types
+keep fresh temporary addresses where required. No Scanner signature change or
+new ownership promise is imposed on existing implementations.
+
 ### Oper construction and registration
 
 `NewOper[T](name)` no longer registers a model slice binder. Use

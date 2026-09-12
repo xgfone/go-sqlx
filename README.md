@@ -279,6 +279,24 @@ truncate results. Empty results do not reserve the hinted storage; nonempty
 results grow as needed. For a known 1000-row page, set Capacity to 1000 explicitly
 to avoid growth beyond the automatic 100-row reservation.
 
+Use `Rows.SetCapacity(n)` to change only the allocation hint, preserving the
+other binding options and prepared scan state. `SetCapacity(0)` restores
+automatic sizing; a negative capacity is rejected during collection binding.
+
+`Rows.Collect[T]()` returns a typed slice and closes the current result:
+
+```go
+users, err := db.Select("id", "name").From("users").
+    Limit(1000).QueryRowsContext(ctx).SetCapacity(1000).Collect[User]()
+```
+
+It inherits the result's labels, `ScanOptions`, and capacity. Explicit binders
+and exact registry registrations retain their precedence, including errors.
+For an unregistered slice, Collect uses the existing typed slice binder and
+scans directly into staged elements. It returns nil on any error, including
+finalization errors; built-in binding returns a non-nil empty slice on empty
+success. `Rows.Bind` remains useful for named slices and existing destinations.
+
 Scalar pointers and values use the same conversions: both `time.Duration` and
 `*time.Duration` interpret numeric sources in the configured unit. NULL clears
 scalar values by default; `NullError` rejects NULL for non-nullable scalars.
@@ -293,8 +311,8 @@ must not be copied or used concurrently; pass its pointer to share it. A named
 `noCopy` marker lets `go vet` detect accidental value copies with its `copylocks`
 check. This is a static-analysis check, not a compiler error or runtime lock.
 
-`Rows.SetColumns`, `SetScanOptions`, `SetBindConfig`, and `SetBinder` mutate the
-same object and return its pointer. All aliases observe these changes. The old
+`Rows.SetColumns`, `SetScanOptions`, `SetBindConfig`, `SetBinder`, and `SetCapacity`
+mutate the same object and return its pointer. All aliases observe these changes. The old
 `Rows.With...` methods remain deprecated aliases with the same mutation semantics;
 they no longer create independent views. DB/Oper `With...` and single-row `Row`
 configuration keep their value semantics.
@@ -373,6 +391,17 @@ must stage writes, honor or reject the requested mode, and provide a non-failing
 Commit; their own side effects cannot be rolled back. Custom callback panics
 propagate while the owning result is still closed. `BindError` exposes the
 one-based failing row and unwraps the underlying error.
+
+MapPairs evaluates key and value scratch reuse independently. With the internal
+`*sql.Rows` cursor, ordinary scalar targets and known standard-library nullable
+scanners can reuse temporary addresses. Recognized scanners are `sql.NullBool`,
+`NullByte`, `NullInt16`, `NullInt32`, `NullInt64`, `NullFloat64`, `NullString`,
+`NullTime`, and `sql.Null[T]` for the corresponding eight underlying types.
+Their original Scan and NULL semantics remain intact. An arbitrary custom
+Scanner still gets a fresh temporary on its side of each map pair; it no longer
+forces the safe side to allocate per row. Named wrappers and unknown raw cursor
+implementations retain conservative behavior. Implementing `sql.Scanner` alone
+does not promise that receiver addresses or buffers can be reused.
 
 ## Tables and transactions
 
