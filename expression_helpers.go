@@ -106,6 +106,25 @@ func (n pathComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
 	writeComparisonRight(buf, c, n.right, n.op, n.grouped)
 }
 
+// Equality is common enough to encode its operation and grouping in the type,
+// keeping its boxed description to just the two operands.
+type pathEquality struct {
+	left  string
+	right any
+}
+
+func (n pathEquality) WriteCondition(w *SQLWriter) (bool, error) {
+	w.start()
+	n.writeCondition(w.buf, w.ctx)
+	return true, nil
+}
+
+func (n pathEquality) writeCondition(buf *strings.Builder, c *BuildContext) {
+	_ = buf.WriteByte('(')
+	writeQuotedPath(buf, c.Dialect(), n.left)
+	writeComparisonRight(buf, c, n.right, compareEqual, true)
+}
+
 type expressionComparison struct {
 	left  Expression
 	right any
@@ -167,6 +186,10 @@ func compare[T Operand](left T, right any, op comparisonOp) Condition {
 		}
 
 	case string:
+		if op == compareEqual {
+			return pathEquality{left: value, right: right}
+		}
+
 		return pathComparison{
 			left:  value,
 			right: right,
@@ -176,6 +199,13 @@ func compare[T Operand](left T, right any, op comparisonOp) Condition {
 		}
 
 	default:
+		if op == compareEqual {
+			return pathEquality{
+				left:  reflect.ValueOf(left).String(),
+				right: right,
+			}
+		}
+
 		return pathComparison{
 			left:  reflect.ValueOf(left).String(),
 			right: right,

@@ -202,18 +202,73 @@ func (g conditionGroup) writeConditions(buf *strings.Builder, c *BuildContext, c
 }
 
 func appendWheres(dst []Condition, conditions ...Condition) []Condition {
+	if len(conditions) == 0 {
+		return dst
+	}
+
+	if len(conditions) == 1 {
+		condition := conditions[0]
+		if condition == nil {
+			return dst
+		}
+
+		if g, ok := condition.(conditionGroup); ok && g.separator == " AND " {
+			return appendWheres(dst, g.conditions...)
+		}
+		return append(dst, condition)
+	}
+
+	count, flat := countWheres(conditions)
+	if flat {
+		return append(dst, conditions...)
+	}
+	if count == 0 {
+		return dst
+	}
+
+	start := len(dst)
+	dst = slices.Grow(dst, count)[:start+count]
+	copyWheres(dst[start:], conditions)
+	return dst
+}
+
+// Count only entries retained by native AND flattening, without evaluating any
+// user code. Already-flat input can use one ordinary slice append.
+func countWheres(conditions []Condition) (count int, flat bool) {
+	flat = true
+	for _, condition := range conditions {
+		if condition == nil {
+			flat = false
+			continue
+		}
+
+		if g, ok := condition.(conditionGroup); ok && g.separator == " AND " {
+			n, _ := countWheres(g.conditions)
+			flat = false
+			count += n
+		} else {
+			count++
+		}
+	}
+	return count, flat
+}
+
+// dst has exactly the space established by countWheres. Recursive groups only
+// copy their entries; they never recount or reserve storage while copying.
+func copyWheres(dst, conditions []Condition) (count int) {
 	for _, condition := range conditions {
 		if condition == nil {
 			continue
 		}
 
 		if g, ok := condition.(conditionGroup); ok && g.separator == " AND " {
-			dst = appendWheres(dst, g.conditions...)
+			count += copyWheres(dst[count:], g.conditions)
 		} else {
-			dst = append(dst, condition)
+			dst[count] = condition
+			count++
 		}
 	}
-	return dst
+	return count
 }
 
 // Set assigns a bound value or an Expression to a column. Nil binds SQL NULL.
