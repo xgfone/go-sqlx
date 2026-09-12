@@ -40,7 +40,7 @@ func (r *Rows) Visit[T any](yield func(T) (continueReading bool, err error)) (er
 		return err
 	}
 
-	return mapping.WithScanAfterRead(r.rows, func(scan func(...any) error, reusable rowbind.Reuse) error {
+	return mapping.WithVisitScan(r.rows, func(scan func(...any) error, reusable rowbind.Reuse) error {
 		return visitRows(r.rows, scan, yield, reusable[0])
 	})
 }

@@ -25,6 +25,7 @@ type structScanLayout struct {
 	// Temporary reuse and caller-address retention are independent properties.
 	reusable      bool
 	directTargets bool
+	stableFields  bool // Selected fields keep their addresses when the struct is zeroed.
 
 	scannerKind atomic.Uint32
 }
@@ -150,6 +151,8 @@ func (m *Metadata) compileScanLayout(t reflect.Type, columns []string, flags str
 		fields:   make([]*Field, len(columns)),
 		flags:    flags,
 		reusable: true,
+
+		stableFields: flags&scanRawFields == 0,
 	}
 
 	seen := make(map[string]int, len(columns))
@@ -175,10 +178,14 @@ func (m *Metadata) compileScanLayout(t reflect.Type, columns []string, flags str
 
 		// Use the model's owned column string, not a driver's label storage.
 		layout.columns[i], layout.fields[i] = f.Column, f
+		if len(f.Indexes) != 1 || f.Type.Kind() == reflect.Pointer {
+			layout.stableFields = false
+		}
 		if f.scanMode != scanFieldGeneral {
 			layout.directTargets = true
 			if !reusableScannerType(reflect.PointerTo(f.Type)) {
 				layout.reusable = false
+				layout.stableFields = false
 			}
 		}
 	}

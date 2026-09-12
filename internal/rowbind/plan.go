@@ -74,6 +74,8 @@ type scanPlan struct {
 	wrapped       []bool
 	captured      []captureScanner
 	skip          []bool
+
+	visitBound bool // Only Visit may keep its private flat target bound between rows.
 }
 
 type nullStructGroup struct {
@@ -174,6 +176,7 @@ func (p *scanPlan) initStorage(count int, types []reflect.Type, options ScanOpti
 
 	p.layout = nil
 	p.structDstType = nil
+	p.visitBound = false
 }
 
 // Scans with a synchronous operation or explicit Reset borrow this scratch pool.
@@ -193,6 +196,7 @@ func releasePlan(p *scanPlan) {
 	p.options = ScanOptions{}
 	p.layout = nil
 	p.structDstType = nil
+	p.visitBound = false
 	if cap(p.types) <= 64 && cap(p.values) <= 64 && cap(p.scanners) <= 64 && cap(p.fieldScanners) <= 64 {
 		scanPlanPool.Put(p)
 	}
