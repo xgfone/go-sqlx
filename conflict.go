@@ -279,7 +279,7 @@ func (b *InsertBuilder) renderRowsAlias(s *strings.Builder, c *BuildContext) {
 	}
 
 	requireFeature(c, dialect.InsertRowAlias, "inserted-row alias")
-	if len(b.values) == 0 || b.rowsAlias == b.table {
+	if b.values.rows == 0 || b.rowsAlias == b.table {
 		panic("inserted-row alias requires VALUES and must differ from the table name")
 	}
 
@@ -287,7 +287,7 @@ func (b *InsertBuilder) renderRowsAlias(s *strings.Builder, c *BuildContext) {
 	dialect.WriteIdent(s, c.Dialect(), b.rowsAlias)
 	if len(b.rowsAliasColumns) > 0 {
 		validateColumnNames(b.rowsAliasColumns)
-		if len(b.rowsAliasColumns) != len(b.values[0]) {
+		if len(b.rowsAliasColumns) != b.values.width {
 			panic("inserted-row column alias count differs from row width")
 		}
 

@@ -54,6 +54,9 @@ func (b *builderBase) recover() {
 	}
 }
 
+// mutate recovers panics while preserving the builder's first error.
+// Keep callbacks simple and short (roughly 20–30 lines at most);
+// extract longer or complex logic into internal methods that may panic.
 func (b *builderBase) mutate(f func()) {
 	defer b.recover()
 	f()

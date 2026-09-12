@@ -36,8 +36,8 @@ type InsertBuilder struct {
 	table           string
 	verb            string
 	source          *SelectBuilder
+	values          insertBatch
 	columns         []string
-	values          [][]any
 	returning       []selectedColumn
 	conflictColumns []string
 	conflictSet     []Updater
@@ -65,22 +65,27 @@ func (b *InsertBuilder) Columns(columns ...string) *InsertBuilder {
 }
 
 func (b *InsertBuilder) Values(values ...any) *InsertBuilder {
-	b.values = append(b.values, slices.Clone(values))
+	b.mutate(func() { b.values.appendRow(values) })
 	return b
 }
 
 // Row aligns named values to the declared columns and rejects missing/extra names.
 func (b *InsertBuilder) Row(values ...ColumnValue) *InsertBuilder {
+	b.mutate(func() { b.appendNamedRow(values) })
+	return b
+}
+
+func (b *InsertBuilder) appendNamedRow(values []ColumnValue) {
 	if len(values) == 0 {
 		b.fail(errors.New("sqlx: empty named row; use DefaultValues explicitly"))
-		return b
+		return
 	}
 
 	m := make(map[string]any, len(values))
 	for _, v := range values {
 		if _, ok := m[v.Column]; ok {
 			b.fail(fmt.Errorf("sqlx: duplicate column %q", v.Column))
-			return b
+			return
 		}
 		m[v.Column] = v.Value
 	}
@@ -93,22 +98,21 @@ func (b *InsertBuilder) Row(values ...ColumnValue) *InsertBuilder {
 
 	if len(m) != len(b.columns) {
 		b.fail(errors.New("sqlx: named row columns do not match"))
-		return b
+		return
 	}
 
-	row := make([]any, len(b.columns))
+	defer b.values.discardPending()
+	row := b.values.nextRow(len(b.columns))
 	for i, col := range b.columns {
 		v, ok := m[col]
 		if !ok {
 			b.fail(fmt.Errorf("sqlx: missing column %q", col))
-			return b
+			return
 		}
 		row[i] = v
 	}
 
-	// The row is owned by this builder; Values would copy it a second time.
-	b.values = append(b.values, row)
-	return b
+	b.values.commitRow(len(row))
 }
 
 func (b *InsertBuilder) FromSelect(q *SelectBuilder) *InsertBuilder {
@@ -153,7 +157,7 @@ func (b *InsertBuilder) ClearColumns() *InsertBuilder {
 }
 
 func (b *InsertBuilder) ClearValues() *InsertBuilder {
-	b.values = nil
+	b.values = insertBatch{}
 	b.source = nil
 	b.defaults = false
 	return b
@@ -181,10 +185,7 @@ func (b *InsertBuilder) Clone() *InsertBuilder {
 	v.returning = cloneColumns(b.returning)
 	v.conflictColumns = slices.Clone(b.conflictColumns)
 	v.conflictSet = slices.Clone(b.conflictSet)
-	v.values = make([][]any, len(b.values))
-	for i, row := range b.values {
-		v.values[i] = slices.Clone(row)
-	}
+	v.values = b.values.clone()
 	return &v
 }
 func (b *InsertBuilder) Reset() *InsertBuilder {
@@ -208,7 +209,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	modes := 0
-	if len(b.values) > 0 {
+	if b.values.rows > 0 {
 		modes++
 	}
 	if b.source != nil {
@@ -307,7 +308,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 	default:
 		_, _ = s.WriteString(" VALUES ")
-		width := len(b.values[0])
+		width := b.values.width
 		if width == 0 {
 			panic("empty VALUES row; use DefaultValues")
 		}
@@ -315,24 +316,18 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		if len(b.columns) > 0 && len(b.columns) != width {
 			panic("INSERT columns and values differ")
 		}
-		if len(b.values) > (cap(c.args)-len(c.args))/width {
+		if b.values.rows > (cap(c.args)-len(c.args))/width {
 			// Count only direct parameters. Expressions may bind zero or many
 			// values and must never be evaluated for capacity estimation.
-			count := 0
-			for _, row := range b.values {
-				for _, value := range row {
-					if _, expression := value.(Expression); !expression {
-						count++
-					}
-				}
-			}
-			c.args = slices.Grow(c.args, count)
+			c.args = slices.Grow(c.args, b.values.directArgs())
 		}
 
-		for i, row := range b.values {
-			if len(row) != width {
+		cursor := insertCellCursor{batch: &b.values}
+		for i := range b.values.rows {
+			if b.values.rowWidth(i) != width {
 				panic("inconsistent INSERT row width")
 			}
+			row := cursor.next(width)
 
 			if i > 0 {
 				_, _ = s.WriteString(", ")
@@ -371,9 +366,19 @@ func (b *InsertBuilder) renderSizeHint() int {
 	for _, column := range b.columns {
 		n += len(column) + 4
 	}
-	for _, row := range b.values {
-		n += 4 + 6*len(row)
+
+	// Skip any term that would overflow the optional size hint.
+	const maxInt = int(^uint(0) >> 1)
+	if b.values.rows > (maxInt-n)/4 {
+		return max(128, n)
 	}
+
+	n += 4 * b.values.rows
+	if b.values.size() > (maxInt-n)/6 {
+		return max(128, n)
+	}
+
+	n += 6 * b.values.size()
 	return max(128, n)
 }
 

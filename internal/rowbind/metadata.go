@@ -17,6 +17,7 @@ const Sep = "_"
 
 // Field describes one mapped field. Its contents and Indexes are immutable.
 type Field struct {
+	Type       reflect.Type
 	Column     string
 	Indexes    []int
 	IgnoreZero bool
@@ -202,6 +203,7 @@ func collectFields(t reflect.Type, prefix string, path []int, active map[reflect
 		}
 
 		fields = append(fields, Field{
+			Type:       f.Type,
 			Column:     formatFieldName(prefix, name),
 			Indexes:    indexes,
 			IgnoreZero: omit,
