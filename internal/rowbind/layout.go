@@ -17,11 +17,14 @@ import (
 // classification. It never retains a destination, SQL cursor, conversion
 // configuration, or mutable scanner scratch storage.
 type structScanLayout struct {
-	columns  []string
-	fields   []*Field
-	groups   []nullStructGroup
-	flags    structScanFlags
-	reusable bool
+	columns []string
+	fields  []*Field
+	groups  []nullStructGroup
+	flags   structScanFlags
+
+	// Temporary reuse and caller-address retention are independent properties.
+	reusable      bool
+	directTargets bool
 
 	scannerKind atomic.Uint32
 }
@@ -172,8 +175,11 @@ func (m *Metadata) compileScanLayout(t reflect.Type, columns []string, flags str
 
 		// Use the model's owned column string, not a driver's label storage.
 		layout.columns[i], layout.fields[i] = f.Column, f
-		if f.scanMode != scanFieldGeneral && !reusableScannerType(reflect.PointerTo(f.Type)) {
-			layout.reusable = false
+		if f.scanMode != scanFieldGeneral {
+			layout.directTargets = true
+			if !reusableScannerType(reflect.PointerTo(f.Type)) {
+				layout.reusable = false
+			}
 		}
 	}
 

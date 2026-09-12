@@ -295,9 +295,9 @@ func (p *scanPlan) releaseScalarDestinations() {
 func (p *scanPlan) releaseDestinations() {
 	if p.layout != nil && len(p.layout.groups) == 0 {
 		// Built-in wrappers only point into this plan. Keep that stable argument
-		// vector across rows; clear the actual destinations below. Custom fields
-		// contain caller addresses directly and must release them after each scan.
-		if !p.layout.reusable {
+		// vector across rows; clear the actual destinations below. Direct fields,
+		// including standard nullable Scanners, must release caller addresses.
+		if p.layout.directTargets {
 			for i, field := range p.layout.fields {
 				if field != nil && field.scanMode != scanFieldGeneral {
 					p.values[i] = nil
