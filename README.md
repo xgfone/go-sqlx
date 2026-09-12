@@ -710,26 +710,60 @@ lexical rules must match the connection's SQL mode. See the
 Clause extension interfaces are defined in this package:
 
 ```go
-type Condition interface { BuildCondition(*BuildContext) string }
-type Updater interface { BuildUpdate(*BuildContext) string }
+type Condition interface { WriteCondition(*SQLWriter) (emitted bool, err error) }
+type Updater interface { WriteUpdate(*SQLWriter) (emitted bool, err error) }
 type Sorter interface { SortColumns() []SortColumn }
 type Pagination interface { LimitOffset() (limit, offset int64) }
 ```
 
-`ConditionFunc` and `UpdaterFunc` adapt functions. `SortColumn`, `SortColumns`
-and `PageSizer` provide native ordering and pagination values. Sorting is copied
-into the builder; pagination is normalized into its limit/offset state.
+`ConditionWriterFunc` and `UpdaterWriterFunc` adapt streaming callbacks:
+
+```go
+condition := sqlx.ConditionWriterFunc(func(w *sqlx.SQLWriter) (bool, error) {
+    w.Raw("(")
+    w.Path("items.score")
+    w.Raw(" > ")
+    w.Arg(minimumScore)
+    w.Raw(")")
+    return true, nil
+})
+query := sqlx.Select("id").From("items").Where(condition)
+```
+
+`SQLWriter` writes directly into the statement: `Raw` accepts trusted SQL;
+`Ident("a.b")` quotes one name, `Ident("a", "b")` quotes separate components,
+and `Path("a.b")` quotes a dotted path. `Arg` binds data (including Param slots
+when compiling), `Expr` renders an Expression, and `Value` does either according
+to its input type. `Dialect` supplies the current dialect. All nested rendering
+shares parameter numbering. Methods do not insert spaces. The writer is borrowed
+only for the callback: do not retain, copy, or use it concurrently.
 
 Render predicates without WHERE/HAVING/ON and assignments without SET. Custom
 predicates must preserve their own precedence, for example by parenthesizing OR.
-Renderers receive a borrowed `BuildContext`: use `Quote` for identifier paths,
-`Add` for bound data, and `Value` for operands that may include an `Expression`
-or `Subquery`. All nested rendering shares the statement's parameter numbering.
-Do not retain the context. A renderer may panic on invalid input; statement
-`Build` catches the failure and returns an error. Raw SQL is still validated by
-the database. An empty renderer result must not add arguments. A clause with
-no effective predicates or assignments is rejected; nil conditions and native
-empty AND groups passed to Where/Having are skipped.
+Return `true, nil` after writing nonempty SQL; `false, nil` must leave SQL and
+arguments untouched. Violations are build errors. Each occurrence renders once;
+callbacks are never evaluated to estimate capacity or count effective terms.
+An explicit error or panic aborts the entire build, which returns no partial SQL
+or arguments. A clause with no effective predicates or assignments is rejected;
+nil conditions and native empty AND groups passed to Where/Having are skipped.
+Unknown groups may use temporary storage to determine grouping after rendering.
+
+Existing `ConditionFunc` and `UpdaterFunc` keep their string-returning signatures
+and adapt to the new interfaces. Use `AdaptCondition`/`AdaptUpdater` for existing
+objects implementing `BuildCondition`/`BuildUpdate`. Empty legacy SQL must not
+append arguments. For direct rendering use `sqlx.BuildCondition(ctx, condition)`
+or `sqlx.BuildUpdate(ctx, updater)` with a `NewBuildContext`; these helpers return
+independent strings and panic on rendering errors. Streaming avoids the legacy
+callback's intermediate strings.
+
+`Expression` is a small immutable handle; its complex descriptions and argument
+containers are shallow snapshots. Copies retain expression identity for reuse in
+DISTINCT ON, ORDER BY, windows, and StatementTemplate compilation. Referenced
+mutable argument objects are not deep-copied.
+
+`SortColumn`, `SortColumns`, and `PageSizer` provide native ordering and
+pagination values. Sorting is copied into the builder; pagination is normalized
+into its limit/offset state.
 
 A test additionally executes generated SQL with bound parameters in
 Python's SQLite 3.39+ when available. PostgreSQL/MySQL grammar and feature guards

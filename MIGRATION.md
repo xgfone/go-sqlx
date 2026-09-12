@@ -46,9 +46,60 @@ sqlx.Eq(sqlx.Value(42), 42)        // explicit literal on the left
 predicate := sqlx.Eq[string]      // instantiate a generic function value
 ```
 
-Custom `Condition` and `Updater` implementations retain their existing string
-rendering contracts. Native nested statements now stream into the parent buffer;
-returned SQL and argument slices remain independently owned by callers.
+Custom `Condition` and `Updater` implementations now use SQLWriter, as described
+below. Returned SQL and argument slices remain independently owned by callers.
+
+## Streaming clause extensions and compact expressions
+
+The clause interfaces now require `WriteCondition(*SQLWriter) (bool, error)` and
+`WriteUpdate(*SQLWriter) (bool, error)`, respectively. External types implementing
+only the former methods no longer satisfy these interfaces directly. Either
+implement the new method or wrap the object with `AdaptCondition`/`AdaptUpdater`:
+
+```go
+// Bridge an existing object without changing its implementation.
+query.Where(sqlx.AdaptCondition(oldPredicate))
+update.Set(sqlx.AdaptUpdater(oldSetter))
+
+// New streaming implementation; preserve the predicate's precedence.
+func (p Predicate) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
+    w.Raw("(")
+    w.Path(p.Column)
+    w.Raw(" = ")
+    w.Value(p.Value)
+    w.Raw(")")
+    return true, nil
+}
+```
+
+`ConditionFunc func(*BuildContext) string` and `UpdaterFunc func(*BuildContext)
+string` retain their signatures, existing methods, and callable function values;
+they also implement the new interfaces. New callbacks use `ConditionWriterFunc`
+and `UpdaterWriterFunc`. A custom renderer is invoked once per occurrence.
+Returning false must not change SQL or arguments; returning true requires SQL.
+A legacy renderer returning an empty string after appending arguments now fails
+explicitly. Errors and panics abort the whole Build/Compile; error identity is
+preserved through wrapping. Optional empty terms do not leave separators.
+
+Replace direct calls on a `Condition`/`Updater` interface with
+`sqlx.BuildCondition(ctx, condition)` / `sqlx.BuildUpdate(ctx, updater)`. They
+return strings and may panic, sharing the context's parameter numbering. Legacy
+function adapters still expose their original methods. Interfaces or function
+values that explicitly name the old method signatures must migrate as well.
+
+The writer is borrowed for the callback only and must not be retained, copied,
+or used concurrently. `Ident` takes explicit name components, `Path` splits a
+dotted path, `Raw` writes trusted SQL, `Arg` binds data, and `Value`/`Expr` render
+expressions in the same context. `Arg(Param(i))` and `Expr(Param(i))` support
+Compile; other Expressions should use Expr/Value. DEFAULT remains restricted to
+direct inserted/assigned values: compose Set/SetRow to render such assignments.
+
+Expression constructors and operand constraints are unchanged. Internal storage
+is compact and complex payloads are immutable shallow snapshots; mutable values
+and driver.Valuer objects keep their prior ownership and evaluation rules.
+Expression copies preserve reuse identity, and StatementTemplate still freezes
+rendered SQL only at Compile. Do not depend on private layouts or unsafe memory
+representations.
 
 ## Removing the go-op dependency
 
