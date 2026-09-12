@@ -172,7 +172,7 @@ func (m *Metadata) compileScanLayout(t reflect.Type, columns []string, flags str
 
 		// Use the model's owned column string, not a driver's label storage.
 		layout.columns[i], layout.fields[i] = f.Column, f
-		if f.scanMode != scanFieldGeneral {
+		if f.scanMode != scanFieldGeneral && !reusableScannerType(reflect.PointerTo(f.Type)) {
 			layout.reusable = false
 		}
 	}
