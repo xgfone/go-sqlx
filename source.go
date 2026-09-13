@@ -48,6 +48,10 @@ func ExpressionSource(e Expression, alias string, columns ...string) Source {
 // ValuesSource constructs a named VALUES table. Each nonempty row must match
 // columns; rows are copied. SQLite aliases small inputs with SELECT and projects
 // native VALUES for larger inputs. Older MySQL uses SELECT ... UNION ALL.
+// PostgreSQL casts ordinary bound Go values to preserve numeric, boolean, binary,
+// and time semantics even when the driver sends unspecified parameter types.
+// Use ColumnTypes for Params and driver.Valuers, or Cast for individual cells.
+// Other Expressions supply their own SQL type information; nil remains untyped.
 func ValuesSource(alias string, columns []string, rows ...[]any) Source {
 	values := make([][]any, len(rows))
 	for i, row := range rows {
@@ -60,16 +64,42 @@ func ValuesSource(alias string, columns []string, rows ...[]any) Source {
 	}}
 }
 
+// ColumnTypes sets explicit SQL types for every column of a VALUES source.
+// Types are trusted SQL syntax, as in Cast, and must suit the target dialect.
+// The returned source owns a copy of types; the original source is unchanged.
+// An empty list clears explicit types and restores the dialect's defaults.
+func (s Source) ColumnTypes(types ...string) Source {
+	s.table.Types = append([]string(nil), types...)
+	return s
+}
+
 // Lateral permits references to preceding FROM items from this source.
 func (s Source) Lateral() Source { s.table.Lateral = true; return s }
 
 func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
+	if t.Types != nil {
+		if t.Values == nil {
+			panic("ColumnTypes requires a VALUES source")
+		}
+
+		if len(t.Types) != len(t.Columns) {
+			panic("VALUES source type count differs from columns")
+		}
+
+		for _, typ := range t.Types {
+			if strings.TrimSpace(typ) == "" {
+				panic("VALUES source requires nonempty column types")
+			}
+		}
+	}
+
 	if t.Lateral {
 		requireFeature(c, dialect.Lateral, "LATERAL")
 		_, _ = s.WriteString("LATERAL ")
 	}
 
 	g := c.Dialect().Grammar()
+	castValues := t.Types != nil || g.ValuesRequireTypeCasts
 	aliasedColumns := false
 	if t.Values != nil {
 		requireFeature(c, dialect.ValuesTable, "VALUES table")
@@ -82,6 +112,9 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 			if len(row) != len(t.Columns) {
 				panic("VALUES source row width differs from columns")
 			}
+		}
+		if castValues && len(t.Values) > 2 {
+			reserveSQL(s, s.Len()+valuesCastSizeHint(t.Columns, t.Types, len(t.Values), len(c.args)))
 		}
 
 		_ = s.WriteByte('(')
@@ -111,7 +144,12 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 						_, _ = s.WriteString(", ")
 					}
 
-					writeValue(s, c, v)
+					if castValues {
+						writeTypedSourceValue(s, c, t.Types, j, v)
+					} else {
+						writeValue(s, c, v)
+					}
+
 					if i == 0 {
 						_, _ = s.WriteString(" AS ")
 						dialect.WriteIdent(s, c.Dialect(), t.Columns[j])
@@ -127,7 +165,16 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 				}
 
 				_ = s.WriteByte('(')
-				writeArguments(s, c, row)
+				if castValues {
+					for j, value := range row {
+						if j > 0 {
+							_, _ = s.WriteString(", ")
+						}
+						writeTypedSourceValue(s, c, t.Types, j, value)
+					}
+				} else {
+					writeArguments(s, c, row)
+				}
 				_ = s.WriteByte(')')
 			}
 		}

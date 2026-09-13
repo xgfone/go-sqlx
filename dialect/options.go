@@ -19,6 +19,7 @@ type Grammar struct {
 	RowInViaValues                bool // SQLite row IN requires a query on the right.
 	WindowGroupsRequiresOrder     bool // PostgreSQL GROUPS frames require ORDER BY.
 	ReuseExpressionParameters     bool // Repeated SELECT/GROUP/ORDER expressions share numbered parameters.
+	ValuesRequireTypeCasts        bool // PostgreSQL otherwise resolves unknown VALUES columns as text.
 	ReturningTargetOnly           bool // SQLite RETURNING permits table.column, but no aliases or qualified wildcards.
 }
 
@@ -36,6 +37,7 @@ func (d builtin) Grammar() Grammar {
 		return Grammar{
 			WindowGroupsRequiresOrder: true,
 			ReuseExpressionParameters: true,
+			ValuesRequireTypeCasts:    true,
 		}
 
 	case "sqlite3":

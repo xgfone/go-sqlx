@@ -64,6 +64,11 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			[][]any{{6}},
 		},
 		{
+			"typed values source",
+			db.Select("d.v").FromSource(ValuesSource("d", []string{"v"}, []any{"2"}, []any{"10"}).ColumnTypes("INTEGER")).Where(Gt("d.v", 2)),
+			[][]any{{10}},
+		},
+		{
 			"bracket identifier with marker",
 			db.Select().SelectExpr(Expr("[why?] + ?", 2)).
 				FromSelect(Select().SelectExprAlias(Value(40), "why?"), "q"),

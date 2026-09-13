@@ -85,6 +85,31 @@ caller-provided aliases remain quoted.
 SQLite does not support column alias lists on other derived/expression sources;
 alias those query outputs with `SelectAlias`/`SelectExprAlias` instead.
 
+PostgreSQL VALUES columns containing only parameters can otherwise resolve as
+TEXT when the driver leaves parameter types unspecified. `ValuesSource` casts
+ordinary bound Go values: signed integers and small unsigned integers to BIGINT,
+uint/uint64 to NUMERIC, floats to DOUBLE PRECISION, bool to BOOLEAN, strings to
+TEXT, byte slices to BYTEA, and time.Time to TIMESTAMP WITH TIME ZONE. Defined
+scalar types and pointers to these types follow the same rules. Argument values
+are still bound as data; Build does not convert them or invoke `driver.Valuer`.
+
+Use `ValuesSource(...).ColumnTypes("INTEGER", "TEXT")` to explicitly cast every
+cell using the corresponding column type. The list must cover every column and
+contain trusted SQL type specifications valid for the selected database. This is
+required on PostgreSQL for direct `Param` and `driver.Valuer` cells, whose types
+cannot be inferred during construction; `Cast(value, typeSQL)` also works for an
+individual cell. Other explicit Expressions retain responsibility for their SQL
+types. Plain nil stays untyped, so supply ColumnTypes for an all-NULL column when
+its use requires a particular type. `ColumnTypes()` clears the explicit types.
+
+```go
+input := sqlx.ValuesSource("input", []string{"id", "name"},
+    []any{sqlx.Param(0), sqlx.Param(1)},
+).ColumnTypes("BIGINT", "TEXT")
+tmpl, err := sqlx.Select("input.id").FromSource(input).
+    SetDialect(dialect.Postgres).Compile()
+```
+
 ## Aggregation and windows
 
 `CountExpr`, `CountDistinctExpr`, `SumExpr`, `MinExpr`, `MaxExpr`, and `AvgExpr`

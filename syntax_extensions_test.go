@@ -236,7 +236,7 @@ func TestReusableSourcesAndJoinKinds(t *testing.T) {
 
 	checkSQL(t,
 		Select("v.id").FromSource(source).SetDialect(dialect.Postgres),
-		`SELECT "v"."id" FROM (VALUES ($1, $2), ($3, $4)) AS "v" ("id", "name")`,
+		`SELECT "v"."id" FROM (VALUES (CAST($1 AS BIGINT), CAST($2 AS TEXT)), (CAST($3 AS BIGINT), CAST($4 AS TEXT))) AS "v" ("id", "name")`,
 		1, "a", 2, "b")
 	checkSQL(t,
 		Select("v.id").FromSource(source).SetDialect(dialect.WithVersion(dialect.MySQL, 8, 0, 19)),
@@ -276,7 +276,7 @@ func TestReusableSourcesAndJoinKinds(t *testing.T) {
 		Update().Table("t").Set(Set("v", Ident("q", "v"))).
 			FromSource(ValuesSource("q", []string{"v"}, []any{2})).
 			SetDialect(dialect.Postgres),
-		`UPDATE "t" SET "v"="q"."v" FROM (VALUES ($1)) AS "q" ("v")`,
+		`UPDATE "t" SET "v"="q"."v" FROM (VALUES (CAST($1 AS BIGINT))) AS "q" ("v")`,
 		2)
 
 	checkBuildError(t, Select("*").FromSource(QuerySource(sub, "b").Lateral()).SetDialect(dialect.SQLite))

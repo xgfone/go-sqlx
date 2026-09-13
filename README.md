@@ -735,7 +735,10 @@ capability override and SQLITE_ENABLE_UPDATE_DELETE_LIMIT for those clauses.
 Structured aggregate/window expressions are rejected at the RETURNING query
 level, including inside scalar wrappers; scalar subqueries have their own scope.
 SQLite RETURNING accepts `*`, unqualified columns, and actual target table names,
-but rejects qualified wildcards and target aliases.
+but rejects qualified wildcards and target aliases. PostgreSQL VALUES sources
+cast ordinary Go values to preserve their types; use `.ColumnTypes(...)` for
+runtime Params, custom Valuers, or explicit SQL types. See
+[SQL syntax](docs/sql-syntax.md) for typing and repeated-expression rules.
 
 ## Struct mapping and Oper
 

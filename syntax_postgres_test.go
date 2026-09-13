@@ -37,6 +37,7 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 	}
 
 	e := Coalesce(Ident("v"), 0)
+	source := ValuesSource("d", []string{"v"}, []any{2}, []any{10})
 	scalar := Coalesce(Subquery(Select().SelectExpr(Sum("v")).From("other")), 0)
 	cases := []struct {
 		name string
@@ -93,6 +94,34 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 			[][]any{{0}, {2}, {10}},
 		},
 		{
+			"values numeric order",
+			Select("d.v").FromSource(source).OrderByAsc("d.v").SetDialect(dialect.Postgres),
+			[][]any{{2}, {10}},
+		},
+		{
+			"values numeric compare",
+			Select("d.v").FromSource(source).Where(Gt("d.v", 2)).SetDialect(dialect.Postgres),
+			[][]any{{10}},
+		},
+		{
+			"values numeric join",
+			Select("t.v").From("t").JoinSource(InnerJoin, source, On("t.v", "d.v")).
+				OrderByAsc("t.v").SetDialect(dialect.Postgres),
+			[][]any{{2}, {2}, {10}},
+		},
+		{
+			"values null and numeric",
+			Select("d.v").FromSource(ValuesSource("d", []string{"v"}, []any{nil}, []any{2}, []any{10})).
+				OrderByAsc("d.v").SetDialect(dialect.Postgres),
+			[][]any{{2}, {10}, {nil}},
+		},
+		{
+			"values float and boolean",
+			Select("d.v", "d.b").FromSource(ValuesSource("d", []string{"v", "b"}, []any{2.5, true}, []any{10.5, false})).
+				Where(Eq("d.b", true)).SetDialect(dialect.Postgres),
+			[][]any{{2.5, true}},
+		},
+		{
 			"returning aggregate subquery",
 			Update().Table("t").Set(Set("v", 1)).Where(Eq("v", 10)).
 				ReturningExpr(scalar, "total").SetDialect(dialect.Postgres),
@@ -133,6 +162,13 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 		args []any
 		want [][]any
 	}{
+		{
+			Select("d.v").FromSource(ValuesSource("d", []string{"v"}, []any{Param(0)}, []any{Param(1)}).
+				ColumnTypes("INTEGER")).Where(Gt("d.v", Param(2))).
+				SetDialect(dialect.Postgres),
+			[]any{2, 10, 2},
+			[][]any{{10}},
+		},
 		{
 			Select().SelectExpr(p, Count("*")).From("t").GroupByExpr(p).
 				Having(Gt(p, Param(1))).OrderByExpr(p, Asc).SetDialect(dialect.Postgres),

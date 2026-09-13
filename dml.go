@@ -18,11 +18,14 @@ type sqlTable struct {
 
 	Values  [][]any
 	Columns []string
+	Types   []string
+
 	Lateral bool
 }
 
 func (t sqlTable) writeTo(s *strings.Builder, c *BuildContext) {
-	if t.Values != nil || t.Expr != nil || len(t.Columns) > 0 || t.Lateral {
+	if t.Values != nil || t.Expr != nil || len(t.Columns) > 0 ||
+		t.Types != nil || t.Lateral {
 		t.writeSource(s, c)
 		return
 	}
