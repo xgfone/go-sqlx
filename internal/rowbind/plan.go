@@ -72,52 +72,10 @@ type scanPlan struct {
 	fieldScanners []fieldScanner
 	values        []any
 	wrapped       []bool
-	captured      []captureScanner
+	captured      []nullableCaptureScanner
 	skip          []bool
 
 	visitBound bool // Only Visit may keep its private flat target bound between rows.
-}
-
-type nullStructGroup struct {
-	path    []int
-	columns []int
-}
-
-// Deferred row input is borrowed by the converter and may be overwritten on
-// the next row. Bound reusable byte storage across the entire scan operation.
-const captureOperationBytes = 4096
-
-type captureScanner struct {
-	value  any
-	buffer []byte
-	bytes  any
-	limit  int
-}
-
-func (s *captureScanner) Scan(value any) error {
-	// Nullable-parent layouts defer conversion until the entire row is known.
-	// Own byte values before returning to the source, which may immediately
-	// reuse its buffer for another column or close on cancellation.
-	if data, ok := value.([]byte); ok {
-		if len(data) == 0 || len(data) > s.limit {
-			// Large values are call-scoped; empty values must not retain backing
-			// storage. Neither may grow the reusable buffer without a bound.
-			value = slices.Clone(data)
-		} else {
-			if len(s.buffer) != len(data) {
-				if cap(s.buffer) < len(data) {
-					s.buffer = make([]byte, len(data))
-				} else {
-					s.buffer = s.buffer[:len(data)]
-				}
-				s.bytes = s.buffer[:len(data):len(data)]
-			}
-			copy(s.buffer, data)
-			value = s.bytes
-		}
-	}
-	s.value = value
-	return nil
 }
 
 type discardScanner struct{}
@@ -129,30 +87,19 @@ func initRowScanPlan(p *scanPlan, columns []string, types []reflect.Type, option
 		return nil, err
 	}
 
-	if len(types) == 1 && types[0] != nil && !IsScalarDestination(types[0]) {
-		t := types[0]
-		if t.Kind() != reflect.Pointer {
-			return nil, errors.New("sqlx: expected pointer destination")
-		}
-
-		var err error
-		if t, err = indirectType(t); err != nil {
-			return nil, err
-		}
-
-		if t.Kind() == reflect.Struct {
-			return initStructScanPlan(p, columns, types[0], t, options)
-		}
+	t, err := structScanType(types)
+	if err != nil {
+		return nil, err
+	}
+	if t != nil {
+		return initStructScanPlan(p, columns, types[0], t, options)
 	}
 
 	return initScalarScanPlan(p, columns, types, options)
 }
 
+// initScalarScanPlan receives options already validated by initRowScanPlan.
 func initScalarScanPlan(p *scanPlan, columns []string, types []reflect.Type, options ScanOptions) (*scanPlan, error) {
-	if err := options.validate(); err != nil {
-		return nil, err
-	}
-
 	if len(columns) != len(types) {
 		return nil, fmt.Errorf("sqlx: %d result columns for %d destinations", len(columns), len(types))
 	}
@@ -338,9 +285,11 @@ func (p *scanPlan) releaseDestinations() {
 		// vectors in one loop instead of adding a memclr call to every row.
 		p.releaseScalarDestinations()
 		return
-	} else {
+	} else if p.layout == nil {
 		clear(p.values)
 	}
+	// Nullable-parent vectors point only to the plan's own capture scanners.
+	// Their row inputs are cleared by scanNullableStruct; keep the fixed vector.
 
 	for i := range p.scanners {
 		p.scanners[i].Value = nil

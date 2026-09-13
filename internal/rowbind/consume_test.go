@@ -136,7 +136,7 @@ func TestNullableParentCopiesBeforeSourceReusesColumnBuffer(t *testing.T) {
 			t.Fatal("deferred capture retained a row value or exceeded its buffer limit")
 		}
 	}
-	if budget > captureOperationBytes {
+	if budget > nullableCaptureBytes {
 		t.Fatal("column buffers exceed operation budget")
 	}
 
@@ -152,7 +152,7 @@ func TestNullableParentCopiesBeforeSourceReusesColumnBuffer(t *testing.T) {
 }
 
 func TestDeferredCaptureReusesOnlyBoundedStorage(t *testing.T) {
-	s := captureScanner{limit: 16}
+	s := nullableCaptureScanner{limit: 16}
 	if err := s.Scan([]byte("first")); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestDeferredCaptureReusesOnlyBoundedStorage(t *testing.T) {
 
 func TestCaptureSnapshotsOwnBytesAndPreserveSourceTypes(t *testing.T) {
 	var saved, want []any
-	var s captureScanner
+	var s nullableCaptureScanner
 	large := bytes.Repeat([]byte{'L'}, 1<<20)
 	for _, src := range []any{
 		[]byte("first"), []byte("next"), nil, []byte(nil),
@@ -438,5 +438,128 @@ func TestScanFailureOrderAndCleanup(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The source here owns no database/sql lock. Even when that source fails,
+// retained execution adapters must not keep row input or caller fields alive.
+func TestNullablePlanClearsRowsAcrossFailures(t *testing.T) {
+	type child struct {
+		Value int64 `sql:"value"`
+	}
+	type record struct {
+		Child *child `sql:"child"`
+	}
+
+	mode := ""
+	cause := errors.New("source failed")
+	mapping, err := Prepare(
+		[]string{"child_value"},
+		[]reflect.Type{reflect.TypeFor[*record]()},
+		ScanOptions{NestedPointers: NilNullNestedPointers},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	scan, err := mapping.Scanner(func(args ...any) error {
+		var src any = []byte("42")
+		switch mode {
+		case "null":
+			src = nil
+		case "conversion_error":
+			src = []byte("invalid")
+		}
+
+		if err := args[0].(sql.Scanner).Scan(src); err != nil {
+			return err
+		}
+		if mode == "source_error" {
+			return cause
+		}
+		if mode == "source_panic" {
+			panic(cause)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer scan.Close() //nolint:errcheck
+
+	for _, next := range []string{
+		"value", "null", "conversion_error", "source_error", "source_panic", "value",
+	} {
+		mode = next
+		dst := record{Child: &child{Value: 7}}
+
+		var scanErr error
+		var caught any
+		func() {
+			defer func() { caught = recover() }()
+			scanErr = scan.Scan(&dst)
+		}()
+
+		switch mode {
+		case "source_panic":
+			if caught != cause {
+				t.Fatal("source panic lost", caught)
+			}
+
+		case "source_error":
+			if !errors.Is(scanErr, cause) {
+				t.Fatal(scanErr)
+			}
+
+		case "conversion_error":
+			if scanErr == nil {
+				t.Fatal("conversion error lost")
+			}
+
+		case "null":
+			if dst.Child != nil {
+				t.Fatal("NULL parent not cleared")
+			}
+
+		case "value":
+			if dst.Child == nil || dst.Child.Value != 42 {
+				t.Fatal("scan state was not reusable", dst.Child)
+			}
+		}
+
+		if mode != "source_panic" && caught != nil {
+			t.Fatal(caught)
+		}
+		if (mode == "value" || mode == "null") && scanErr != nil {
+			t.Fatal(scanErr)
+		}
+
+		for _, c := range scan.plan.captured {
+			if c.value != nil {
+				t.Fatal("retained row input", mode)
+			}
+		}
+		for _, f := range scan.plan.fieldScanners {
+			if f.value.IsValid() {
+				t.Fatal("retained caller field", mode)
+			}
+		}
+	}
+
+	plan := scan.plan
+	if err := scan.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, v := range plan.values {
+		if v != nil {
+			t.Fatal("closed plan retained scan vector")
+		}
+	}
+
+	for _, c := range plan.captured {
+		if c.value != nil || c.buffer != nil || c.bytes != nil {
+			t.Fatal("closed plan retained input storage")
+		}
 	}
 }

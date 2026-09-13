@@ -9,10 +9,12 @@
 // Each model owns a bounded cache of immutable result-column layouts. Setters,
 // layout validation, nested-pointer handling and scratch pools are private.
 // Changing those implementations does not require changing the root package.
+// Layout descriptions and compilation live in layout.go; bounded cache lookup
+// and publication live in layout_cache.go. Layouts never retain row values.
 //
 // Prepare creates an immutable Mapping without allocating execution scratch.
 // Mapping.WithScan borrows private scan plans only for synchronous operations;
-// Mapping.Scanner borrows independent scratch until the returned Scanner.Close.
+// Mapping.Scanner borrows independent scratch until the returned PreparedScanner.Close.
 // ScanState reuses private preparation and scratch until the owner resets or
 // closes its result; ScanStruct and ScanColumnsToStruct borrow scratch for a
 // single call. Scanning clears
@@ -28,4 +30,8 @@
 // Scalar and struct scans use the same conversion rules. ScanOptions and
 // GeneralScanner are aliased by the root package to preserve its public entry
 // points without a second implementation or per-field adapter callbacks.
+// GeneralScanner and fieldScanner convert individual columns. Only the
+// NilNullNestedPointers path captures input for later conversion, in nullable.go.
+// PreparedScanner (prepared.go) and ScanState (scan_state.go) manage whole-row
+// execution lifetimes; neither implements the single-column sql.Scanner.
 package rowbind

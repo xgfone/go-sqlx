@@ -91,7 +91,7 @@ func PrepareScan(scanner RowScanner, types ...reflect.Type) (PreparedScanner, er
 
 type preparedRowsScanner struct {
 	rows     *Rows
-	scan     *rowbind.Scanner
+	scan     *rowbind.PreparedScanner
 	types    []reflect.Type
 	revision uint64
 }

@@ -47,7 +47,7 @@ func TestNullableStructScansReleaseCallerDestinations(t *testing.T) {
 			}
 
 			var state ScanState
-			var scanner *Scanner
+			var scanner *PreparedScanner
 			if entry == "prepared" {
 				mapping, err := Prepare(columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
 				if err != nil {

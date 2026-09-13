@@ -28,6 +28,29 @@ func fieldScanMode(t reflect.Type) uint8 {
 	return scanFieldUnsupported
 }
 
+// structScanType resolves a single struct destination; a nil type selects
+// positional scalar scanning, whose destination validation happens separately.
+func structScanType(types []reflect.Type) (reflect.Type, error) {
+	if len(types) != 1 || types[0] == nil || IsScalarDestination(types[0]) {
+		return nil, nil
+	}
+
+	t := types[0]
+	if t.Kind() != reflect.Pointer {
+		return nil, errors.New("sqlx: expected pointer destination")
+	}
+
+	t, err := indirectType(t)
+	if err != nil {
+		return nil, err
+	}
+
+	if t.Kind() == reflect.Struct {
+		return t, nil
+	}
+	return nil, nil
+}
+
 func prepareStructLayout(columns []string, t reflect.Type, options ScanOptions) (*structScanLayout, error) {
 	m, err := Describe(t)
 	if err != nil {
@@ -76,9 +99,10 @@ func initStructLayout(p *scanPlan, layout *structScanLayout, dstType reflect.Typ
 
 	if len(layout.groups) > 0 {
 		p.captured = reuseScanStorage(p.captured, count)
-		limit := captureOperationBytes / max(count, 1)
+		limit := nullableCaptureBytes / max(count, 1)
 		for i := range p.captured {
-			p.captured[i] = captureScanner{limit: limit}
+			p.captured[i] = nullableCaptureScanner{limit: limit}
+			p.values[i] = &p.captured[i]
 		}
 		p.skip = reuseScanStorage(p.skip, count)
 	}
@@ -171,80 +195,7 @@ func (p *scanPlan) scanStruct(scan func(...any) error, dst any) error {
 		return scan(p.values...)
 	}
 
-	// The nullable-parent policy needs source NULL information. Buffer only this
-	// opt-in path, and convert before advancing the driver or releasing its bytes.
-	for i := range p.values {
-		p.values[i] = &p.captured[i]
-	}
-
-	defer func() {
-		for i := range p.captured {
-			p.captured[i].value = nil
-		}
-	}()
-
-	if err := scan(p.values...); err != nil {
-		return err
-	}
-
-	clear(p.skip)
-	for _, g := range p.layout.groups {
-		allNull := true
-		for _, i := range g.columns {
-			if p.captured[i].value != nil {
-				allNull = false
-				break
-			}
-		}
-
-		if !allNull {
-			continue
-		}
-
-		fv, err := FieldValue(v, g.path, false)
-		if err != nil {
-			return err
-		}
-
-		if fv.IsValid() {
-			if !fv.CanSet() {
-				return errors.New("sqlx: unwritable nested pointer")
-			}
-			fv.SetZero()
-		}
-
-		for _, i := range g.columns {
-			p.skip[i] = true
-		}
-	}
-
-	for i, f := range p.layout.fields {
-		if p.skip[i] || f == nil {
-			continue
-		}
-
-		var fv reflect.Value
-		if len(f.Indexes) == 1 {
-			fv = v.Field(f.Indexes[0])
-		} else {
-			var err error
-			fv, err = FieldValue(v, f.Indexes, true)
-			if err != nil {
-				return err
-			}
-		}
-
-		if !fv.CanAddr() || !fv.CanSet() {
-			return fmt.Errorf("sqlx: field %q is not writable", p.layout.columns[i])
-		}
-
-		p.fieldScanners[i].value = fv
-		if err := p.fieldScanners[i].Scan(p.captured[i].value); err != nil {
-			return fmt.Errorf("sqlx: column %d (%q): %w", i, p.layout.columns[i], err)
-		}
-	}
-
-	return nil
+	return p.scanNullableStruct(scan, v)
 }
 
 // ScanColumnsToStruct is a low-level field mapper: it supplies field addresses
