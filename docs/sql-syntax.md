@@ -77,7 +77,11 @@ The caller remains responsible for legal correlation and join directions.
 
 VALUES sources require a nonempty alias, column list, and equal-width rows. They
 render using native VALUES on PostgreSQL, VALUES ROW on MySQL 8.0.19+, and a
-SELECT/UNION ALL source with explicit aliases on SQLite and older MySQL profiles.
+SELECT/UNION ALL source with explicit aliases on older MySQL profiles. SQLite
+uses SELECT directly for one or two rows. Larger inputs use a projection over
+native VALUES, avoiding the compound-SELECT term limit. Generated column ordinals
+are written directly without allocating a temporary name string for each column;
+caller-provided aliases remain quoted.
 SQLite does not support column alias lists on other derived/expression sources;
 alias those query outputs with `SelectAlias`/`SelectExprAlias` instead.
 

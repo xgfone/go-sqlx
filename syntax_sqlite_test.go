@@ -5,6 +5,7 @@ package sqlx
 
 import (
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -22,6 +23,25 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	seq := Select().SelectExpr(Value(1)).UnionAll(Select().SelectExpr(Expr("? + 1", Ident("n"))).From("seq").Where(Lt("n", 4)))
 	row := Tuple(Ident("id"), Ident("team"))
 	window := Window().PartitionBy("team").OrderBy("id", Asc)
+	largeValues := make([][]any, 501)
+	for i := range largeValues {
+		largeValues[i] = []any{i, i + 1}
+	}
+
+	wideColumns := make([]string, 32)
+	wideValues := make([][]any, 3)
+	for i := range wideColumns {
+		wideColumns[i] = fmt.Sprintf("column%d", 32-i)
+	}
+	wideColumns[8] = `a"quote`
+	for i := range wideValues {
+		wideValues[i] = make([]any, len(wideColumns))
+		for j := range wideValues[i] {
+			wideValues[i][j] = i*32 + j
+		}
+	}
+	wideValues[0][0], wideValues[2][0] = nil, "text"
+
 	cases := []struct {
 		name string
 		b    SQLBuilder
@@ -39,6 +59,24 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 				FromSource(ValuesSource("v", []string{"id", "label"}, []any{1, "a"}, []any{2, "b"})).
 				OrderByAsc("v.id"),
 			[][]any{{1, "a"}, {2, "b"}},
+		},
+		{
+			"values source beyond compound select limit",
+			db.Select("v.id", "v.next").
+				FromSource(ValuesSource("v", []string{"id", "next"}, largeValues...)).
+				OrderByAsc("v.id"),
+			largeValues,
+		},
+		{
+			"values source aliases resembling generated names",
+			db.Select("v.column1", "v.column2").
+				FromSource(ValuesSource("v", []string{"column2", "column1"}, []any{1, 2})),
+			[][]any{{2, 1}},
+		},
+		{
+			"values source wide columns and mixed values",
+			db.Select("*").FromSource(ValuesSource("v", wideColumns, wideValues...)).OrderByAsc("v.column31"),
+			wideValues,
 		},
 		{
 			"case",
@@ -326,6 +364,8 @@ INSERT INTO users VALUES(1,'one',10,NULL);
 cases=json.load(sys.stdin)
 for q in cases:
     db=sqlite3.connect(':memory:'); db.executescript(schema)
+    if q['Name'].startswith('values source') and hasattr(db,'setlimit'):
+        db.setlimit(sqlite3.SQLITE_LIMIT_COMPOUND_SELECT,2)
     try:
         got=[list(row) for row in db.execute(q['SQL'],q['Args'] or [])]
         assert got==(q['Want'] or []), (q['Name'],q['SQL'],got,q['Want'])

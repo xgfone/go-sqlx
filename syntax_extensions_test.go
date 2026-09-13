@@ -242,6 +242,19 @@ func TestReusableSourcesAndJoinKinds(t *testing.T) {
 		Select("v.id").FromSource(source).SetDialect(dialect.WithVersion(dialect.MySQL, 8, 0, 19)),
 		"SELECT `v`.`id` FROM (VALUES ROW(?, ?), ROW(?, ?)) AS `v` (`id`, `name`)",
 		1, "a", 2, "b")
+	checkSQL(t,
+		Select("v.id").FromSource(source).SetDialect(dialect.SQLite),
+		`SELECT "v"."id" FROM (SELECT ? AS "id", ? AS "name" UNION ALL SELECT ?, ?) AS "v"`,
+		1, "a", 2, "b")
+	checkSQL(t,
+		Select("v.id").FromSource(source).SetDialect(dialect.MySQL),
+		"SELECT `v`.`id` FROM (SELECT ? AS `id`, ? AS `name` UNION ALL SELECT ?, ?) AS `v`",
+		1, "a", 2, "b")
+	checkSQL(t,
+		Select("v.id").FromSource(ValuesSource("v", []string{"id", "name"},
+			[]any{1, Coalesce(Value(nil), Value("a"))}, []any{2, "b"}, []any{3, "c"})).SetDialect(dialect.SQLite),
+		`SELECT "v"."id" FROM (SELECT column1 AS "id", column2 AS "name" FROM (VALUES (?, COALESCE(?, ?)), (?, ?), (?, ?))) AS "v"`,
+		1, nil, "a", 2, "b", 3, "c")
 
 	sub := Select("id").From("r").Where(Eq("v", 4))
 	checkSQL(t,

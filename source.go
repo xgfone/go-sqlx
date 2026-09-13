@@ -5,6 +5,7 @@ package sqlx
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -45,8 +46,8 @@ func ExpressionSource(e Expression, alias string, columns ...string) Source {
 }
 
 // ValuesSource constructs a named VALUES table. Each nonempty row must match
-// columns; rows are copied. Engines without the required VALUES/column-alias form
-// use an equivalent SELECT ... UNION ALL source with explicit output aliases.
+// columns; rows are copied. SQLite aliases small inputs with SELECT and projects
+// native VALUES for larger inputs. Older MySQL uses SELECT ... UNION ALL.
 func ValuesSource(alias string, columns []string, rows ...[]any) Source {
 	values := make([][]any, len(rows))
 	for i, row := range rows {
@@ -85,12 +86,21 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 
 		_ = s.WriteByte('(')
 		aliasedColumns = g.ValuesViaSelect || g.DerivedColumnAliasesViaSelect
-		if !aliasedColumns {
+
+		viaSelect := g.ValuesViaSelect || g.DerivedColumnAliasesViaSelect && len(t.Values) <= 2
+		wrapValues := g.DerivedColumnAliasesViaSelect && !viaSelect
+		if wrapValues {
+			// Keep native VALUES so SQLite's compound-SELECT term limit does
+			// not become an artificial limit on the number of input rows.
+			writeValuesProjection(s, c, t.Columns)
+		}
+
+		if !viaSelect {
 			_, _ = s.WriteString("VALUES ")
 		}
 
 		for i, row := range t.Values {
-			if aliasedColumns {
+			if viaSelect {
 				if i > 0 {
 					_, _ = s.WriteString(" UNION ALL ")
 				}
@@ -120,6 +130,9 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 				writeArguments(s, c, row)
 				_ = s.WriteByte(')')
 			}
+		}
+		if wrapValues {
+			_ = s.WriteByte(')')
 		}
 		_ = s.WriteByte(')')
 	} else if t.Query != nil {
@@ -162,6 +175,23 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 		_ = s.WriteByte(')')
 	}
 
+}
+
+func writeValuesProjection(s *strings.Builder, c *BuildContext, columns []string) {
+	_, _ = s.WriteString("SELECT ")
+	var digits [20]byte
+	for i, column := range columns {
+		if i > 0 {
+			_, _ = s.WriteString(", ")
+		}
+		// SQLite's generated columnN names are safe bare identifiers. Write
+		// the ordinal directly instead of allocating a name string per column.
+		_, _ = s.WriteString("column")
+		_, _ = s.Write(strconv.AppendInt(digits[:0], int64(i+1), 10))
+		_, _ = s.WriteString(" AS ")
+		dialect.WriteIdent(s, c.Dialect(), column)
+	}
+	_, _ = s.WriteString(" FROM (")
 }
 
 func validateColumnNames(columns []string) {
