@@ -151,7 +151,7 @@ func (b *UpdateBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	writeClause(s, c, "WHERE", b.wheres)
-	writeReturning(s, c, b.returning)
+	writeReturning(s, c, b.returning, b.utables[0].Table)
 	multi := len(b.utables) != 1 || len(b.jtables) > 0 || len(b.ftables) > 0
 	b.mutation.render(s, c, dialect.UpdateOrderLimit, multi)
 	writeComment(s, b.comment)

@@ -732,6 +732,11 @@ DELETE USING are available with dialect capability checks. MySQL single-table
 UPDATE/DELETE also support OrderBy/Sort and Limit; SQLite requires an explicit
 capability override and SQLITE_ENABLE_UPDATE_DELETE_LIMIT for those clauses.
 
+Structured aggregate/window expressions are rejected at the RETURNING query
+level, including inside scalar wrappers; scalar subqueries have their own scope.
+SQLite RETURNING accepts `*`, unqualified columns, and actual target table names,
+but rejects qualified wildcards and target aliases.
+
 ## Struct mapping and Oper
 
 SelectStruct, Struct/Structs, and row binding share immutable, type-cached field

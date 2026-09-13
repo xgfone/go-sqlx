@@ -28,12 +28,13 @@ var buildContextPool = sync.Pool{New: func() any {
 // Contexts passed to clause and CTE body renderers are borrowed for that call only: do not
 // copy or retain them or use them concurrently. Pool ownership is internal to sqlx.
 type BuildContext struct {
+	statementScope
+
 	dialect Dialect
 	writer  SQLWriter
 	named   map[string]int
 	args    []any
 
-	windows        map[string]WindowSpec
 	statementDepth int
 	insertedAlias  string
 	conflictScope  bool
@@ -71,6 +72,7 @@ func releaseBuildContext(a *BuildContext) {
 		a.args = a.args[:0]
 	}
 
+	a.statementScope = statementScope{}
 	a.writer = SQLWriter{}
 	a.buffer.Reset()
 	a.bufferInUse = false
@@ -78,7 +80,6 @@ func releaseBuildContext(a *BuildContext) {
 	a.insertedAlias = ""
 	a.conflictScope = false
 	a.compiling = false
-	a.windows = nil
 	a.named = nil
 	a.dialect = nil
 	buildContextPool.Put(a)
@@ -101,17 +102,17 @@ func (a *BuildContext) releaseBuffer(buf *strings.Builder) {
 	}
 }
 
-// Every statement has its own named windows. Parameters remain shared, and
-// correlated subqueries retain the enclosing INSERT conflict context.
-func (a *BuildContext) enterStatement() map[string]WindowSpec {
-	parent := a.windows
-	a.windows = nil
+// Every statement has its own expression rules and named windows. Parameters
+// remain shared; correlated subqueries retain the enclosing conflict context.
+func (a *BuildContext) enterStatement() statementScope {
+	parent := a.statementScope
+	a.statementScope = statementScope{}
 	a.statementDepth++
 	return parent
 }
 
-func (a *BuildContext) leaveStatement(parent map[string]WindowSpec) {
-	a.windows = parent
+func (a *BuildContext) leaveStatement(parent statementScope) {
+	a.statementScope = parent
 	a.statementDepth--
 }
 
@@ -123,12 +124,18 @@ func (a *BuildContext) Dialect() Dialect {
 // Quote quotes a dotted identifier path, preserving a trailing wildcard.
 // Expressions must be supplied through an explicit expression API.
 func (a *BuildContext) Quote(name string) string {
+	if a.returningTable != "" {
+		a.validateReturningPath(name)
+	}
 	return quotePath(a.Dialect(), name)
 }
 
 // WriteQuote appends a quoted identifier path, like Quote, without an
 // intermediate string for built-in dialects.
 func (a *BuildContext) WriteQuote(buf *strings.Builder, name string) {
+	if a.returningTable != "" {
+		a.validateReturningPath(name)
+	}
 	writeQuotedPath(buf, a.Dialect(), name)
 }
 

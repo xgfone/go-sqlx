@@ -358,6 +358,9 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	if b.err != nil {
 		panic(b.err)
 	}
+	if b.lock != "" {
+		c.forbidSetFunctions = "row locking aggregate or window queries is unsupported"
+	}
 
 	// A nested statement starts at the current end of the shared buffer.
 	// Its estimate describes this fragment, not the entire enclosing SQL.
@@ -425,14 +428,6 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	if b.lock != "" {
 		if len(b.ftables) == 0 {
 			panic("row locking requires FROM")
-		}
-
-		for _, col := range b.columns {
-			if col.Expr != nil && (col.Expr.function() != "" ||
-				col.Expr.kind() == aggregateExpression ||
-				col.Expr.kind() == windowExpression) {
-				panic("row locking aggregate queries is unsupported")
-			}
 		}
 
 		requireFeature(c, dialect.RowLock, "row locking")

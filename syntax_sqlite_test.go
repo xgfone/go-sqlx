@@ -48,6 +48,22 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		want [][]any
 	}{
 		{
+			"returning target name with alias",
+			db.Update().TableAlias("main.t", "u").Set(Set("v", 99)).Where(Eq("u.id", 1)).Returning("t.v"),
+			[][]any{{99}},
+		},
+		{
+			"returning wildcard with alias",
+			db.Delete().FromAlias("t", "u").Where(Eq("u.id", 1)).Returning("*"),
+			[][]any{{1, "a", 10}},
+		},
+		{
+			"returning scalar aggregate subquery",
+			db.Insert().IntoAlias("t", "u").Columns("id", "team", "v").Values(4, "c", 40).
+				ReturningExpr(Coalesce(Subquery(Select().SelectExpr(Sum("id")).From("other")), 0), "total"),
+			[][]any{{6}},
+		},
+		{
 			"bracket identifier with marker",
 			db.Select().SelectExpr(Expr("[why?] + ?", 2)).
 				FromSelect(Select().SelectExprAlias(Value(40), "why?"), "q"),

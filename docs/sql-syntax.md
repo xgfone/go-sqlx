@@ -206,6 +206,18 @@ PostgreSQL `ForNoKeyUpdate` and `ForKeyShare` complement `ForUpdate` and
 `ForShare`. Lock setters replace the lock mode and OF aliases; `NoWait` and
 `SkipLocked` apply to the selected lock mode. Aggregate, window, distinct,
 grouped, and compound queries reject locking.
+The aggregate/window check applies inside structured scalar wrappers, CASE, and
+expression arguments at the same query level. A scalar subquery starts its own
+query level and may contain its own aggregates or windows. Trusted raw SQL and
+arbitrary function names supplied through Func remain the caller's responsibility.
+
+INSERT, UPDATE, and DELETE RETURNING use the same query-level aggregate/window
+restriction. On SQLite, use `Returning("*")`, unqualified column names, or the
+actual target table name such as `Returning("items.id")`. Qualified wildcards
+(`items.*`), target aliases, other tables, and schema-qualified column references
+are rejected. These identifier checks also apply inside structured expressions;
+subquery scopes are independent. PostgreSQL retains its qualified wildcard and
+target-alias support.
 
 MySQL single-table UPDATE/DELETE support `OrderBy`, `Sort`, and `Limit`.
 Single-table DELETE aliases require MySQL 8.0.16+ and the `DeleteTargetAlias`

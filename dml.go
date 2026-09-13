@@ -107,8 +107,8 @@ func (j joinTable) writeTo(s *strings.Builder, c *BuildContext) {
 // On compares identifier paths. Other comparisons can use Eq, Gt, or Expr.
 func On(left, right string) Condition {
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		writeQuotedPath(s, c.Dialect(), left)
+		c.WriteQuote(s, left)
 		_ = s.WriteByte('=')
-		writeQuotedPath(s, c.Dialect(), right)
+		c.WriteQuote(s, right)
 	})
 }

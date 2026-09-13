@@ -47,6 +47,9 @@ func (w *SQLWriter) Ident(parts ...string) {
 	}
 
 	w.start()
+	if w.ctx.returningTable != "" && len(parts) > 1 {
+		w.ctx.validateReturningParts(parts, false)
+	}
 	for i, part := range parts {
 		if i > 0 {
 			_ = w.buf.WriteByte('.')

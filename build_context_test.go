@@ -88,11 +88,16 @@ func TestBuildResultsOwnArguments(t *testing.T) {
 func TestBuildContextPoolCleanup(t *testing.T) {
 	c := acquireBuildContext(dialect.SQLite)
 	c.Add(sql.Named("id", &struct{}{}))
+	c.returningTable = "t"
+	c.forbidSetFunctions = "restricted"
 	view := c.argsView()
 	saved := c.Args()
 	releaseBuildContext(c)
 	if view[0] != nil || saved[0] == nil || c.named != nil || c.dialect != nil {
 		t.Fatal("incorrect context cleanup")
+	}
+	if c.returningTable != "" || c.forbidSetFunctions != "" {
+		t.Fatal("pooled context retained statement expression state")
 	}
 
 	medium := acquireBuildContext(dialect.Postgres)

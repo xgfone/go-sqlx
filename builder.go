@@ -225,7 +225,7 @@ func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn
 		if c.Expr != nil {
 			c.Expr.writeTo(buf, ctx)
 		} else {
-			writeQuotedPath(buf, ctx.Dialect(), c.Column)
+			ctx.WriteQuote(buf, c.Column)
 		}
 
 		if c.Alias != "" {
@@ -239,19 +239,17 @@ func cloneColumns(cols []selectedColumn) []selectedColumn {
 	return slices.Clone(cols)
 }
 
-func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
+func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn, target string) {
 	if len(cols) == 0 {
 		return
 	}
 
 	requireFeature(ctx, dialect.Returning, "RETURNING")
-	for _, col := range cols {
-		if e := col.Expr; e != nil &&
-			(e.function() != "" ||
-				e.kind() == aggregateExpression ||
-				e.kind() == windowExpression) {
-			panic("RETURNING cannot contain a top-level aggregate or window function")
-		}
+	policy, table := ctx.forbidSetFunctions, ctx.returningTable
+	defer func() { ctx.forbidSetFunctions, ctx.returningTable = policy, table }()
+	ctx.forbidSetFunctions = "RETURNING cannot contain an aggregate or window function at the same query level"
+	if ctx.Dialect().Grammar().ReturningTargetOnly {
+		ctx.returningTable = target[strings.LastIndexByte(target, '.')+1:]
 	}
 	_, _ = buf.WriteString(" RETURNING ")
 	writeColumns(buf, ctx, cols)

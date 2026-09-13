@@ -99,7 +99,7 @@ func (n pathComparison) WriteCondition(w *SQLWriter) (bool, error) {
 
 func (n pathComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
 	_ = buf.WriteByte('(')
-	writeQuotedPath(buf, c.Dialect(), n.left)
+	c.WriteQuote(buf, n.left)
 	writeComparisonRight(buf, c, n.right, n.op)
 }
 
@@ -118,7 +118,7 @@ func (n pathEquality) WriteCondition(w *SQLWriter) (bool, error) {
 
 func (n pathEquality) writeCondition(buf *strings.Builder, c *BuildContext) {
 	_ = buf.WriteByte('(')
-	writeQuotedPath(buf, c.Dialect(), n.left)
+	c.WriteQuote(buf, n.left)
 	writeComparisonRight(buf, c, n.right, compareEqual)
 }
 

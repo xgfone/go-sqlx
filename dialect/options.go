@@ -18,6 +18,7 @@ type Grammar struct {
 	MutationOrderRequiresLimit    bool // SQLite ORDER BY requires a LIMIT clause.
 	RowInViaValues                bool // SQLite row IN requires a query on the right.
 	WindowGroupsRequiresOrder     bool // PostgreSQL GROUPS frames require ORDER BY.
+	ReturningTargetOnly           bool // SQLite RETURNING permits table.column, but no aliases or qualified wildcards.
 }
 
 func (d builtin) Grammar() Grammar {
@@ -42,6 +43,7 @@ func (d builtin) Grammar() Grammar {
 			CompoundOperandViaSelect:      true,
 			RowInViaValues:                true,
 			MutationOrderRequiresLimit:    true,
+			ReturningTargetOnly:           true,
 		}
 
 	default:
