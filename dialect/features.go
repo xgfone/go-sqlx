@@ -59,6 +59,7 @@ const (
 	InsertTargetAlias         // PostgreSQL and SQLite INSERT target aliases.
 	KeyRowLock                // PostgreSQL FOR NO KEY UPDATE / FOR KEY SHARE.
 	DeleteTargetAlias         // Single-table DELETE aliases; MySQL requires 8.0.16+.
+	RollupOrderDistinct       // ROLLUP with ORDER BY or DISTINCT; MySQL requires 8.0.12+.
 )
 
 // FeatureDialect opts in to optional SQL capabilities.
@@ -108,7 +109,8 @@ func (d builtin) Supports(feature Feature) bool {
 		return d == "postgres" || d == "sqlite3"
 
 	case IntersectAll, ExceptAll, GroupingSets, Cube, Lateral, DistinctOn,
-		DataModifyingCTE, ConflictConstraint, FetchWithTies, KeyRowLock:
+		DataModifyingCTE, ConflictConstraint, FetchWithTies, KeyRowLock,
+		RollupOrderDistinct:
 		return d == "postgres"
 
 	case ConflictTargetOptional, MultipleOnConflict:

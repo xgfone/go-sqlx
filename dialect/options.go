@@ -174,6 +174,7 @@ func WithGrammar(d Dialect, grammar Grammar) Dialect {
 // Baselines are MySQL 8.0, PostgreSQL 14, and SQLite 3.39. Older versions and
 // custom dialects are rejected.
 //
+//   - MySQL 8.0.12 allows ROLLUP with ORDER BY or DISTINCT
 //   - MySQL 8.0.14 adds LATERAL
 //   - MySQL 8.0.16 adds single-table DELETE aliases
 //   - MySQL 8.0.19 adds VALUES tables and inserted-row aliases
@@ -211,6 +212,7 @@ func WithVersion(d Dialect, major, minor, patch int) Dialect {
 			panic("dialect: MySQL 8.0 or newer required")
 		}
 
+		v.features[RollupOrderDistinct] = atLeast(8, 0, 12)
 		v.features[Lateral] = atLeast(8, 0, 14)
 		v.features[DeleteTargetAlias] = atLeast(8, 0, 16)
 		v.features[InsertRowAlias] = atLeast(8, 0, 19)

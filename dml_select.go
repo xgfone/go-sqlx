@@ -361,6 +361,9 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	if b.lock != "" {
 		c.forbidSetFunctions = "row locking aggregate or window queries is unsupported"
 	}
+	if b.rollup && (b.distinct || len(b.orderbys) > 0 && len(b.unions) == 0) {
+		requireFeature(c, dialect.RollupOrderDistinct, "ROLLUP with ORDER BY or DISTINCT")
+	}
 
 	// A nested statement starts at the current end of the shared buffer.
 	// Its estimate describes this fragment, not the entire enclosing SQL.

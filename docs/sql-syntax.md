@@ -153,6 +153,9 @@ replaces the grouping clause. PostgreSQL uses ROLLUP(...), while MySQL uses
 WITH ROLLUP. `GroupingSets(GroupingSet(...), GroupingSet())`, `Cube(...)`, and
 `Rollup(...)` compose as GROUP BY expressions where supported. SQLite rejects
 these grouping extensions; MySQL supports only its ROLLUP form.
+MySQL requires 8.0.12+ to combine ROLLUP with DISTINCT or with ORDER BY on that
+SELECT. Earlier profiles reject these combinations; ordering the result of a
+compound query remains independent of an operand's ROLLUP.
 
 On PostgreSQL, reuse the same helper-generated Expression value in SELECT,
 GROUP BY, HAVING, and ORDER BY. The builder retains its parameter numbers,
@@ -318,7 +321,8 @@ mutating the supplied builder. PG/MySQL sources do not require a dummy WHERE.
 ## Dialect configuration
 
 Built-in profiles target PostgreSQL 14+, MySQL 8.0, and SQLite 3.39+.
-`WithVersion` enables later MySQL capabilities: LATERAL at 8.0.14, single-table
+`WithVersion` enables later MySQL capabilities: ROLLUP with ORDER BY/DISTINCT at
+8.0.12, LATERAL at 8.0.14, single-table
 DELETE aliases at 8.0.16, new-row aliases and native VALUES tables at 8.0.19,
 and INTERSECT/EXCEPT at 8.0.31. Version selection does not inspect or modify
 the server. Specify the version your application actually targets, including

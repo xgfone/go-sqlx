@@ -49,6 +49,8 @@ func TestVersionCapabilities(t *testing.T) {
 	} {
 		d := WithVersion(MySQL, 8, 0, tc.minor)
 		for f, want := range map[Feature]bool{
+			RollupOrderDistinct: tc.minor >= 12,
+
 			Lateral:           tc.lateral,
 			DeleteTargetAlias: tc.deleteAlias,
 			InsertRowAlias:    tc.alias,
@@ -67,7 +69,7 @@ func TestVersionCapabilities(t *testing.T) {
 	}
 
 	if Supports(MySQL, Intersect) || Supports(MySQL, InsertRowAlias) ||
-		Supports(MySQL, DeleteTargetAlias) {
+		Supports(MySQL, DeleteTargetAlias) || Supports(MySQL, RollupOrderDistinct) {
 		t.Fatal("version profile modified the built-in")
 	}
 	if !Supports(WithVersion(MySQL, 8, 4, 0), IntersectAll) {
