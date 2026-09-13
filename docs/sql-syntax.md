@@ -281,7 +281,8 @@ corresponding compile option.
 
 Expression scanning defaults to PostgreSQL standard_conforming_strings=on,
 MySQL's ordinary string mode, and SQLite's literal backslashes. PostgreSQL
-recognizes E strings, dollar quotes, and nested block comments; MySQL recognizes
+recognizes E strings, dollar quotes, nested block comments, and CR or LF line
+comment terminators (`LineCommentCR`); MySQL recognizes
 hash comments and requires whitespace after `--`. Match connection SQL modes
 with `WithLexicalRules`: clear BackslashStrings for MySQL NO_BACKSLASH_ESCAPES,
 clear DoubleQuotedStrings for ANSI_QUOTES, or enable BackslashStrings for

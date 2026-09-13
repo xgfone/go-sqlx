@@ -161,6 +161,7 @@ func TestTemplateDefaultAndLexicalRules(t *testing.T) {
 	}{
 		{dialect.Postgres, "$tag$?$tag$ || ? /* outer /* ? */ */"},
 		{dialect.Postgres, "? ?? 'key'"},
+		{dialect.Postgres, "1 -- ignored ?\r + ?"},
 		{dialect.MySQL, "? # ignored ?\n"},
 		{dialect.SQLite, "[why?] + ?"},
 	} {

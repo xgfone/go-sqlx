@@ -60,6 +60,7 @@ type LexicalRules struct {
 	DashCommentSpace    bool // MySQL requires whitespace after --.
 	NestedBlockComments bool
 	BracketIdentifiers  bool // SQLite [identifier] quoting, ending at the first ].
+	LineCommentCR       bool // A carriage return also terminates a line comment.
 }
 
 func (d builtin) LexicalRules() LexicalRules {
@@ -74,6 +75,7 @@ func (d builtin) LexicalRules() LexicalRules {
 
 	case "postgres":
 		return LexicalRules{
+			LineCommentCR:       true,
 			NestedBlockComments: true,
 			EscapeStringPrefix:  true,
 			DollarQuotes:        true,

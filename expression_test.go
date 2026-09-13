@@ -22,6 +22,38 @@ func TestExpressionLayout(t *testing.T) {
 	}
 }
 
+func TestExpressionLineCommentTerminators(t *testing.T) {
+	for _, d := range []Dialect{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		t.Run(d.Name(), func(t *testing.T) {
+			for _, ending := range []string{"\n", "\r\n"} {
+				e := Expr("? -- ignored ?"+ending+" + ?", 1, 2)
+				checkSQL(t, Select().SelectExpr(e).SetDialect(d),
+					"SELECT "+d.Placeholder(1)+" -- ignored ?"+ending+" + "+d.Placeholder(2), 1, 2)
+			}
+			if d == dialect.Postgres {
+				checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1, 2)).SetDialect(d),
+					"SELECT $1 -- ignored ?\r + $2", 1, 2)
+			} else {
+				checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1)).SetDialect(d),
+					"SELECT ? -- ignored ?\r + ?", 1)
+			}
+		})
+	}
+
+	// The configurable rule, rather than the dialect's name, controls scanning.
+	rules := dialect.Postgres.LexicalRules()
+	rules.LineCommentCR = false
+	checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1)).
+		SetDialect(dialect.WithLexicalRules(dialect.Postgres, rules)),
+		"SELECT $1 -- ignored ?\r + ?", 1)
+
+	rules = dialect.SQLite.LexicalRules()
+	rules.LineCommentCR = true
+	checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1, 2)).
+		SetDialect(dialect.WithLexicalRules(dialect.SQLite, rules)),
+		"SELECT ? -- ignored ?\r + ?", 1, 2)
+}
+
 func TestExpressionBuild(t *testing.T) {
 	for _, test := range []struct {
 		expr Expression

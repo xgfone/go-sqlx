@@ -501,9 +501,16 @@ func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args 
 
 		case s[i] == '#' && rules.HashComments || strings.HasPrefix(s[i:], "--") &&
 			(!rules.DashCommentSpace || i+2 == len(s) || s[i+2] <= ' '):
-			for i < len(s) && s[i] != '\n' {
-				i++
+			end := strings.IndexByte(s[i:], '\n')
+			if end < 0 {
+				end = len(s) - i
 			}
+			if rules.LineCommentCR {
+				if cr := strings.IndexByte(s[i:i+end], '\r'); cr >= 0 {
+					end = cr
+				}
+			}
+			i += end
 			_, _ = out.WriteString(s[start:i])
 
 		case strings.HasPrefix(s[i:], "/*"):
