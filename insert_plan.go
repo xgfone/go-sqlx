@@ -21,7 +21,17 @@ type InsertPlan[T any] struct {
 	fields   []structInsertField
 	columns  []string
 	explicit bool
+
+	directMode insertDirectMode
 }
+
+type insertDirectMode uint8
+
+const (
+	insertDirectNone     insertDirectMode = iota // Read every field through field.read.
+	insertDirectExplicit                         // Direct reads require explicit columns.
+	insertDirectAlways                           // Direct reads support implicit columns too.
+)
 
 // CompileInsert resolves mapped columns, field paths and value capabilities.
 // With no columns it selects all mapped fields in declaration order; omitted
@@ -57,12 +67,29 @@ func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
 		validateColumnNames(b.columns)
 	}
 
-	return &InsertPlan[T]{
+	plan = &InsertPlan[T]{
 		model:    model,
 		fields:   fields,
 		columns:  b.columns,
 		explicit: b.explicitColumns,
-	}, nil
+	}
+	plan.prepareDirectFields()
+	return plan, nil
+}
+
+// Cache whether field reads need only static value paths. Keep the whole-row
+// box in AppendTo: it preserves snapshots and avoids boxing every field.
+func (p *InsertPlan[T]) prepareDirectFields() {
+	p.directMode = insertDirectAlways
+	for _, f := range p.fields {
+		if f.flags&(insertPointer|insertCopyValuer) != 0 || f.field.PointerParent {
+			p.directMode = insertDirectNone
+			break
+		}
+		if f.field.IgnoreZero {
+			p.directMode = insertDirectExplicit
+		}
+	}
 }
 
 // AppendTo snapshots rows into b's VALUES batch. Existing columns must match the
@@ -118,6 +145,8 @@ func (p *InsertPlan[T]) AppendTo(b *InsertBuilder, rows []T) (err error) {
 	defer b.values.discardPending()
 	cells := b.values.nextRows(len(rows), width)
 	explicit := p.explicit || b.explicitColumns
+	direct := p.directMode == insertDirectAlways ||
+		p.directMode == insertDirectExplicit && explicit
 	for i := range rows {
 		// A value model is boxed once per row, preserving Structs' snapshot
 		// before any user IsZero method runs. Pointer models keep their identity.
@@ -130,8 +159,19 @@ func (p *InsertPlan[T]) AppendTo(b *InsertBuilder, rows []T) (err error) {
 		}
 
 		row := cells[i*width : (i+1)*width]
-		for _, field := range p.fields {
-			row[field.column] = field.read(v, explicit)
+		if direct {
+			for _, field := range p.fields {
+				indexes := field.field.Indexes
+				if len(indexes) == 1 {
+					row[field.column] = v.Field(indexes[0]).Interface()
+				} else {
+					row[field.column] = v.FieldByIndex(indexes).Interface()
+				}
+			}
+		} else {
+			for _, field := range p.fields {
+				row[field.column] = field.read(v, explicit)
+			}
 		}
 	}
 
