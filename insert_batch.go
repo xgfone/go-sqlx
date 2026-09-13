@@ -3,7 +3,10 @@
 
 package sqlx
 
-import "slices"
+import (
+	"slices"
+	"unsafe"
+)
 
 // A batch supplied at once uses one flat cell allocation. Incremental appends
 // keep completed chunks instead of repeatedly copying all preceding cells.
@@ -57,9 +60,14 @@ func (b *insertBatch) grow(rows, width int) {
 
 	capacity := count
 	if rows == 1 && width > 0 {
-		// Unknown final size: grow chunks to at most 64 rows, bounding unused
-		// tail storage even after a much larger explicit batch.
+		// Unknown final size: cap chunks at 64 rows and a byte budget that
+		// starts at 32 KiB, then grows to 1/8 of the committed cells. This
+		// bounds small wide batches without fragmenting larger ones. Always
+		// fit a complete row; multi-row allocations keep their exact size.
+		const baseCells = (32 << 10) / int(unsafe.Sizeof(any(nil)))
+		chunkCells := max(baseCells, b.size()/8)
 		n := min(cap(b.cells)/width, 32) * 2
+		n = min(n, max(1, chunkCells/width))
 		if n > 1 && n <= (maxInt-b.size())/width {
 			capacity = n * width
 		}
