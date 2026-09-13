@@ -103,7 +103,6 @@ func (b *SelectBuilder) ClearFrom() *SelectBuilder    { b.ftables = nil; return 
 func (b *SelectBuilder) ClearGroupBy() *SelectBuilder { b.groups = nil; b.rollup = false; return b }
 func (b *SelectBuilder) ClearHaving() *SelectBuilder  { b.havings = nil; return b }
 func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return b }
-func (b *SelectBuilder) ClearUnion() *SelectBuilder   { b.unions = nil; return b }
 func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b }
 func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
 func (b *SelectBuilder) ClearWith() *SelectBuilder    { b.ctes = nil; return b }

@@ -175,8 +175,8 @@ result. Use `FromSelect` to make a paginated left query into an operand.
 Compound queries and their operands reject row locking.
 
 MySQL INTERSECT/EXCEPT require 8.0.31+. SQLite supports their distinct forms,
-but rejects INTERSECT ALL and EXCEPT ALL. `ClearSetOperations` and the legacy
-`ClearUnion` clear all set operations.
+but rejects INTERSECT ALL and EXCEPT ALL. `ClearSetOperations` clears all set
+operations, including their ALL variants.
 
 ## Ordering, paging, and locks
 

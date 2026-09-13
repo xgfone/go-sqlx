@@ -629,11 +629,11 @@ OFFSET, table destination, comments and lock mode replace their previous value.
 
 `ClearSelect`, `ClearFrom`, `ClearWhere`, `ClearGroupBy`, `ClearHaving`,
 `ClearOrderBy`, `ClearJoins`, `ClearPagination`, `ClearLock`, `ClearWith`,
-`ClearUnion`, `ClearSet`, `ClearColumns`, `ClearValues`, `ClearReturning`, and
+`ClearSetOperations`, `ClearSet`, `ClearColumns`, `ClearValues`, `ClearReturning`, and
 `ClearConflict` are exposed on applicable builders. `ClearSelect` also clears
-DISTINCT and DISTINCT ON. `ClearWindows`, `ClearSetOperations`, `ClearRowsAlias`,
-and mutation `ClearLimit` clear their respective additions. `ClearValues` clears
-all insert source modes. `Reset` starts a fresh
+DISTINCT and DISTINCT ON. `ClearSetOperations` clears UNION, INTERSECT and EXCEPT.
+`ClearWindows`, `ClearRowsAlias`, and mutation `ClearLimit` clear their respective
+additions. `ClearValues` clears all insert source modes. `Reset` starts a fresh
 statement while preserving its execution configuration.
 
 Builders are mutable and must not be concurrently mutated. `Clone()` copies

@@ -133,6 +133,9 @@ Existing calls without column names keep working; function values now have a
 variadic column parameter. `WithCTE` remains available for other CTE bodies and
 advanced options. Single-row `Row.WithColumns` is unrelated and remains available.
 
+`SelectBuilder.ClearUnion` has been removed. Use `ClearSetOperations`, which
+clears UNION, INTERSECT and EXCEPT, including their ALL variants.
+
 | Previous API                                                           | Replacement                                                                                |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `Build() (string, []any)`                                              | `Build() (string, []any, error)`; use `MustBuild` only to assert initialization invariants |

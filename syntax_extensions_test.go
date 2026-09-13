@@ -154,7 +154,8 @@ func TestSetOperationsPrecedenceAndOperandPagination(t *testing.T) {
 	checkBuildError(t, a.Clone().Intersect(b))
 	checkBuildError(t, a.Clone().IntersectAll(b).SetDialect(dialect.SQLite))
 	checkBuildError(t, a.Clone().Union(Select("id").From("t").ForUpdate()).SetDialect(dialect.Postgres))
-	checkSQL(t, a.Clone().Except(b).ClearSetOperations().SetDialect(dialect.SQLite), `SELECT ?`, 1)
+	checkSQL(t, a.Clone().Union(b).UnionAll(c).Intersect(b).IntersectAll(c).Except(b).ExceptAll(c).
+		ClearSetOperations().SetDialect(dialect.SQLite), `SELECT ?`, 1)
 }
 
 func TestWindowAndGroupingRendering(t *testing.T) {
