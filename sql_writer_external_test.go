@@ -10,38 +10,40 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-type legacyTenant int
+type externalTenantCondition int
 
-func (v legacyTenant) BuildCondition(c *sqlx.BuildContext) string {
-	return c.Quote("tenant") + "=" + c.Add(int(v))
+func (v externalTenantCondition) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
+	w.Path("tenant")
+	w.Raw("=")
+	w.Arg(int(v))
+	return true, nil
 }
 
-type legacyIncrement int
+type externalIncrementUpdater int
 
-func (v legacyIncrement) BuildUpdate(c *sqlx.BuildContext) string {
-	return c.Quote("n") + "=" + c.Value(int(v))
+func (v externalIncrementUpdater) WriteUpdate(w *sqlx.SQLWriter) (bool, error) {
+	w.Path("n")
+	w.Raw("=")
+	w.Value(int(v))
+	return true, nil
 }
 
-var _ sqlx.LegacyCondition = legacyTenant(0)
-var _ sqlx.LegacyUpdater = legacyIncrement(0)
+var _ sqlx.Condition = externalTenantCondition(0)
+var _ sqlx.Updater = externalIncrementUpdater(0)
 
-func TestLegacyClauseAdapters(t *testing.T) {
+func TestExternalClauseWriters(t *testing.T) {
 	assertSQL(t,
-		sqlx.Update().Table("t").Set(sqlx.AdaptUpdater(legacyIncrement(2))).
-			Where(sqlx.AdaptCondition(legacyTenant(3))).SetDialect(dialect.Postgres),
+		sqlx.Update().Table("t").Set(externalIncrementUpdater(2)).
+			Where(externalTenantCondition(3)).SetDialect(dialect.Postgres),
 		`UPDATE "t" SET "n"=$1 WHERE "tenant"=$2`,
 		2, 3)
-	if sqlx.AdaptCondition(nil) != nil || sqlx.AdaptUpdater(nil) != nil {
-		t.Fatal("nil adapter")
-	}
-
 	c := sqlx.NewBuildContext(dialect.Postgres)
-	got := sqlx.BuildCondition(c, sqlx.AdaptCondition(legacyTenant(4)))
+	got := sqlx.BuildCondition(c, externalTenantCondition(4))
 	if got != `"tenant"=$1` {
 		t.Fatal(got)
 	}
 
-	got = sqlx.BuildUpdate(c, sqlx.AdaptUpdater(legacyIncrement(5)))
+	got = sqlx.BuildUpdate(c, externalIncrementUpdater(5))
 	if got != `"n"=$2` {
 		t.Fatal(got)
 	}

@@ -66,6 +66,7 @@ func (b *UpdateBuilder) Set(updaters ...Updater) *UpdateBuilder {
 	return b
 }
 
+// SetExpr appends an assignment whose value must be an Expression.
 func (b *UpdateBuilder) SetExpr(column string, e Expression) *UpdateBuilder {
 	return b.Set(Set(column, e))
 }

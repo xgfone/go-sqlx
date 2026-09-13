@@ -32,8 +32,8 @@ func NewOper[T any](name string) Oper[T] {
 	return Oper[T]{
 		Table: NewTable(name),
 
-		SoftCondition:     OnArg("deleted_at", nil),
-		DeletedCondition:  ConditionFunc(func(c *BuildContext) string { return c.Quote("deleted_at") + " IS NOT NULL" }),
+		SoftCondition:     Eq("deleted_at", nil),
+		DeletedCondition:  IsNotNull("deleted_at"),
 		SoftDeleteUpdater: func(context.Context) Updater { return Set("deleted_at", time.Now()) },
 	}
 }

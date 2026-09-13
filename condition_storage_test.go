@@ -130,9 +130,12 @@ func TestConditionStorageGroupsPreserveOrderAndCallbacks(t *testing.T) {
 		nil,
 		group,
 		Or(call("or_empty", false), Eq("c", 3), call("custom", true)),
-		ConditionFunc(func(c *BuildContext) string {
-			calls = append(calls, "legacy")
-			return c.Quote("legacy") + "=" + c.Add(4)
+		ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+			calls = append(calls, "last")
+			w.Path("last")
+			w.Raw("=")
+			w.Arg(4)
+			return true, nil
 		}),
 		nil,
 	}
@@ -148,9 +151,9 @@ func TestConditionStorageGroupsPreserveOrderAndCallbacks(t *testing.T) {
 	for _, q := range []*SelectBuilder{query, clone} {
 		calls = nil
 		sql, args, err := q.Build()
-		want := `SELECT "id" FROM "t" WHERE (("a" = $1) AND ("b" = $2) AND (("c" = $3) OR "custom"=$4) AND "legacy"=$5)`
+		want := `SELECT "id" FROM "t" WHERE (("a" = $1) AND ("b" = $2) AND (("c" = $3) OR "custom"=$4) AND "last"=$5)`
 		if err != nil || sql != want || !reflect.DeepEqual(args, []any{1, 2, 3, "custom", 4}) ||
-			!slices.Equal(calls, []string{"empty", "or_empty", "custom", "legacy"}) {
+			!slices.Equal(calls, []string{"empty", "or_empty", "custom", "last"}) {
 			t.Fatal(sql, args, calls, err)
 		}
 	}

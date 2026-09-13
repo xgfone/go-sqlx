@@ -60,23 +60,28 @@ func TestExplicitSortingHavingAndPagination(t *testing.T) {
 
 func TestNestedBindingsAndJoinConditions(t *testing.T) {
 	pg := &DB{Dialect: dialect.Postgres}
-	sub := Select("id").From("u").Where(OnArg("active", true))
+	sub := Select("id").From("u").Where(Eq("active", true))
 	b := pg.Select().SelectExpr(Expr("COALESCE(?, ?)", Ident("a", "name"), "unknown")).
 		FromSelect(sub, "a").
-		JoinLeft("v", "b", Or(On("a.id", "b.id"), ConditionFunc(func(c *BuildContext) string { return c.Quote("b.score") + ">" + c.Add(10) }))).
-		Where(Exists(Select().SelectExpr(Expr("1")).From("w").Where(OnArg("kind", "x")))).
+		JoinLeft("v", "b", Or(On("a.id", "b.id"), ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+			w.Path("b.score")
+			w.Raw(">")
+			w.Arg(10)
+			return true, nil
+		}))).
+		Where(Exists(Select().SelectExpr(Expr("1")).From("w").Where(Eq("kind", "x")))).
 		Having(Expr("COUNT(*) > ?", 2).Condition())
 
 	checkSQL(t, b,
-		`SELECT COALESCE("a"."name", $1) FROM (SELECT "id" FROM "u" WHERE "active"=$2) AS "a" LEFT JOIN "v" AS "b" ON ("a"."id"="b"."id" OR "b"."score">$3) WHERE (EXISTS (SELECT 1 FROM "w" WHERE "kind"=$4)) HAVING (COUNT(*) > $5)`,
+		`SELECT COALESCE("a"."name", $1) FROM (SELECT "id" FROM "u" WHERE ("active" = $2)) AS "a" LEFT JOIN "v" AS "b" ON ("a"."id"="b"."id" OR "b"."score">$3) WHERE (EXISTS (SELECT 1 FROM "w" WHERE ("kind" = $4))) HAVING (COUNT(*) > $5)`,
 		"unknown", true, 10, "x", 2)
 
 	checkSQL(t, pg.Select("id").From("t").Where(InQuery("id", sub)),
-		`SELECT "id" FROM "t" WHERE "id" IN (SELECT "id" FROM "u" WHERE "active"=$1)`,
+		`SELECT "id" FROM "t" WHERE "id" IN (SELECT "id" FROM "u" WHERE ("active" = $1))`,
 		true)
 
-	checkSQL(t, pg.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 3)).Where(OnArg("id", 4)),
-		`UPDATE "t" SET "n"="n" + $1 WHERE "id"=$2`,
+	checkSQL(t, pg.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 3)).Where(Eq("id", 4)),
+		`UPDATE "t" SET "n"="n" + $1 WHERE ("id" = $2)`,
 		3, 4)
 }
 
@@ -95,7 +100,7 @@ func TestExpressionTokenization(t *testing.T) {
 func TestLockingAndDialectErrors(t *testing.T) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL} {
 		db := &DB{Dialect: d}
-		q, a, e := db.Select("id").FromAlias("t", "a").Where(OnArg("id", 4)).ForUpdate("a").SkipLocked().Build()
+		q, a, e := db.Select("id").FromAlias("t", "a").Where(Eq("id", 4)).ForUpdate("a").SkipLocked().Build()
 		if e != nil || !strings.Contains(q, " FOR UPDATE OF ") || !strings.HasSuffix(q, " SKIP LOCKED") || len(a) != 1 {
 			t.Fatalf("%s %v %v", q, a, e)
 		}
@@ -161,11 +166,11 @@ func TestReturningAndConflictPolicies(t *testing.T) {
 }
 
 func TestCloneAppendAndReset(t *testing.T) {
-	base := Select("id").From("t").GroupBy("id").GroupBy("v").Where(OnArg("id", 1))
-	derived := base.Clone().Select("v").Where(OnArg("v", 2))
+	base := Select("id").From("t").GroupBy("id").GroupBy("v").Where(Eq("id", 1))
+	derived := base.Clone().Select("v").Where(Eq("v", 2))
 
-	checkSQL(t, base, "SELECT `id` FROM `t` WHERE `id`=? GROUP BY `id`, `v`", 1)
-	checkSQL(t, derived, "SELECT `id`, `v` FROM `t` WHERE (`id`=? AND `v`=?) GROUP BY `id`, `v`", 1, 2)
+	checkSQL(t, base, "SELECT `id` FROM `t` WHERE (`id` = ?) GROUP BY `id`, `v`", 1)
+	checkSQL(t, derived, "SELECT `id`, `v` FROM `t` WHERE ((`id` = ?) AND (`v` = ?)) GROUP BY `id`, `v`", 1, 2)
 	checkSQL(t, derived.ClearWhere().ClearGroupBy().ClearSelect().Select("v"), "SELECT `v` FROM `t`")
 
 	db := &DB{Dialect: dialect.Postgres}
@@ -173,10 +178,10 @@ func TestCloneAppendAndReset(t *testing.T) {
 	checkBuildError(t, b)
 	checkSQL(t, b.Reset().SelectExpr(Expr("1")), "SELECT 1")
 
-	sub := Select("id").From("t").Where(OnArg("id", 1))
+	sub := Select("id").From("t").Where(Eq("id", 1))
 	q := Select().SelectExpr(Subquery(sub))
-	sub.Where(OnArg("id", 2))
-	checkSQL(t, q, "SELECT (SELECT `id` FROM `t` WHERE `id`=?)", 1)
+	sub.Where(Eq("id", 2))
+	checkSQL(t, q, "SELECT (SELECT `id` FROM `t` WHERE (`id` = ?))", 1)
 
 	input := []any{1}
 	insert := Insert().Into("t").Values(input...)
@@ -199,11 +204,12 @@ func TestTableOperAndSoftDeleteScopes(t *testing.T) {
 	}
 
 	checkSQL(t, o.SelectStruct(), `SELECT "value" FROM "t"`)
-	checkSQL(t, o.Active().Select("value"), `SELECT "value" FROM "t" WHERE "deleted_at" IS NULL`)
+	checkSQL(t, o.Active().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted_at" IS NULL)`)
+	checkSQL(t, o.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted_at" IS NOT NULL)`)
 
-	custom := o.WithSoftCondition(OnArg("deleted", false)).WithDeletedCondition(OnArg("deleted", true))
-	checkSQL(t, custom.Active().Select("value"), `SELECT "value" FROM "t" WHERE "deleted"=$1`, false)
-	checkSQL(t, custom.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE "deleted"=$1`, true)
+	custom := o.WithSoftCondition(Eq("deleted", false)).WithDeletedCondition(Eq("deleted", true))
+	checkSQL(t, custom.Active().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted" = $1)`, false)
+	checkSQL(t, custom.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted" = $1)`, true)
 	checkSQL(t, o.Select("value"), `SELECT "value" FROM "t"`)
 	checkSQL(t, o.Table.Update().Set(Set("value", nil)), `UPDATE "t" SET "value"=$1`, nil)
 }
@@ -334,7 +340,7 @@ func TestTransactionExecutor(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	_, e = db.WithExecutor(tx).Delete().From("t").Where(OnArg("id", 1)).ExecContext(context.Background())
+	_, e = db.WithExecutor(tx).Delete().From("t").Where(Eq("id", 1)).ExecContext(context.Background())
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -381,12 +387,12 @@ func TestSQLiteExecution(t *testing.T) {
 			).
 			Returning("v", "n"), [][]any{{"two", 20}}},
 		{db.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 2)).
-			Where(OnArg("id", 1)).Returning("n"), [][]any{{22}}},
+			Where(Eq("id", 1)).Returning("n"), [][]any{{22}}},
 		{db.Select().SelectExpr(Sum("n")).From("t").Having(Expr("SUM(n) > ?", 20).Condition()), [][]any{{22}}},
-		{db.Select("id").With("filtered", Select("id").From("t").Where(OnArg("n", 22))).
+		{db.Select("id").With("filtered", Select("id").From("t").Where(Eq("n", 22))).
 			From("filtered").UnionAll(Select().SelectExpr(Value(9))), [][]any{{1}, {9}}},
 		{db.Insert().Into("archive").Columns("id").FromSelect(Select("id").From("t").
-			Where(OnArg("id", 1))).Returning("id"), [][]any{{1}}},
+			Where(Eq("id", 1))).Returning("id"), [][]any{{1}}},
 		{db.Select("a.id").FromAlias("t", "a").Join("archive", "b", On("a.id", "b.id")), [][]any{{1}}},
 		{db.Delete().From("t").Where(InQuery("id", Select("id").From("archive"))).Returning("id"), [][]any{{1}}},
 		{db.Insert().Into("t").DefaultValues().Returning("v"), [][]any{{"default"}}},
@@ -427,20 +433,20 @@ print('SQLite',sqlite3.sqlite_version,'passed')
 
 func ExampleSelectBuilder_ForUpdate() {
 	db := &DB{Dialect: dialect.Postgres}
-	q, args, err := db.Select("id", "balance").From("accounts").Where(OnArg("id", 42)).ForUpdate().NoWait().Build()
+	q, args, err := db.Select("id", "balance").From("accounts").Where(Eq("id", 42)).ForUpdate().NoWait().Build()
 
 	fmt.Println(q)
 	fmt.Println(args, err)
 	// Output:
-	// SELECT "id", "balance" FROM "accounts" WHERE "id"=$1 FOR UPDATE NOWAIT
+	// SELECT "id", "balance" FROM "accounts" WHERE ("id" = $1) FOR UPDATE NOWAIT
 	// [42] <nil>
 }
 
 func TestExpressionPredicateGrouping(t *testing.T) {
-	checkSQL(t, Select("id").From("t").Where(Expr("a=? OR b=?", 1, 2).Condition(), OnArg("tenant", 3)),
-		"SELECT `id` FROM `t` WHERE ((a=? OR b=?) AND `tenant`=?)", 1, 2, 3)
-	checkSQL(t, Delete().From("t").Where(OnArg("deleted_at", nil)), "DELETE FROM `t` WHERE `deleted_at` IS NULL")
-	checkBuildError(t, Update().Table("t").Set(Set("v", 1)).Where(ConditionFunc(func(*BuildContext) string { panic("invalid comparison") })))
+	checkSQL(t, Select("id").From("t").Where(Expr("a=? OR b=?", 1, 2).Condition(), Eq("tenant", 3)),
+		"SELECT `id` FROM `t` WHERE ((a=? OR b=?) AND (`tenant` = ?))", 1, 2, 3)
+	checkSQL(t, Delete().From("t").Where(Eq("deleted_at", nil)), "DELETE FROM `t` WHERE (`deleted_at` IS NULL)")
+	checkBuildError(t, Update().Table("t").Set(Set("v", 1)).Where(ConditionWriterFunc(func(*SQLWriter) (bool, error) { panic("invalid comparison") })))
 }
 
 type dynamicColumns struct{ column string }

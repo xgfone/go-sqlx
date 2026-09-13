@@ -88,8 +88,7 @@ type pathComparison struct {
 	left  string
 	right any
 
-	op      comparisonOp
-	grouped bool
+	op comparisonOp
 }
 
 func (n pathComparison) WriteCondition(w *SQLWriter) (bool, error) {
@@ -99,11 +98,9 @@ func (n pathComparison) WriteCondition(w *SQLWriter) (bool, error) {
 }
 
 func (n pathComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
-	if n.grouped {
-		_ = buf.WriteByte('(')
-	}
+	_ = buf.WriteByte('(')
 	writeQuotedPath(buf, c.Dialect(), n.left)
-	writeComparisonRight(buf, c, n.right, n.op, n.grouped)
+	writeComparisonRight(buf, c, n.right, n.op)
 }
 
 // Equality is common enough to encode its operation and grouping in the type,
@@ -122,7 +119,7 @@ func (n pathEquality) WriteCondition(w *SQLWriter) (bool, error) {
 func (n pathEquality) writeCondition(buf *strings.Builder, c *BuildContext) {
 	_ = buf.WriteByte('(')
 	writeQuotedPath(buf, c.Dialect(), n.left)
-	writeComparisonRight(buf, c, n.right, compareEqual, true)
+	writeComparisonRight(buf, c, n.right, compareEqual)
 }
 
 type expressionComparison struct {
@@ -147,10 +144,10 @@ func (n expressionComparison) writeCondition(buf *strings.Builder, c *BuildConte
 
 	_ = buf.WriteByte('(')
 	n.left.writeTo(buf, c)
-	writeComparisonRight(buf, c, n.right, n.op, true)
+	writeComparisonRight(buf, c, n.right, n.op)
 }
 
-func writeComparisonRight(buf *strings.Builder, c *BuildContext, right any, op comparisonOp, grouped bool) {
+func writeComparisonRight(buf *strings.Builder, c *BuildContext, right any, op comparisonOp) {
 	if (op == compareEqual || op == compareNotEqual) && isNil(right) {
 		if op == compareEqual {
 			_, _ = buf.WriteString(" IS NULL")
@@ -158,21 +155,13 @@ func writeComparisonRight(buf *strings.Builder, c *BuildContext, right any, op c
 			_, _ = buf.WriteString(" IS NOT NULL")
 		}
 	} else {
-		if grouped {
-			_ = buf.WriteByte(' ')
-		}
-
+		_ = buf.WriteByte(' ')
 		_, _ = buf.WriteString(op.String())
-		if grouped {
-			_ = buf.WriteByte(' ')
-		}
-
+		_ = buf.WriteByte(' ')
 		writeValue(buf, c, right)
 	}
 
-	if grouped {
-		_ = buf.WriteByte(')')
-	}
+	_ = buf.WriteByte(')')
 }
 
 func compare[T Operand](left T, right any, op comparisonOp) Condition {
@@ -194,8 +183,7 @@ func compare[T Operand](left T, right any, op comparisonOp) Condition {
 			left:  value,
 			right: right,
 
-			op:      op,
-			grouped: true,
+			op: op,
 		}
 
 	default:
@@ -210,8 +198,7 @@ func compare[T Operand](left T, right any, op comparisonOp) Condition {
 			left:  reflect.ValueOf(left).String(),
 			right: right,
 
-			op:      op,
-			grouped: true,
+			op: op,
 		}
 	}
 }

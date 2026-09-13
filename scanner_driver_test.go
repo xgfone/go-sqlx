@@ -79,13 +79,13 @@ func fixtureDB(t *testing.T, f *scanFixture) *DB {
 func TestQueryContextNamedArgsAndBufferLifetime(t *testing.T) {
 	fixture := &scanFixture{values: []driver.Value{[]byte("abc"), []byte("xyz")}}
 	db := fixtureDB(t, fixture)
-	rows := db.Select("value").From("t").Where(OnArg("id", sql.Named("id", 7))).QueryRowsContext(context.Background())
+	rows := db.Select("value").From("t").Where(Eq("id", sql.Named("id", 7))).QueryRowsContext(context.Background())
 	if rows.Err() != nil {
 		t.Fatal(rows.Err())
 	}
 	defer rows.Close() //nolint:errcheck
 
-	if fixture.query != `SELECT "value" FROM "t" WHERE "id"=@id` ||
+	if fixture.query != `SELECT "value" FROM "t" WHERE ("id" = @id)` ||
 		len(fixture.received) != 1 || fixture.received[0].Name != "id" ||
 		fixture.received[0].Value != int64(7) {
 		t.Fatalf("%q %#v", fixture.query, fixture.received)

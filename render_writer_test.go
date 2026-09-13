@@ -37,8 +37,13 @@ func TestStreamingExpressionBindingsAndCustomDialect(t *testing.T) {
 }
 
 func TestStreamingNativeAndCustomClauses(t *testing.T) {
-	empty := ConditionFunc(func(*BuildContext) string { return "" })
-	custom := ConditionFunc(func(c *BuildContext) string { return c.Quote("a") + "=" + c.Add(1) })
+	empty := ConditionWriterFunc(func(*SQLWriter) (bool, error) { return false, nil })
+	custom := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+		w.Path("a")
+		w.Raw("=")
+		w.Arg(1)
+		return true, nil
+	})
 	checkSQL(t,
 		Select().SelectExpr(Value(0)).Where(Or(empty, custom, Eq("b", 2))).SetDialect(dialect.Postgres),
 		`SELECT $1 WHERE ("a"=$2 OR ("b" = $3))`, 0, 1, 2)
@@ -47,8 +52,13 @@ func TestStreamingNativeAndCustomClauses(t *testing.T) {
 		`SELECT $1 WHERE ("b" = $2)`, 0, 2)
 	checkBuildError(t, Select().SelectExpr(Case().When(empty, 1).End()))
 
-	set := UpdaterFunc(func(c *BuildContext) string { return c.Quote("b") + "=" + c.Add(2) })
-	emptySet := UpdaterFunc(func(*BuildContext) string { return "" })
+	set := UpdaterWriterFunc(func(w *SQLWriter) (bool, error) {
+		w.Path("b")
+		w.Raw("=")
+		w.Arg(2)
+		return true, nil
+	})
+	emptySet := UpdaterWriterFunc(func(*SQLWriter) (bool, error) { return false, nil })
 	checkSQL(t,
 		Update().Table("t").Set(Batch(emptySet, Set("a", 1), set), Set("c", 3)).SetDialect(dialect.Postgres),
 		`UPDATE "t" SET "a"=$1, "b"=$2, "c"=$3`, 1, 2, 3)
@@ -67,8 +77,9 @@ func TestStreamingNamedArgumentReuse(t *testing.T) {
 }
 
 func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
-	custom := ConditionFunc(func(c *BuildContext) string {
-		return BuildCondition(c, Eq("a", 1))
+	custom := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+		w.Raw(BuildCondition(w.ctx, Eq("a", 1)))
+		return true, nil
 	})
 
 	q := Select().SelectExpr(Case().When(custom, 2).Else(3).End()).SetDialect(dialect.Postgres)
@@ -89,7 +100,7 @@ func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 				t.Error("expected rendering to panic")
 			}
 		}()
-		Case().When(ConditionFunc(func(*BuildContext) string { return "" }), 0).End().render(c)
+		Case().When(ConditionWriterFunc(func(*SQLWriter) (bool, error) { return false, nil }), 0).End().render(c)
 	}()
 
 	if c.bufferInUse || c.buffer.Len() != 0 {

@@ -56,10 +56,10 @@ func TestBuildContextNamedBindings(t *testing.T) {
 
 func TestBuildResultsOwnArguments(t *testing.T) {
 	builders := []interface{ MustBuild() (string, []any) }{
-		Select("id").From("t").Where(OnArg("id", 7)),
+		Select("id").From("t").Where(Eq("id", 7)),
 		Insert().Into("t").Columns("id").Values(7),
 		Update().Table("t").Set(Set("id", 7)),
-		Delete().From("t").Where(OnArg("id", 7)),
+		Delete().From("t").Where(Eq("id", 7)),
 	}
 	for _, b := range builders {
 		q, args := b.MustBuild()
@@ -147,19 +147,22 @@ func TestExecBorrowsAndReleasesArguments(t *testing.T) {
 	}
 }
 
-func TestCustomConditionReceivesBuildContext(t *testing.T) {
-	condition := ConditionFunc(func(ctx *BuildContext) string {
-		return ctx.Quote("t.id") + "=" + ctx.Add(7)
+func TestCustomConditionSharesBuildContext(t *testing.T) {
+	condition := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+		w.Path("t.id")
+		w.Raw("=")
+		w.Arg(7)
+		return true, nil
 	})
 	c := NewBuildContext(dialect.Postgres)
-	q := condition.BuildCondition(c)
+	q := BuildCondition(c, condition)
 	if q != `"t"."id"=$1` || !reflect.DeepEqual(c.Args(), []any{7}) {
 		t.Fatalf("%q %#v", q, c.Args())
 	}
 }
 
 func BenchmarkSelectBuild(b *testing.B) {
-	builder := Select("id").From("t").Where(OnArg("id", 7))
+	builder := Select("id").From("t").Where(Eq("id", 7))
 	b.Run("internal", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {

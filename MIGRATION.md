@@ -51,17 +51,13 @@ below. Returned SQL and argument slices remain independently owned by callers.
 
 ## Streaming clause extensions and compact expressions
 
-The clause interfaces now require `WriteCondition(*SQLWriter) (bool, error)` and
-`WriteUpdate(*SQLWriter) (bool, error)`, respectively. External types implementing
-only the former methods no longer satisfy these interfaces directly. Either
-implement the new method or wrap the object with `AdaptCondition`/`AdaptUpdater`:
+The clause interfaces require `WriteCondition(*SQLWriter) (bool, error)` and
+`WriteUpdate(*SQLWriter) (bool, error)`, respectively. The string-returning
+`LegacyCondition`, `LegacyUpdater`, `ConditionFunc`, `UpdaterFunc`,
+`AdaptCondition`, and `AdaptUpdater` APIs have been removed. Custom types must
+implement the writer method directly:
 
 ```go
-// Bridge an existing object without changing its implementation.
-query.Where(sqlx.AdaptCondition(oldPredicate))
-update.Set(sqlx.AdaptUpdater(oldSetter))
-
-// New streaming implementation; preserve the predicate's precedence.
 func (p Predicate) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
     w.Raw("(")
     w.Path(p.Column)
@@ -72,20 +68,17 @@ func (p Predicate) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
 }
 ```
 
-`ConditionFunc func(*BuildContext) string` and `UpdaterFunc func(*BuildContext)
-string` retain their signatures, existing methods, and callable function values;
-they also implement the new interfaces. New callbacks use `ConditionWriterFunc`
-and `UpdaterWriterFunc`. A custom renderer is invoked once per occurrence.
-Returning false must not change SQL or arguments; returning true requires SQL.
-A legacy renderer returning an empty string after appending arguments now fails
-explicitly. Errors and panics abort the whole Build/Compile; error identity is
-preserved through wrapping. Optional empty terms do not leave separators.
+Replace function adapters with `ConditionWriterFunc` and `UpdaterWriterFunc`;
+these callbacks receive a `*SQLWriter` and return `(bool, error)` instead of SQL
+text. A custom renderer is invoked once per occurrence. Returning false must
+not change SQL or arguments; returning true requires SQL. Errors and panics
+abort the whole Build/Compile; error identity is preserved through wrapping.
+Optional empty terms do not leave separators.
 
-Replace direct calls on a `Condition`/`Updater` interface with
-`sqlx.BuildCondition(ctx, condition)` / `sqlx.BuildUpdate(ctx, updater)`. They
-return strings and may panic, sharing the context's parameter numbering. Legacy
-function adapters still expose their original methods. Interfaces or function
-values that explicitly name the old method signatures must migrate as well.
+For standalone rendering use `sqlx.BuildCondition(ctx, condition)` or
+`sqlx.BuildUpdate(ctx, updater)`. These helpers accept the current clause
+interfaces, return independent strings, share the context's parameter numbering,
+and panic on rendering errors.
 
 The writer is borrowed for the callback only and must not be retained, copied,
 or used concurrently. `Ident` takes explicit name components, `Path` splits a
@@ -113,19 +106,25 @@ adapter. No go-op adapter is distributed by this module.
 
 | Previous use                                                | Native replacement                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------- |
-| `Where(op.Eq("id", id))`                                    | `Where(sqlx.OnArg("id", id))`                           |
+| `Where(op.Eq("id", id))`                                    | `Where(sqlx.Eq("id", id))`                           |
 | `Set(op.Set("name", value))`                                | `Set(sqlx.Set("name", value))`                          |
 | `Sort(sorter)`                                              | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
 | `Pagination(op.PageSize(page, size))`                       | `Pagination(sqlx.PageSize(page, size))`                 |
 | `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly                |
 
-`Expression.Condition`, `On`, `OnArg`, `Exists`, `NotExists`, `InQuery`, and
+`Expression.Condition`, `On`, `Eq`, `Exists`, `NotExists`, `InQuery`, and
 `NotInQuery` return native `sqlx.Condition` values. Combine conditions with
 `sqlx.And`/`sqlx.Or`. A `[]op.Condition` cannot be expanded as `...sqlx.Condition`;
 adapt its elements explicitly. Soft-delete callbacks must return `sqlx.Updater`.
 The main module has no requirement or replace directive pointing to an adapter.
 
 ## Builder and execution APIs
+
+`OnArg` has been removed; use `Eq` for column-to-value comparisons, including
+nil and expression values. Eq also accepts an Expression on the left. Generated
+predicates now use Eq's parentheses and spaces, e.g. `("id" = $1)` instead of
+`"id"=$1`; SQL string snapshots may need updating. References to generic function
+values must instantiate Eq, for example `sqlx.Eq[string]`.
 
 | Previous API                                                           | Replacement                                                                                |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -136,10 +135,10 @@ The main module has no requirement or replace directive pointing to an adapter.
 | Package/DB `SelectStruct`; `SelectStructWithTable`                     | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)`               |
 | Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc.                                     |
 | `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                                |
-| `JoinOn`                                                               | `sqlx.Condition`; On/OnArg remain helpers and accept arbitrary bound values                |
+| `JoinOn`                                                               | `sqlx.Condition`; On compares column paths; Eq compares paths/expressions to values                |
 | `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition                         |
 | `IgnoreColumns`, `ForceOrderBy`                                        | Removed; choose projection explicitly and specify ordering intentionally                   |
-| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(OnArg(...))`, `Set(sqlx.Set(...))`                                                  |
+| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(Eq(...))`, `Set(sqlx.Set(...))`                                                  |
 | `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column,value),...)`, or positional Columns/Values                            |
 | `ValuesFromStructs`                                                    | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit              |
 | `GrowValues`, `DefaultBufferCap`                                       | Removed internal allocation controls                                                       |
@@ -172,7 +171,7 @@ ORDER BY is emitted regardless of the projection. HAVING is emitted without
 requiring GROUP BY. FROM aliases for the same table are preserved. Raw expression
 conditions are parenthesized before combination with other conditions.
 
-Set(column,nil) writes NULL instead of dropping the setter. OnArg(column,nil)
+Set(column,nil) writes NULL instead of dropping the setter. Eq(column,nil)
 produces IS NULL. Use an explicit native expression or a custom Condition for
 other predicates; the root package no longer exposes go-op comparison helpers.
 Append optional application filters conditionally.

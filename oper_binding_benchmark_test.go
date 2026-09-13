@@ -86,12 +86,12 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 					sharedBinder := NewSliceRowsBinder[[]operPerformanceRecord]()
 					wrappedBinder := RowsBinderFunc(sharedBinder.Prepare)
 					rawDB := db.WithBindConfig(BindConfig{Binder: sharedBinder})
-					oneSQL, oneArgs, err := o.SelectStruct().Where(OnArg("id", int64(1))).Limit(1).Build()
+					oneSQL, oneArgs, err := o.SelectStruct().Where(Eq("id", int64(1))).Limit(1).Build()
 					if err != nil {
 						b.Fatal(err)
 					}
 
-					pageSQL, pageArgs, err := o.SelectStruct().Where(OnArg("tenant_id", int64(7))).OrderByDesc("id").Limit(int64(n)).Build()
+					pageSQL, pageArgs, err := o.SelectStruct().Where(Eq("tenant_id", int64(7))).OrderByDesc("id").Limit(int64(n)).Build()
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -106,13 +106,13 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 							switch mode {
 							case "oper_single":
 								var ok bool
-								ok, err = o.SelectStruct().Where(OnArg("id", int64(1))).QueryRowContext(ctx).Bind(&got)
+								ok, err = o.SelectStruct().Where(Eq("id", int64(1))).QueryRowContext(ctx).Bind(&got)
 								if !ok && err == nil {
 									b.Fatal("missing row")
 								}
 
 							case "oper_star_single":
-								_, err = o.Select("*").Where(OnArg("id", int64(1))).QueryRowContext(ctx).Bind(&got)
+								_, err = o.Select("*").Where(Eq("id", int64(1))).QueryRowContext(ctx).Bind(&got)
 
 							case "raw_single":
 								_, err = rawDB.QueryRowOneContext(ctx, oneSQL, oneArgs...).Bind(&got)
@@ -133,16 +133,16 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 							var err error
 							switch mode {
 							case "oper_page20":
-								err = o.SelectStruct().Where(OnArg("tenant_id", int64(7))).
+								err = o.SelectStruct().Where(Eq("tenant_id", int64(7))).
 									OrderByDesc("id").Limit(20).QueryRowsContext(ctx).Bind(&got)
 
 							case "oper_page20_override":
-								err = o.SelectStruct().Where(OnArg("tenant_id", int64(7))).
+								err = o.SelectStruct().Where(Eq("tenant_id", int64(7))).
 									OrderByDesc("id").Limit(20).QueryRowsContext(ctx).
 									SetBinder(sharedBinder).Bind(&got)
 
 							case "oper_star_page20":
-								err = o.Select("*").Where(OnArg("tenant_id", int64(7))).
+								err = o.Select("*").Where(Eq("tenant_id", int64(7))).
 									OrderByDesc("id").Limit(20).QueryRowsContext(ctx).Bind(&got)
 
 							case "raw_page20_wrapper":
@@ -197,9 +197,9 @@ func BenchmarkOperBindingPreparation(b *testing.B) {
 	o := NewOper[operPerformanceRecord]("records").WithDB(bindTestDB(b, operPerformanceFixture(0, "native")))
 	for _, mode := range []string{"select", "select_struct", "clone_single", "render_single", "render_page20"} {
 		b.Run(mode, func(b *testing.B) {
-			q := o.SelectStruct().Where(OnArg("id", int64(1))).Limit(1)
+			q := o.SelectStruct().Where(Eq("id", int64(1))).Limit(1)
 			if mode == "render_page20" {
-				q = o.SelectStruct().Where(OnArg("tenant_id", int64(7))).OrderByDesc("id").Limit(20)
+				q = o.SelectStruct().Where(Eq("tenant_id", int64(7))).OrderByDesc("id").Limit(20)
 			}
 
 			b.ReportAllocs()

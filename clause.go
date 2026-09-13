@@ -18,32 +18,10 @@ type Condition interface {
 	WriteCondition(*SQLWriter) (emitted bool, err error)
 }
 
-// ConditionFunc adapts a legacy string-returning callback. Empty SQL must not
-// append arguments. Prefer ConditionWriterFunc to avoid intermediate strings.
-type ConditionFunc func(*BuildContext) string
-
-func (f ConditionFunc) BuildCondition(c *BuildContext) string { return f(c) }
-func (f ConditionFunc) WriteCondition(w *SQLWriter) (bool, error) {
-	s := f(w.ctx)
-	w.Raw(s)
-	return s != "", nil
-}
-
 // Updater writes comma-separated assignments without SET. It shares Condition's
 // emission, error, precedence, and borrowed-writer contract.
 type Updater interface {
 	WriteUpdate(*SQLWriter) (emitted bool, err error)
-}
-
-// UpdaterFunc adapts a legacy string-returning callback. Empty SQL must not
-// append arguments. Prefer UpdaterWriterFunc to avoid intermediate strings.
-type UpdaterFunc func(*BuildContext) string
-
-func (f UpdaterFunc) BuildUpdate(c *BuildContext) string { return f(c) }
-func (f UpdaterFunc) WriteUpdate(w *SQLWriter) (bool, error) {
-	s := f(w.ctx)
-	w.Raw(s)
-	return s != "", nil
 }
 
 // Sorter supplies ordering terms. SelectBuilder copies the returned slice;

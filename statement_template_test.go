@@ -71,8 +71,17 @@ func TestTemplateMatchesBuild(t *testing.T) {
 				return Delete().From("t").Where(Between("id", a, b)).SetDialect(d)
 			}},
 			{"custom", func(a, b any) templateBuilder {
-				return Select("id").Where(ConditionFunc(func(c *BuildContext) string {
-					return c.Quote("id") + "=" + c.Add(a) + " OR " + c.Quote("id") + "=" + c.Value(b)
+				return Select("id").Where(ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+					w.Raw("(")
+					w.Path("id")
+					w.Raw("=")
+					w.Arg(a)
+					w.Raw(" OR ")
+					w.Path("id")
+					w.Raw("=")
+					w.Value(b)
+					w.Raw(")")
+					return true, nil
 				})).SetDialect(d)
 			}},
 		}
@@ -207,7 +216,7 @@ func TestTemplateValidation(t *testing.T) {
 
 	for _, b := range []SQLBuilder{
 		Select().SelectExpr(Param(0)),
-		Select("id").Where(OnArg("id", Param(0))),
+		Select("id").Where(Eq("id", Param(0))),
 		Insert().Into("t").Values(Param(0)),
 		Update().Table("t").Set(Set("id", Param(0))),
 		Delete().From("t").Where(Eq("id", Param(0))),
@@ -251,9 +260,12 @@ func TestTemplateValidation(t *testing.T) {
 func TestTemplateSnapshotAndCustomRenderer(t *testing.T) {
 	calls := 0
 	fixed := []byte("abc")
-	b := Select("id").From("t").Where(ConditionFunc(func(c *BuildContext) string {
+	b := Select("id").From("t").Where(ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
 		calls++
-		return c.Quote("id") + "=" + c.Value(Param(0))
+		w.Path("id")
+		w.Raw("=")
+		w.Value(Param(0))
+		return true, nil
 	}), Eq("data", fixed)).SetDialect(dialect.Postgres)
 	q := mustCompileTemplate(t, b)
 	wantSQL, args, err := q.Bind(1)

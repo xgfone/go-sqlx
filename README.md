@@ -21,9 +21,9 @@ go get github.com/xgfone/go-sqlx
 
 ```go
 q, args, err := sqlx.Select("id", "name").
-    From("users").Where(sqlx.OnArg("active", true)).
+    From("users").Where(sqlx.Eq("active", true)).
     SetDialect(dialect.Postgres).Build()
-// SELECT "id", "name" FROM "users" WHERE "active"=$1
+// SELECT "id", "name" FROM "users" WHERE ("active" = $1)
 // args: [true]
 ```
 
@@ -527,7 +527,7 @@ defer tx.Rollback()
 txdb := db.WithExecutor(tx)
 var account Account
 if err := txdb.Select("id", "balance").From("accounts").
-    Where(sqlx.OnArg("id", accountID)).ForUpdate().
+    Where(sqlx.Eq("id", accountID)).ForUpdate().
     QueryRowContext(ctx).Scan(&account); err != nil {
     return err
 }
@@ -594,9 +594,10 @@ builder := db.Select().
 
 `Expression.Condition()` adapts expressions to `sqlx.Condition` and groups them
 with parentheses. Conditions work in WHERE, HAVING and JOIN ON, including
-`sqlx.And`/`sqlx.Or`. `On(left,right)` compares columns; `OnArg(left,value)` accepts
-any argument type. `Join`, `JoinLeft`, `JoinRight`, `JoinFull`, `CrossJoin` are
-available, with derived-query and USING variants for the outer joins as well.
+`sqlx.And`/`sqlx.Or`. `On(left,right)` compares column paths; `Eq(left,value)`
+compares a column path or Expression to a bound value or Expression. `Join`,
+`JoinLeft`, `JoinRight`, `JoinFull`, `CrossJoin` are available, with derived-query
+and USING variants for the outer joins as well.
 Reusable `TableSource`, `QuerySource`, `ExpressionSource`, and `ValuesSource`
 values work with `FromSource`, `JoinSource`, and `JoinSourceUsing`, and with
 PostgreSQL/SQLite UPDATE FROM or PostgreSQL DELETE USING.
@@ -661,7 +662,7 @@ positional alternative. `sql.NamedArg` remains reserved for parameter binding.
 An INSERT requires exactly one source: nonempty Values/Row/Struct(s),
 `FromSelect`, or explicit `DefaultValues`. Empty input never silently executes a
 successful no-op. `Default()` represents a SQL DEFAULT value where supported.
-Nil INSERT/SET values bind SQL NULL. `OnArg(column,nil)` renders IS NULL.
+Nil INSERT/SET values bind SQL NULL. `Eq(column,nil)` renders IS NULL.
 Other predicates can use `Expr(...).Condition()` or a custom `Condition`.
 
 PostgreSQL/SQLite support `OnConflictDoNothing` and `OnConflictDoUpdate`.
@@ -819,8 +820,8 @@ These defaults no longer depend on go-op's zero-date constants.
 
 ```go
 oper := sqlx.NewOper[User]("users").
-    WithSoftCondition(sqlx.OnArg("deleted", false)).
-    WithDeletedCondition(sqlx.OnArg("deleted", true)).
+    WithSoftCondition(sqlx.Eq("deleted", false)).
+    WithDeletedCondition(sqlx.Eq("deleted", true)).
     WithSoftDeleteUpdater(func(context.Context) sqlx.Updater {
         return sqlx.Set("deleted", true)
     })
@@ -877,13 +878,11 @@ or arguments. A clause with no effective predicates or assignments is rejected;
 nil conditions and native empty AND groups passed to Where/Having are skipped.
 Unknown groups may use temporary storage to determine grouping after rendering.
 
-Existing `ConditionFunc` and `UpdaterFunc` keep their string-returning signatures
-and adapt to the new interfaces. Use `AdaptCondition`/`AdaptUpdater` for existing
-objects implementing `BuildCondition`/`BuildUpdate`. Empty legacy SQL must not
-append arguments. For direct rendering use `sqlx.BuildCondition(ctx, condition)`
-or `sqlx.BuildUpdate(ctx, updater)` with a `NewBuildContext`; these helpers return
-independent strings and panic on rendering errors. Streaming avoids the legacy
-callback's intermediate strings.
+Use `ConditionWriterFunc` and `UpdaterWriterFunc` to turn callbacks into clause
+implementations. Custom types implement `WriteCondition` or `WriteUpdate` directly.
+For standalone rendering use `sqlx.BuildCondition(ctx, condition)` or
+`sqlx.BuildUpdate(ctx, updater)` with a `NewBuildContext`; these helpers return
+independent strings and panic on rendering errors.
 
 `Expression` is a small immutable handle; its complex descriptions and argument
 containers are shallow snapshots. Copies retain expression identity for reuse in

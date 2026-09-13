@@ -81,34 +81,9 @@ type UpdaterWriterFunc func(*SQLWriter) (bool, error)
 
 func (f UpdaterWriterFunc) WriteUpdate(w *SQLWriter) (bool, error) { return f(w) }
 
-// LegacyCondition is the former string-returning extension interface.
-// Use AdaptCondition to migrate an implementation without rewriting it.
-type LegacyCondition interface{ BuildCondition(*BuildContext) string }
-
-// LegacyUpdater is the former string-returning assignment interface.
-type LegacyUpdater interface{ BuildUpdate(*BuildContext) string }
-
-// AdaptCondition bridges a legacy condition. A nil interface remains nil.
-// Empty SQL must not append arguments. Prefer WriteCondition for new code.
-func AdaptCondition(c LegacyCondition) Condition {
-	if c == nil {
-		return nil
-	}
-	return ConditionFunc(c.BuildCondition)
-}
-
-// AdaptUpdater bridges a legacy updater. A nil interface remains nil.
-// Empty SQL must not append arguments. Prefer WriteUpdate for new code.
-func AdaptUpdater(u LegacyUpdater) Updater {
-	if u == nil {
-		return nil
-	}
-	return UpdaterFunc(u.BuildUpdate)
-}
-
 // BuildCondition renders a condition as an independent string, sharing c's
-// argument numbering. It may panic like the former Condition.BuildCondition.
-// A nil or empty condition returns an empty string.
+// argument numbering. A nil or empty condition returns an empty string;
+// malformed output, explicit errors, and invalid SQL operations panic.
 func BuildCondition(c *BuildContext, condition Condition) string {
 	buf := c.acquireBuffer()
 	defer c.releaseBuffer(buf)

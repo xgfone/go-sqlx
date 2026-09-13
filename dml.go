@@ -104,17 +104,11 @@ func (j joinTable) writeTo(s *strings.Builder, c *BuildContext) {
 	writeClause(s, c, "ON", j.Ons)
 }
 
-// On compares identifier paths. Other comparisons can use ConditionFunc or Expr.
+// On compares identifier paths. Other comparisons can use Eq, Gt, or Expr.
 func On(left, right string) Condition {
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
 		writeQuotedPath(s, c.Dialect(), left)
 		_ = s.WriteByte('=')
 		writeQuotedPath(s, c.Dialect(), right)
 	})
-}
-
-// OnArg compares an identifier path to a value or expression. A nil value,
-// including a typed nil pointer, uses IS NULL.
-func OnArg(left string, right any) Condition {
-	return pathComparison{left: left, right: right, op: compareEqual}
 }

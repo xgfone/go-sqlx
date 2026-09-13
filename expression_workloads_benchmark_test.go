@@ -22,7 +22,6 @@ func BenchmarkExpressionConstruct(b *testing.B) {
 	}{
 		{"Eq", func() any { return Eq("id", 7) }},
 		{"EqExpr", func() any { return Eq(Ident("id"), 7) }},
-		{"OnArg", func() any { return OnArg("id", 7) }},
 		{"Ident", func() any { return Ident("id") }},
 		{"IdentParts", func() any { return Ident("t", "id") }},
 		{"Raw", func() any { return Expr("CURRENT_TIMESTAMP") }},
@@ -94,14 +93,22 @@ func BenchmarkExpressionWorkloads(b *testing.B) {
 			return Select("id").From("t").Where(In("id", values...))
 		}},
 		{"custom", func() *SelectBuilder {
-			return Select("id").From("t").Where(ConditionFunc(func(c *BuildContext) string {
-				return c.Quote("id") + "=" + c.Add(7)
+			return Select("id").From("t").Where(ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+				w.Path("id")
+				w.Raw("=")
+				w.Arg(7)
+				return true, nil
 			}))
 		}},
 		{"custom_group", func() *SelectBuilder {
 			return Select("id").From("t").Where(Or(
-				ConditionFunc(func(*BuildContext) string { return "" }),
-				ConditionFunc(func(c *BuildContext) string { return c.Quote("id") + "=" + c.Add(7) }),
+				ConditionWriterFunc(func(*SQLWriter) (bool, error) { return false, nil }),
+				ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+					w.Path("id")
+					w.Raw("=")
+					w.Arg(7)
+					return true, nil
+				}),
 				Eq("v", 8),
 			))
 		}},

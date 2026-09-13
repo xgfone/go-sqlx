@@ -25,9 +25,11 @@ func TestSQLWriterEmissionAndSingleEvaluation(t *testing.T) {
 			})
 			value := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
 				calls++
+				w.Raw("(")
 				w.Path("id")
-				w.Raw("=")
+				w.Raw(" = ")
 				w.Arg(7)
+				w.Raw(")")
 				return true, nil
 			})
 
@@ -35,9 +37,9 @@ func TestSQLWriterEmissionAndSingleEvaluation(t *testing.T) {
 				got, want Condition
 				calls     int
 			}{
-				{Or(empty, value, empty), OnArg("id", 7), 3},
-				{And(empty, value, Or(empty, Eq("n", 8)), empty), And(OnArg("id", 7), Eq("n", 8)), 4},
-				{Or(And(empty, value), And(empty), Eq("n", 8)), Or(OnArg("id", 7), Eq("n", 8)), 3},
+				{Or(empty, value, empty), Eq("id", 7), 3},
+				{And(empty, value, Or(empty, Eq("n", 8)), empty), And(Eq("id", 7), Eq("n", 8)), 4},
+				{Or(And(empty, value), And(empty), Eq("n", 8)), Or(Eq("id", 7), Eq("n", 8)), 3},
 			} {
 				calls = 0
 				got, args, err := Select("id").Where(pair.got).SetDialect(d).Build()
@@ -151,19 +153,19 @@ func TestSQLWriterInvalidEmissionAndErrors(t *testing.T) {
 	}
 }
 
-func TestSQLWriterLegacyEmptyArguments(t *testing.T) {
+func TestSQLWriterRejectsArgumentsWithoutEmission(t *testing.T) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.SQLite} {
 		for _, named := range []bool{false, true} {
-			add := func(c *BuildContext) string {
+			add := func(w *SQLWriter) (bool, error) {
 				if named {
-					c.Add(sql.Named("discarded", 1))
+					w.Arg(sql.Named("discarded", 1))
 				} else {
-					c.Add(1)
+					w.Arg(1)
 				}
-				return ""
+				return false, nil
 			}
-			checkBuildError(t, Select("id").Where(Or(Eq("id", 2), ConditionFunc(add))).SetDialect(d))
-			checkBuildError(t, Update().Table("t").Set(Set("id", 2), UpdaterFunc(add)).SetDialect(d))
+			checkBuildError(t, Select("id").Where(Or(Eq("id", 2), ConditionWriterFunc(add))).SetDialect(d))
+			checkBuildError(t, Update().Table("t").Set(Set("id", 2), UpdaterWriterFunc(add)).SetDialect(d))
 		}
 	}
 }

@@ -12,9 +12,6 @@ import (
 func BenchmarkSQLWriter(b *testing.B) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
 		b.Run(d.Name(), func(b *testing.B) {
-			legacy := ConditionFunc(func(c *BuildContext) string {
-				return c.Quote("id") + "=" + c.Add(7)
-			})
 			stream := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
 				w.Path("id")
 				w.Raw("=")
@@ -29,16 +26,8 @@ func BenchmarkSQLWriter(b *testing.B) {
 				name      string
 				condition Condition
 			}{
-				{"legacy", legacy},
 				{"stream", stream},
-				{"native", OnArg("id", 7)},
-				{"legacy_group",
-					Or(
-						ConditionFunc(func(*BuildContext) string { return "" }),
-						legacy,
-						Eq("v", 8),
-					),
-				},
+				{"native", Eq("id", 7)},
 				{"stream_group", Or(empty, stream, Eq("v", 8))},
 			} {
 				b.Run(tc.name, func(b *testing.B) {

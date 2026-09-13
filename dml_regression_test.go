@@ -58,10 +58,10 @@ func TestBuilderLimitPresenceAndBounds(t *testing.T) {
 }
 
 func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
-	update := Update().Table("t").Join("u", "", OnArg("u.kind", "kind")).
-		Set(Set("t.value", 7)).Where(OnArg("t.id", 1))
+	update := Update().Table("t").Join("u", "", Eq("u.kind", "kind")).
+		Set(Set("t.value", 7)).Where(Eq("t.id", 1))
 	q, args := update.MustBuild()
-	want := "UPDATE `t` INNER JOIN `u` ON `u`.`kind`=? SET `t`.`value`=? WHERE `t`.`id`=?"
+	want := "UPDATE `t` INNER JOIN `u` ON (`u`.`kind` = ?) SET `t`.`value`=? WHERE (`t`.`id` = ?)"
 	if q != want || !reflect.DeepEqual(args, []any{"kind", 7, 1}) {
 		t.Fatalf("%q %#v", q, args)
 	}
@@ -86,8 +86,8 @@ func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
 
 func TestBuildConvertsFailure(t *testing.T) {
 	failure := &struct{}{}
-	condition := ConditionFunc(func(c *BuildContext) string {
-		c.Add(7)
+	condition := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+		w.Arg(7)
 		panic(failure)
 	})
 	for _, builder := range []SQLBuilder{
@@ -100,8 +100,8 @@ func TestBuildConvertsFailure(t *testing.T) {
 		}
 	}
 
-	q, args := Select("id").From("t").Where(OnArg("id", 9)).MustBuild()
-	if q != "SELECT `id` FROM `t` WHERE `id`=?" || !reflect.DeepEqual(args, []any{9}) {
+	q, args := Select("id").From("t").Where(Eq("id", 9)).MustBuild()
+	if q != "SELECT `id` FROM `t` WHERE (`id` = ?)" || !reflect.DeepEqual(args, []any{9}) {
 		t.Fatalf("failed build affected subsequent query: %q %#v", q, args)
 	}
 }

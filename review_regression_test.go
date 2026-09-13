@@ -73,9 +73,11 @@ func TestConnURLLocationEscaping(t *testing.T) {
 
 func TestStreamingCustomConditionsCalledOnce(t *testing.T) {
 	calls := 0
-	custom := ConditionFunc(func(c *BuildContext) string {
+	custom := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
 		calls++
-		return c.Add(7) + "=7"
+		w.Arg(7)
+		w.Raw("=7")
+		return true, nil
 	})
 	checkSQL(t, Select("id").Where(Or(nil, And(), custom), Eq("v", 8)).SetDialect(dialect.Postgres),
 		`SELECT "id" WHERE ($1=7 AND ("v" = $2))`, 7, 8)

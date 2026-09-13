@@ -82,14 +82,14 @@ func TestExternalClauseImplementations(t *testing.T) {
 }
 
 func TestNativeClauseCompositionAndSnapshots(t *testing.T) {
-	conditions := []sqlx.Condition{sqlx.OnArg("a", 1), sqlx.OnArg("b", 2)}
+	conditions := []sqlx.Condition{sqlx.Eq("a", 1), sqlx.Eq("b", 2)}
 	disjunction := sqlx.Or(conditions...)
 	conjunction := sqlx.And(conditions...)
-	conditions[0] = sqlx.OnArg("changed", 99)
+	conditions[0] = sqlx.Eq("changed", 99)
 
 	assertSQL(t, sqlx.Select("id").From("t").Where(sqlx.And(sqlx.And()), nil, disjunction, tenantCondition(3)),
-		"SELECT `id` FROM `t` WHERE ((`a`=? OR `b`=?) AND `tenant`=?)", 1, 2, 3)
-	assertSQL(t, sqlx.Select("id").From("t").Where(conjunction), "SELECT `id` FROM `t` WHERE (`a`=? AND `b`=?)", 1, 2)
+		"SELECT `id` FROM `t` WHERE (((`a` = ?) OR (`b` = ?)) AND `tenant`=?)", 1, 2, 3)
+	assertSQL(t, sqlx.Select("id").From("t").Where(conjunction), "SELECT `id` FROM `t` WHERE ((`a` = ?) AND (`b` = ?))", 1, 2)
 
 	setters := []sqlx.Updater{sqlx.Set("a", nil), increment{"b", 2}}
 	batch := sqlx.Batch(setters...)
@@ -109,15 +109,15 @@ func TestNativeSubqueriesShareContext(t *testing.T) {
 	q := sqlx.Select("id").From("t").Join("v", "", sqlx.Or(sqlx.On("t.id", "v.id"), tenantCondition(1))).
 		Where(sqlx.InQuery("id", inner), sqlx.NotInQuery("id", inner), sqlx.Exists(inner), sqlx.NotExists(inner)).
 		SetDialect(dialect.Postgres)
-	inner.Where(sqlx.OnArg("changed", 99))
+	inner.Where(sqlx.Eq("changed", 99))
 
 	assertSQL(t, q, `SELECT "id" FROM "t" INNER JOIN "v" ON ("t"."id"="v"."id" OR "tenant"=$1) WHERE ("id" IN (SELECT "id" FROM "u" WHERE "tenant"=$2) AND "id" NOT IN (SELECT "id" FROM "u" WHERE "tenant"=$3) AND (EXISTS (SELECT "id" FROM "u" WHERE "tenant"=$4)) AND (NOT EXISTS (SELECT "id" FROM "u" WHERE "tenant"=$5)))`,
 		1, 2, 2, 2, 2)
 }
 
 func TestNativeClauseValidation(t *testing.T) {
-	emptyCondition := sqlx.ConditionFunc(func(*sqlx.BuildContext) string { return "" })
-	emptyUpdate := sqlx.UpdaterFunc(func(*sqlx.BuildContext) string { return "" })
+	emptyCondition := sqlx.ConditionWriterFunc(func(*sqlx.SQLWriter) (bool, error) { return false, nil })
+	emptyUpdate := sqlx.UpdaterWriterFunc(func(*sqlx.SQLWriter) (bool, error) { return false, nil })
 	statements := []sqlx.SQLBuilder{
 		sqlx.Select("id").From("t").Where(emptyCondition),
 		sqlx.Select("id").From("t").Having(emptyCondition),
