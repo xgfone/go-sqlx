@@ -127,10 +127,12 @@ these grouping extensions; MySQL supports only its ROLLUP form.
 
 ## CTEs and set operations
 
-All four builders accept `WithCTE(NewCTE(name, body, columns...))`.
-`NewCTE(...).Recursive()` enables WITH RECURSIVE. Select also retains
-`With`, `WithRecursive`, `WithColumns`, and `WithRecursiveColumns`; the write
-builders have `With` and `WithRecursive` helpers.
+All four builders accept `With(name, query, columns...)` and
+`WithRecursive(name, query, columns...)` for SELECT bodies. Column names are
+optional and copied along with a snapshot of the query. For other CTE bodies,
+materialization hints, or reusable descriptions, use
+`WithCTE(NewCTE(name, body, columns...))`; `NewCTE(...).Recursive()` enables
+WITH RECURSIVE.
 
 `body` implements `CTEBody`: `WriteSQL(*strings.Builder, *BuildContext) error`,
 `Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Built-in builders and external

@@ -115,7 +115,7 @@ func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 }
 
 func TestMixedSetOperationsKeepCTEScope(t *testing.T) {
-	q := Select("v").WithColumns("q", Select().SelectExpr(Value(1)), "v").From("q").
+	q := Select("v").With("q", Select().SelectExpr(Value(1)), "v").From("q").
 		Union(Select("v").From("q")).Intersect(Select("v").From("q")).
 		Except(Select("v").From("q")).OrderByAsc("v")
 	checkSQL(t, q.Clone().SetDialect(dialect.Postgres),

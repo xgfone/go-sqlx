@@ -174,7 +174,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		},
 		{
 			"mixed sets with CTE",
-			db.Select("id").WithColumns("q", Select().SelectExpr(Value(1)), "id").From("q").
+			db.Select("id").With("q", Select().SelectExpr(Value(1)), "id").From("q").
 				Union(Select().SelectExpr(Value(2))).Intersect(Select("id").From("q")).
 				Except(Select().SelectExpr(Value(3))),
 			[][]any{{1}},
@@ -214,7 +214,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"cte insert",
 			db.Insert().Into("t").Columns("id", "team", "v").
-				WithCTE(NewCTE("q", Select().SelectExpr(Value(4), Value("c"), Value(40)), "id", "team", "v")).
+				With("q", Select().SelectExpr(Value(4), Value("c"), Value(40)), "id", "team", "v").
 				FromSelect(Select("*").From("q")).Returning("id", "v"),
 			[][]any{{4, 40}},
 		},

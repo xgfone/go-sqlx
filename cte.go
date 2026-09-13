@@ -190,16 +190,6 @@ func (b *SelectBuilder) WithCTE(ctes ...CTE) *SelectBuilder {
 	return b
 }
 
-// WithColumns appends a SELECT CTE with explicit output names.
-func (b *SelectBuilder) WithColumns(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.WithCTE(NewCTE(name, q, columns...))
-}
-
-// WithRecursiveColumns appends a recursive CTE with explicit output names.
-func (b *SelectBuilder) WithRecursiveColumns(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
-}
-
 // WithCTE appends CTEs to an INSERT. MySQL permits these only with a SELECT source
 // and renders them after the INSERT target. PostgreSQL also permits DML CTE bodies.
 func (b *InsertBuilder) WithCTE(ctes ...CTE) *InsertBuilder {
@@ -207,14 +197,16 @@ func (b *InsertBuilder) WithCTE(ctes ...CTE) *InsertBuilder {
 	return b
 }
 
-// With adds a SELECT CTE to an INSERT. MySQL requires a SELECT insert source.
-func (b *InsertBuilder) With(name string, q *SelectBuilder) *InsertBuilder {
-	return b.WithCTE(NewCTE(name, q))
+// With adds a SELECT CTE with optional output column names to an INSERT.
+// MySQL requires a SELECT insert source.
+func (b *InsertBuilder) With(name string, q *SelectBuilder, columns ...string) *InsertBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive adds a recursive CTE to an INSERT. MySQL requires a SELECT insert source.
-func (b *InsertBuilder) WithRecursive(name string, q *SelectBuilder) *InsertBuilder {
-	return b.WithCTE(NewCTE(name, q).Recursive())
+// WithRecursive adds a recursive CTE with optional output column names to an INSERT.
+// MySQL requires a SELECT insert source.
+func (b *InsertBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *InsertBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
 
 // ClearWith removes INSERT common table expressions.
@@ -226,14 +218,14 @@ func (b *UpdateBuilder) WithCTE(ctes ...CTE) *UpdateBuilder {
 	return b
 }
 
-// With appends a SELECT common table expression to an UPDATE.
-func (b *UpdateBuilder) With(name string, q *SelectBuilder) *UpdateBuilder {
-	return b.WithCTE(NewCTE(name, q))
+// With appends a SELECT CTE with optional output column names to an UPDATE.
+func (b *UpdateBuilder) With(name string, q *SelectBuilder, columns ...string) *UpdateBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive appends a recursive common table expression to an UPDATE.
-func (b *UpdateBuilder) WithRecursive(name string, q *SelectBuilder) *UpdateBuilder {
-	return b.WithCTE(NewCTE(name, q).Recursive())
+// WithRecursive appends a recursive CTE with optional output column names to an UPDATE.
+func (b *UpdateBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *UpdateBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
 
 // ClearWith removes UPDATE common table expressions.
@@ -245,14 +237,14 @@ func (b *DeleteBuilder) WithCTE(ctes ...CTE) *DeleteBuilder {
 	return b
 }
 
-// With appends a SELECT common table expression to a DELETE.
-func (b *DeleteBuilder) With(name string, q *SelectBuilder) *DeleteBuilder {
-	return b.WithCTE(NewCTE(name, q))
+// With appends a SELECT CTE with optional output column names to a DELETE.
+func (b *DeleteBuilder) With(name string, q *SelectBuilder, columns ...string) *DeleteBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive appends a recursive common table expression to a DELETE.
-func (b *DeleteBuilder) WithRecursive(name string, q *SelectBuilder) *DeleteBuilder {
-	return b.WithCTE(NewCTE(name, q).Recursive())
+// WithRecursive appends a recursive CTE with optional output column names to a DELETE.
+func (b *DeleteBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *DeleteBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
 
 // ClearWith removes DELETE common table expressions.

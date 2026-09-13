@@ -126,6 +126,13 @@ predicates now use Eq's parentheses and spaces, e.g. `("id" = $1)` instead of
 `"id"=$1`; SQL string snapshots may need updating. References to generic function
 values must instantiate Eq, for example `sqlx.Eq[string]`.
 
+All four builders accept optional output column names in
+`With(name, query, columns...)` and `WithRecursive(name, query, columns...)`.
+Replace SelectBuilder.WithColumns / WithRecursiveColumns with these methods.
+Existing calls without column names keep working; function values now have a
+variadic column parameter. `WithCTE` remains available for other CTE bodies and
+advanced options. Single-row `Row.WithColumns` is unrelated and remains available.
+
 | Previous API                                                           | Replacement                                                                                |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `Build() (string, []any)`                                              | `Build() (string, []any, error)`; use `MustBuild` only to assert initialization invariants |

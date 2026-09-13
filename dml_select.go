@@ -146,13 +146,21 @@ func (b *SelectBuilder) JoinSelect(q *SelectBuilder, alias string, ons ...Condit
 	if q == nil {
 		b.fail(errors.New("sqlx: nil JOIN query"))
 	} else {
-		b.jtables = append(b.jtables, joinTable{Type: "INNER", Table: sqlTable{Query: q.Clone(), Alias: alias}, Ons: slices.Clone(ons)})
+		b.jtables = append(b.jtables, joinTable{
+			Type:  "INNER",
+			Table: sqlTable{Query: q.Clone(), Alias: alias},
+			Ons:   slices.Clone(ons),
+		})
 	}
 	return b
 }
 
 func (b *SelectBuilder) JoinUsing(table, alias string, columns ...string) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{Type: "INNER", Table: sqlTable{Table: table, Alias: alias}, Using: slices.Clone(columns)})
+	b.jtables = append(b.jtables, joinTable{
+		Type:  "INNER",
+		Table: sqlTable{Table: table, Alias: alias},
+		Using: slices.Clone(columns),
+	})
 	return b
 }
 
@@ -239,21 +247,24 @@ func (b *SelectBuilder) ForShare(tables ...string) *SelectBuilder {
 func (b *SelectBuilder) NoWait() *SelectBuilder     { b.lockWait = "NOWAIT"; return b }
 func (b *SelectBuilder) SkipLocked() *SelectBuilder { b.lockWait = "SKIP LOCKED"; return b }
 
-func (b *SelectBuilder) With(name string, q *SelectBuilder) *SelectBuilder {
-	return b.with(name, q, false)
+// With appends a snapshotted SELECT CTE with optional output column names.
+func (b *SelectBuilder) With(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
+	return b.with(name, q, false, columns)
 }
 
-func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder) *SelectBuilder {
-	return b.with(name, q, true)
+// WithRecursive appends a recursive SELECT CTE with optional output column names.
+func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
+	return b.with(name, q, true, columns)
 }
 
-func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool) *SelectBuilder {
+func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool, columns []string) *SelectBuilder {
 	if q == nil {
 		b.fail(errors.New("sqlx: nil CTE"))
 	} else {
 		b.ctes = append(b.ctes, commonTable{
-			name: name,
-			body: q.Clone(),
+			name:    name,
+			body:    q.Clone(),
+			columns: slices.Clone(columns),
 
 			recursive: recursive,
 		})
