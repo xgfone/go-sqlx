@@ -23,7 +23,7 @@ func TestDecodeJSONTypedDestination(t *testing.T) {
 		t.Fatal(v, err)
 	}
 
-	for _, src := range []any{`{"A":4,"B":"bad"}`, `{"A":4} trailing`, "", 42, []byte(nil)} {
+	for _, src := range []any{`{"A":4,"B":"bad"}`, `{"A":4} trailing`, " \t\n", 42} {
 		if err := DecodeJSON(&v, src); err == nil || v != (record{A: 3}) {
 			t.Fatal(v, err)
 		}

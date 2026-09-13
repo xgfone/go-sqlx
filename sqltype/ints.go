@@ -37,6 +37,9 @@ func EncodeInt64s[S ~[]int64](s S) string {
 	return string(buf)
 }
 
+// DecodeInt64s replaces dst from comma-separated decimal integers.
+// SQL NULL and empty or whitespace-only strings/byte slices reset dst to nil.
+// Decoding errors leave dst unchanged.
 func DecodeInt64s[S ~[]int64](dst *S, src any) error {
 	if dst == nil {
 		return errors.New("sqltype: nil integer-slice destination")
@@ -54,9 +57,7 @@ func DecodeInt64s[S ~[]int64](dst *S, src any) error {
 
 	text = strings.TrimSpace(text)
 	var values S
-	if text == "" {
-		values = make(S, 0)
-	} else {
+	if text != "" {
 		parts := strings.Split(text, ",")
 		values = make(S, len(parts))
 		for i, part := range parts {

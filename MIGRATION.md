@@ -304,11 +304,11 @@ Nil `Int64s`, `Strings`, and `JSONMap` values encode as SQL NULL. Empty non-nil
 slices encode as empty text; an empty non-nil JSONMap encodes as `{}`. `JSON[T]`
 always encodes its `V` as JSON, so a nil V is the JSON text `null`.
 
-Every successful Scan replaces the prior value. SQL NULL clears it. JSON
-`null` is decoded normally into a fresh zero destination; `{}` creates an empty
-map, and `[]` is not accepted as a map. Empty/whitespace JSON text, wrong shapes,
-malformed input, and trailing extra JSON are errors. Applications with legacy
-empty-text JSON columns must migrate that data to valid JSON or SQL NULL.
+Every successful Decode/Scan replaces the prior value. SQL NULL, empty strings,
+and zero-length byte slices reset it to its Go zero value, including nil maps
+and slices. JSON `null` is decoded normally into a fresh zero destination; `{}`
+creates an empty map, and `[]` is not accepted as a map. Whitespace-only JSON
+text, wrong shapes, malformed input, and trailing extra JSON are errors.
 
 `EncodeJSON(false)` returns `false`, `EncodeJSON(0)` returns `0`, and a nil value
 returns JSON `null`. Encoding uses the standard `encoding/json` package, without
@@ -317,8 +317,9 @@ the old toolkit's configurable encoder/decoder hooks.
 Delimited strings preserve whitespace. Elements containing the separator and a
 single empty-string element are rejected because they cannot round-trip. JSON
 string lists are available through `JSON[[]string]`. Delimited integer lists
-reject empty elements and malformed numbers; decoding errors preserve the old
-slice instead of leaving partial results.
+reject empty elements and malformed numbers; empty or whitespace-only input
+decodes to a nil slice. Decoding errors preserve the old slice instead of leaving
+partial results.
 
 ## Scanner behavior
 

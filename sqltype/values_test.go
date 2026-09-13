@@ -34,7 +34,7 @@ func TestJSONReplacement(t *testing.T) {
 		t.Fatal(m, err)
 	}
 
-	for _, source := range []any{"", "[]", `{"bad":"text"}`, `{"new":3} trailing`, 17} {
+	for _, source := range []any{" ", "[]", `{"bad":"text"}`, `{"new":3} trailing`, 17} {
 		if err := m.Scan(source); err == nil || !reflect.DeepEqual(m, JSONMap[int]{"new": 2}) {
 			t.Fatal(m, err)
 		}
@@ -74,17 +74,21 @@ func TestDelimitedValues(t *testing.T) {
 	if err := strings.Scan(nil); err != nil || strings != nil {
 		t.Fatal(strings, err)
 	}
-	if err := strings.Scan(""); err != nil || strings == nil || len(strings) != 0 {
+	if err := strings.Scan(""); err != nil || strings != nil {
 		t.Fatal(strings, err)
 	}
 
-	for _, values := range []Strings{{" a ", "b"}, {"", "b"}, {"a", ""}, {}} {
+	for _, values := range []Strings{{" a ", "b"}, {"", "b"}, {"a", ""}, nil, {}} {
 		encoded, err := values.Value()
 		if err != nil {
 			t.Fatal(err)
 		}
 		var decoded Strings
-		if err := decoded.Scan(encoded); err != nil || !reflect.DeepEqual(values, decoded) {
+		want := values
+		if len(want) == 0 {
+			want = nil
+		}
+		if err := decoded.Scan(encoded); err != nil || !reflect.DeepEqual(want, decoded) {
 			t.Fatal(decoded, err)
 		}
 	}
@@ -112,7 +116,7 @@ func TestDelimitedValues(t *testing.T) {
 	if err := ints.Scan(nil); err != nil || ints != nil {
 		t.Fatal(ints, err)
 	}
-	if err := ints.Scan(""); err != nil || ints == nil || len(ints) != 0 {
+	if err := ints.Scan(""); err != nil || ints != nil {
 		t.Fatal(ints, err)
 	}
 

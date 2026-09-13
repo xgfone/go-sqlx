@@ -62,6 +62,9 @@ func EncodeStrings[S ~[]string](s S, sep string) (string, error) {
 	return encoded, nil
 }
 
+// DecodeStrings replaces dst from separator-delimited strings without trimming
+// whitespace. SQL NULL and empty strings/byte slices reset dst to nil.
+// Decoding errors leave dst unchanged.
 func DecodeStrings[S ~[]string](dst *S, src any, sep string) error {
 	if dst == nil {
 		return errors.New("sqltype: nil string-slice destination")
@@ -80,7 +83,7 @@ func DecodeStrings[S ~[]string](dst *S, src any, sep string) error {
 	}
 
 	if text == "" {
-		*dst = make(S, 0)
+		*dst = nil
 	} else {
 		*dst = S(strings.Split(text, sep))
 	}

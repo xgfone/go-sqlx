@@ -17,7 +17,7 @@ func EncodeJSON(v any) (string, error) {
 }
 
 // DecodeJSON replaces dst from a string or []byte containing one JSON value.
-// SQL NULL resets dst to its zero value. Empty text is invalid JSON. Decoding
+// SQL NULL and empty strings/byte slices reset dst to its zero value. Decoding
 // is transactional: errors leave dst unchanged, and maps/structs are not merged.
 // dst must be a non-nil *T; the destination type is inferred from the pointer.
 func DecodeJSON[T any](dst *T, src any) error {
@@ -44,8 +44,10 @@ func DecodeJSON[T any](dst *T, src any) error {
 	}
 
 	var value T
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
 	}
 
 	*dst = value
@@ -53,8 +55,8 @@ func DecodeJSON[T any](dst *T, src any) error {
 }
 
 // JSON wraps any Go value stored as JSON. A nil V is encoded as JSON null.
-// SQL NULL scans into the zero value of T; use a nullable wrapper if SQL NULL
-// must remain distinguishable from a JSON zero/null value.
+// SQL NULL and empty strings/byte slices scan into the zero value of T; use a
+// nullable wrapper if SQL NULL must remain distinguishable from other values.
 type JSON[T any] struct{ V T }
 
 func (v JSON[T]) Value() (driver.Value, error) { return EncodeJSON(v.V) }
