@@ -194,6 +194,9 @@ PostgreSQL `DistinctOn`/`DistinctOnExpr` select the first row in each key group.
 Leading ORDER BY keys must match the DISTINCT ON keys. Reuse the same Expression
 value for helper-generated computed keys; their SQL and parameter numbers are
 reused in ORDER BY. `ClearSelect` clears both DISTINCT forms.
+With set operations, the final ORDER BY sorts the combined result and uses its
+output names or positions; it is not matched to or rewritten as the first
+operand's DISTINCT ON keys.
 
 PostgreSQL `ForNoKeyUpdate` and `ForKeyShare` complement `ForUpdate` and
 `ForShare`. Lock setters replace the lock mode and OF aliases; `NoWait` and

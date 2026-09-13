@@ -305,6 +305,32 @@ func TestDistinctOnFetchAndMutationLimits(t *testing.T) {
 		`DELETE FROM "t" RETURNING "id" ORDER BY "id" ASC LIMIT 1`)
 }
 
+func TestDistinctOnCompoundOrdering(t *testing.T) {
+	for _, set := range []struct {
+		name  string
+		apply func(*SelectBuilder, *SelectBuilder) *SelectBuilder
+	}{
+		{"UNION", (*SelectBuilder).Union},
+		{"UNION ALL", (*SelectBuilder).UnionAll},
+		{"INTERSECT", (*SelectBuilder).Intersect},
+		{"EXCEPT", (*SelectBuilder).Except},
+	} {
+		t.Run(set.name, func(t *testing.T) {
+			e := Coalesce(Ident("a"), 0)
+			first := Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e)
+			q := set.apply(first, Select("a").From("u")).SetDialect(dialect.Postgres)
+			prefix := `SELECT DISTINCT ON (COALESCE("a", $1)) COALESCE("a", $2) AS "key" FROM "t" ` + set.name + ` SELECT "a" FROM "u" ORDER BY `
+			checkSQL(t, q.Clone().OrderByAsc("key"), prefix+`"key" ASC`, 0, 0)
+			checkSQL(t, q.Clone().OrderByExpr(Expr("1"), Desc), prefix+`1 DESC`, 0, 0)
+			// Global ordering need not start with the first operand's DISTINCT key.
+			checkSQL(t, set.apply(Select("a", "b").From("t").DistinctOn("a"), Select("a", "b").From("u")).
+				OrderByAsc("b").SetDialect(dialect.Postgres),
+				`SELECT DISTINCT ON ("a") "a", "b" FROM "t" `+set.name+` SELECT "a", "b" FROM "u" ORDER BY "b" ASC`)
+			checkBuildError(t, q.Clone().Distinct())
+		})
+	}
+}
+
 func TestNewClauseCloneIsolationAndClears(t *testing.T) {
 	e := Ident("id")
 	terms := SortColumns{{Expr: &e, Order: Asc, Nulls: NullsLast}}

@@ -268,6 +268,11 @@ func (b *SelectBuilder) validateDistinctOn() {
 		panic("DISTINCT and DISTINCT ON cannot be combined")
 	}
 
+	// Set operations own the final ORDER BY; it does not order the first SELECT.
+	if len(b.unions) != 0 {
+		return
+	}
+
 	matched := make([]bool, len(b.distinctOn))
 	remaining := len(matched)
 	for _, term := range b.orderbys {
@@ -314,6 +319,10 @@ func (b *SelectBuilder) renderDistinctOn(c *BuildContext) (string, []SortColumn)
 		if keys[i] == "" {
 			keys[i] = e.render(c)
 		}
+	}
+
+	if len(b.unions) != 0 {
+		return strings.Join(keys, ", "), b.orderbys
 	}
 
 	// Only replace the pointers in this temporary list; existing expressions
