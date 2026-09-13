@@ -31,7 +31,7 @@ type structScanCache struct {
 // for variable projections/aliases; larger or excess shapes still work, but are
 // compiled per use. Failed mappings are not retained.
 const (
-	maxStructScanLayouts = 32
+	maxStructScanLayouts = 256
 	maxStructScanColumns = 256
 	maxStructScanLabels  = 16 * 1024
 )

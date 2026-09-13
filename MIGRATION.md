@@ -462,7 +462,7 @@ Collection binders reuse immutable column/field mappings across results, keep
 mutable scanning state per result, then commit only after successful finalization.
 Mappings are keyed by model type, ordered labels, and mapping policies; scalar
 conversion options are applied independently on each query. Dynamic mapping
-caches are bounded (32 shapes per model, at most 256 columns and 16 KiB of labels
+caches are bounded (256 shapes per model, at most 256 columns and 16 KiB of labels
 per retained shape). Type metadata remains cached independently of those limits.
 `BindError` adds a one-based row number and preserves errors.Is/errors.As.
 Custom binding/key-function panics outside the underlying Scan propagate after

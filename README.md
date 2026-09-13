@@ -437,7 +437,11 @@ can reuse preparation across rows.
 validates column/type mapping before iteration and returns a `PreparedScanner`
 with `Scan(...any) error` and `Close() error`. Struct mappings
 are cached across results by model type, ordered result labels, and mapping
-policies. Manual `Rows.Scan` reuses preparation and scratch through a
+policies. Each concrete struct type caches up to 256 layouts, growing on demand;
+positional scalar scans do not use this cache. Query predicates and parameter
+values do not create new layouts. Projections exceeding 256 columns or 16 KiB of
+labels, and additional shapes after the cache fills, still work without being
+cached. Manual `Rows.Scan` reuses preparation and scratch through a
 `rowbind.ScanState` value in Rows; its plan pointer and implementation remain
 private to `rowbind`. Configuration changes, result-set changes, and `Close`
 release this state. Each prepared scanner holds independent scratch until its

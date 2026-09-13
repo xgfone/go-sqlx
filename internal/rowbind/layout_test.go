@@ -360,6 +360,16 @@ func TestScanLayoutCacheBoundsAndHashCollisions(t *testing.T) {
 		t.Fatal("cache saturation evicted the common shape", err)
 	}
 
+	// Saturation must preserve later cached shapes as well as the first one.
+	lastColumns := []string{"id", fmt.Sprintf("ignored_%d", maxStructScanLayouts-1)}
+	last := m.scans.current.Load().find(lastColumns, scanIgnoreUnknown)
+	if last == nil {
+		t.Fatal("last cache slot was not populated")
+	}
+	if got, err := m.scanLayout(typ, lastColumns, scanIgnoreUnknown); err != nil || got != last {
+		t.Fatal("cache saturation lost a later shape", err)
+	}
+
 	// Force a hash bucket collision and ensure full labels still decide the match.
 	want := &structScanLayout{columns: []string{"id"}}
 	wrong := &structScanLayout{columns: []string{"other"}}
