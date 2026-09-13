@@ -42,7 +42,7 @@ func TestMapScannerDestinationsRemainIndependent(t *testing.T) {
 		}
 
 		var got map[int64]selfRetainingScanner
-		if err := rows.WithBinder(binder).Bind(&got); err != nil {
+		if err := rows.SetBinder(binder).Bind(&got); err != nil {
 			t.Fatal(err)
 		}
 		if got[1].Self == got[2].Self || got[1].Self.Value != 1 || got[2].Self.Value != 2 {
@@ -100,7 +100,7 @@ func TestMapAggregateKeyChecksDynamicComparability(t *testing.T) {
 	got := old
 
 	r, _ := bindTestRows(t, []byte("not comparable"))
-	err := r.WithBinder(NewMapSetBinder[map[dynamicStructKey]struct{}]()).Bind(&got)
+	err := r.SetBinder(NewMapSetBinder[map[dynamicStructKey]struct{}]()).Bind(&got)
 	if err == nil {
 		t.Fatal("non-comparable aggregate key accepted")
 	}

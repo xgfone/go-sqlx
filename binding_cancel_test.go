@@ -57,7 +57,7 @@ func TestNullableParentOwnsCapturedBytes(t *testing.T) {
 			if mode == "Row" {
 				err = db.QueryRowOneContext(ctx, "q").WithScanOptions(options).Scan(&got)
 			} else {
-				rows := db.QueryRowsContext(ctx, "q").WithScanOptions(options)
+				rows := db.QueryRowsContext(ctx, "q").SetScanOptions(options)
 				defer rows.Close() //nolint:errcheck
 				scan := rows.Scan
 				if mode == "PrepareScan" {

@@ -192,7 +192,7 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 		}
 	}
 
-	if err := rows.WithColumns("a", "b").Scan(&a, &b); err == nil {
+	if err := rows.SetColumns("a", "b").Scan(&a, &b); err == nil {
 		t.Fatal("invalid current-set labels accepted")
 	}
 	if err := rows.SetColumns().Scan(&b); err != nil || b != 3 {

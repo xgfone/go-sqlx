@@ -44,11 +44,11 @@ func BenchmarkBind(b *testing.B) {
 
 				case "struct":
 					var dst []record
-					err = db.QueryRowsContext(ctx, "SELECT value").WithBinder(SliceRowsBinder{}).Bind(&dst)
+					err = db.QueryRowsContext(ctx, "SELECT value").SetBinder(SliceRowsBinder{}).Bind(&dst)
 
 				case "pointer_struct":
 					var dst []*record
-					err = db.QueryRowsContext(ctx, "SELECT value").WithBinder(SliceRowsBinder{}).Bind(&dst)
+					err = db.QueryRowsContext(ctx, "SELECT value").SetBinder(SliceRowsBinder{}).Bind(&dst)
 
 				case "oper_struct":
 					_, err = o.Gets(ctx, nil)

@@ -414,10 +414,8 @@ must not be copied or used concurrently; pass its pointer to share it. A named
 check. This is a static-analysis check, not a compiler error or runtime lock.
 
 `Rows.SetColumns`, `SetScanOptions`, `SetBindConfig`, `SetBinder`, and `SetCapacity`
-mutate the same object and return its pointer. All aliases observe these changes. The old
-`Rows.With...` methods remain deprecated aliases with the same mutation semantics;
-they no longer create independent views. DB/Oper `With...` and single-row `Row`
-configuration keep their value semantics.
+mutate the same object and return its pointer. All aliases observe these changes.
+DB/Oper `With...` and single-row `Row` configuration keep their value semantics.
 
 All `Scan(dst ...any) error` implementations and matching scan callbacks borrow
 `dst` only for the call. They must not retain the slice or a subslice after

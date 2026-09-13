@@ -139,14 +139,14 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 							case "oper_page20_override":
 								err = o.SelectStruct().Where(OnArg("tenant_id", int64(7))).
 									OrderByDesc("id").Limit(20).QueryRowsContext(ctx).
-									WithBinder(sharedBinder).Bind(&got)
+									SetBinder(sharedBinder).Bind(&got)
 
 							case "oper_star_page20":
 								err = o.Select("*").Where(OnArg("tenant_id", int64(7))).
 									OrderByDesc("id").Limit(20).QueryRowsContext(ctx).Bind(&got)
 
 							case "raw_page20_wrapper":
-								err = rawDB.QueryRowsContext(ctx, pageSQL, pageArgs...).WithBinder(wrappedBinder).Bind(&got)
+								err = rawDB.QueryRowsContext(ctx, pageSQL, pageArgs...).SetBinder(wrappedBinder).Bind(&got)
 
 							case "sql_page20":
 								var rows *sql.Rows

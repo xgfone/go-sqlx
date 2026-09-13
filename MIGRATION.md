@@ -321,10 +321,16 @@ MySQL zero dates require `AllowZeroDate: true`; empty time strings remain invali
 
 ## Binding APIs and commit semantics
 
+The four `Rows.WithColumns`, `Rows.WithBindConfig`, `Rows.WithScanOptions`, and
+`Rows.WithBinder` methods have been removed. Use `SetColumns`, `SetBindConfig`,
+`SetScanOptions`, and `SetBinder` on `*Rows`. They mutate the same result object
+and return its pointer. DB/Oper and single-row Row retain their With methods
+and independent configuration semantics.
+
 Binding configuration is now explicit and inherited from DB through raw queries,
 Table, Oper, builders, and RETURNING. Use `DB.WithBindConfig`,
-`Oper.WithBindConfig`, a builder's `SetBindConfig`, or `Rows.WithBindConfig`.
-`Row.WithScanOptions` and `Rows.WithScanOptions` override conversion/mapping
+`Oper.WithBindConfig`, a builder's `SetBindConfig`, or `Rows.SetBindConfig`.
+`Row.WithScanOptions` and `Rows.SetScanOptions` override conversion/mapping
 options. A local configuration replaces the entire inherited configuration.
 Configure before concurrent use; configuration setters copy layout slices and
 do not mutate the parent. `WithExecutor` retains the configuration.
@@ -349,7 +355,7 @@ with no registrations and only the slice fallback. Removing a default map
 registration makes that destination unsupported until it is registered again
 or a local binder is supplied.
 
-`DB.WithBinder`, `Oper.WithBinder`, and `Rows.WithBinder` preserve the remaining
+`DB.WithBinder`, `Oper.WithBinder`, and `Rows.SetBinder` preserve the remaining
 configuration while selecting a shared binder. Passing nil restores the default
 registry. Explicit binders replace the default; use ComposeRowsBinders when an
 ordered preparation fallback is intended. Registration lookup is authoritative
@@ -443,7 +449,8 @@ row writes on conversion errors.
 `ScanColumnsToStruct` remains a low-level field-address mapper with strict label
 validation. It does not perform scalar conversion. Use `PrepareScan` for raw
 `*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
-for single-use results. Result labels and WithColumns inputs are copied.
+for single-use results. Result labels and `Rows.SetColumns` / `Row.WithColumns`
+inputs are copied.
 
 All `Scan(dst ...any) error` implementations and matching callbacks now borrow
 the destination slice only for the call. Replace saved slice assignments such

@@ -175,26 +175,6 @@ func (r *Rows) SetCapacity(capacity int) *Rows {
 	return r
 }
 
-// WithColumns mutates r; it does not create an independent view.
-//
-// Deprecated: use SetColumns.
-func (r *Rows) WithColumns(columns ...string) *Rows { return r.SetColumns(columns...) }
-
-// WithBindConfig mutates r; it does not create an independent view.
-//
-// Deprecated: use SetBindConfig.
-func (r *Rows) WithBindConfig(config BindConfig) *Rows { return r.SetBindConfig(config) }
-
-// WithScanOptions mutates r; it does not create an independent view.
-//
-// Deprecated: use SetScanOptions.
-func (r *Rows) WithScanOptions(options ScanOptions) *Rows { return r.SetScanOptions(options) }
-
-// WithBinder mutates r; it does not create an independent view.
-//
-// Deprecated: use SetBinder.
-func (r *Rows) WithBinder(binder RowsBinder) *Rows { return r.SetBinder(binder) }
-
 func (r *Rows) Err() error {
 	if r != nil && r.err != nil {
 		if r.inRawVisit() {

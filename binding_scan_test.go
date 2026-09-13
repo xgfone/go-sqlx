@@ -117,14 +117,14 @@ func (v *nullAwareValue) Scan(src any) error {
 func TestCustomScannerNullPolicy(t *testing.T) {
 	var values []nullAwareValue
 	rows, _ := bindTestRows(t, nil, "ok")
-	err := rows.WithScanOptions(ScanOptions{Nulls: NullError}).Bind(&values)
+	err := rows.SetScanOptions(ScanOptions{Nulls: NullError}).Bind(&values)
 	if err != nil || len(values) != 2 || !values[0].Null || values[1].Value != "ok" {
 		t.Fatal(values, err)
 	}
 
 	var pointers []*nullAwareValue
 	rows, _ = bindTestRows(t, nil, "ok")
-	err = rows.WithScanOptions(ScanOptions{Nulls: NullError}).Bind(&pointers)
+	err = rows.SetScanOptions(ScanOptions{Nulls: NullError}).Bind(&pointers)
 	if err != nil || pointers[0] != nil || pointers[1].Value != "ok" {
 		t.Fatal(pointers, err)
 	}
@@ -154,13 +154,13 @@ func TestMappingValidationBeforeIteration(t *testing.T) {
 
 	var got []model
 	rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q")
-	err := rows.WithScanOptions(ScanOptions{IgnoreUnknownColumns: true}).Bind(&got)
+	err := rows.SetScanOptions(ScanOptions{IgnoreUnknownColumns: true}).Bind(&got)
 	if err != nil || len(got) != 1 || got[0].Value != 1 {
 		t.Fatal(got, err)
 	}
 
 	rows, f = bindTestRows(t, int64(1))
-	err = rows.WithColumns("value", "other").Bind(&got)
+	err = rows.SetColumns("value", "other").Bind(&got)
 	if err == nil || f.next.Load() != 0 {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestNullNestedPointersAndReusedDestination(t *testing.T) {
 	}
 
 	rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-		WithScanOptions(ScanOptions{
+		SetScanOptions(ScanOptions{
 			Nulls:          NullError,
 			NestedPointers: NilNullNestedPointers,
 		})
@@ -261,7 +261,7 @@ func TestNullableMappingCopiesDriverBytes(t *testing.T) {
 	}
 
 	rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-		WithScanOptions(ScanOptions{NestedPointers: NilNullNestedPointers})
+		SetScanOptions(ScanOptions{NestedPointers: NilNullNestedPointers})
 
 	var got []*model
 	if err := rows.Bind(&got); err != nil || string(got[0].Child.Bytes) != "abc" ||
@@ -355,7 +355,7 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 	for _, raw := range []bool{false, true} {
 		rows, _ := bindTestRows(t, int64(1000))
-		rows = rows.WithScanOptions(ScanOptions{DurationUnit: time.Second})
+		rows = rows.SetScanOptions(ScanOptions{DurationUnit: time.Second})
 		defer rows.Close() //nolint:errcheck
 
 		var scanner RowScanner = rows
@@ -412,7 +412,7 @@ func TestBindingInvalidConfigAndColumnOwnership(t *testing.T) {
 	} {
 		var got []int
 		rows, f := bindTestRows(t, int64(1))
-		err := rows.WithBindConfig(config).Bind(&got)
+		err := rows.SetBindConfig(config).Bind(&got)
 		if err == nil || f.next.Load() != 0 || f.closed.Load() != 1 {
 			t.Fatal(config, err)
 		}
@@ -420,7 +420,7 @@ func TestBindingInvalidConfigAndColumnOwnership(t *testing.T) {
 
 	rows, _ := bindTestRows(t, int64(1))
 	labels := []string{"value"}
-	rows = rows.WithColumns(labels...)
+	rows = rows.SetColumns(labels...)
 	labels[0] = "typo"
 
 	cols, err := rows.Columns()
@@ -479,7 +479,7 @@ func TestCustomPanicClosesWithoutCommit(t *testing.T) {
 			}
 		}()
 
-		_ = rows.WithBinder(NewMapIndexBinder[map[int]int](func(int) int {
+		_ = rows.SetBinder(NewMapIndexBinder[map[int]int](func(int) int {
 			panic("application bug")
 		})).Bind(&got)
 	}()
@@ -502,7 +502,7 @@ func TestEarlyCustomBindingCloseErrorDoesNotCommit(t *testing.T) {
 		}, nil
 	})
 
-	err := rows.WithBinder(binder).Bind(&got)
+	err := rows.SetBinder(binder).Bind(&got)
 	if !errors.Is(err, cause) || got != 7 || f.closed.Load() != 1 {
 		t.Fatal(got, err)
 	}
@@ -601,7 +601,7 @@ func TestBindingPreflightAndMapShape(t *testing.T) {
 		values:  [][]driver.Value{{"a", false}, {"b", true}},
 	}
 	err := bindTestDB(t, fixture).QueryRowsContext(context.Background(), "q").
-		WithBinder(NewMapPairsBinder[map[string]bool]()).Bind(&pairs)
+		SetBinder(NewMapPairsBinder[map[string]bool]()).Bind(&pairs)
 	if err != nil || pairs["a"] || !pairs["b"] || len(pairs) != 2 {
 		t.Fatal(pairs, err)
 	}

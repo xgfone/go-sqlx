@@ -40,7 +40,7 @@ func TestComposeRowsBinders(t *testing.T) {
 
 	var got map[string]int8
 	rows, _ := bindTestRows(t, int64(1), int64(2), int64(3))
-	if err := rows.WithBinder(binder).Bind(&got); err != nil {
+	if err := rows.SetBinder(binder).Bind(&got); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, map[string]int8{"1": 1, "2": 2, "3": 3}) {
@@ -67,7 +67,7 @@ func TestCompositionNeverFallsBackAfterSelection(t *testing.T) {
 
 	rows, fixture := bindTestRows(t, "bad", int64(2))
 	got := []rejectingScanValue{99}
-	err := rows.WithBinder(ComposeRowsBinders(NewSliceRowsBinder[[]rejectingScanValue](), second)).Bind(&got)
+	err := rows.SetBinder(ComposeRowsBinders(NewSliceRowsBinder[[]rejectingScanValue](), second)).Bind(&got)
 
 	position, ok := errors.AsType[*BindError](err)
 	if !IsUnsupportedTypeError(err) || !ok || position.Row != 1 || called {
@@ -87,7 +87,7 @@ func TestEmptyCompositionAndInvalidDestinations(t *testing.T) {
 	} {
 		rows, f := bindTestRows(t, int64(1))
 		var got []int
-		if err := rows.WithBinder(binder).Bind(&got); !IsUnsupportedTypeError(err) {
+		if err := rows.SetBinder(binder).Bind(&got); !IsUnsupportedTypeError(err) {
 			t.Fatal(err)
 		}
 		if f.next.Load() != 0 || f.closed.Load() != 1 {
@@ -124,7 +124,7 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 			original := []number{7, 8, 9, 10}
 			got := original[:1]
 			rows, _ := bindTestRows(t, int64(1), int64(2))
-			if err := rows.WithBindConfig(config).Append(&got); err != nil {
+			if err := rows.SetBindConfig(config).Append(&got); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, []number{7, 1, 2}) || !reflect.DeepEqual(original, []number{7, 8, 9, 10}) {
@@ -132,7 +132,7 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 			}
 
 			rows, _ = bindTestRows(t, int64(3))
-			if err := rows.WithBindConfig(config).Bind(&got); err != nil {
+			if err := rows.SetBindConfig(config).Bind(&got); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, []number{3}) {
@@ -157,7 +157,7 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 						f.closeErr = cause
 					}
 
-					rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").WithBindConfig(config)
+					rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").SetBindConfig(config)
 					got = original[:1]
 					err := rows.bind(&got, mode, nil)
 					if err == nil || len(got) != 1 || &got[0] != &original[0] ||
@@ -174,13 +174,13 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 
 			var empty []number
 			rows, _ = bindTestRows(t)
-			if err := rows.WithBindConfig(config).Bind(&empty); err != nil || empty == nil || len(empty) != 0 {
+			if err := rows.SetBindConfig(config).Bind(&empty); err != nil || empty == nil || len(empty) != 0 {
 				t.Fatal(empty, err)
 			}
 
 			rows, _ = bindTestRows(t, "bad")
 			empty = nil
-			if err := rows.WithBindConfig(config).Bind(&empty); err == nil || empty != nil {
+			if err := rows.SetBindConfig(config).Bind(&empty); err == nil || empty != nil {
 				t.Fatal(empty, err)
 			}
 		})
@@ -202,7 +202,7 @@ func TestMapModesAndDuplicatePolicies(t *testing.T) {
 		}
 
 		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-			WithBindConfig(BindConfig{
+			SetBindConfig(BindConfig{
 				Binder:        NewMapPairsBinder[map[string]int](),
 				DuplicateKeys: policy,
 			})
@@ -240,7 +240,7 @@ func TestMapModesAndDuplicatePolicies(t *testing.T) {
 			values:  [][]driver.Value{{"a", int64(1)}, {"b", int64(2)}},
 		}
 		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-			WithBindConfig(BindConfig{
+			SetBindConfig(BindConfig{
 				Binder:        NewMapPairsBinder[map[string]int](),
 				DuplicateKeys: policy,
 			})
@@ -269,14 +269,14 @@ func TestMapModesAndDuplicatePolicies(t *testing.T) {
 
 	rows, _ := bindTestRows(t, "a", "a", "b")
 	var set map[string]struct{}
-	err := rows.WithBinder(NewMapSetBinder[map[string]struct{}]()).Bind(&set)
+	err := rows.SetBinder(NewMapSetBinder[map[string]struct{}]()).Bind(&set)
 	if err != nil || len(set) != 2 {
 		t.Fatal(set, err)
 	}
 
 	rows, _ = bindTestRows(t, []byte("key"))
 	var invalid map[any]struct{}
-	err = rows.WithBinder(NewMapSetBinder[map[any]struct{}]()).Bind(&invalid)
+	err = rows.SetBinder(NewMapSetBinder[map[any]struct{}]()).Bind(&invalid)
 	if err == nil || invalid != nil {
 		t.Fatal(invalid, err)
 	}
@@ -309,7 +309,7 @@ func TestCustomBinderBeforeFallback(t *testing.T) {
 
 	var got [][]any
 	rows, _ := bindTestRows(t, int64(1))
-	err := rows.WithBinder(ComposeRowsBinders(custom, SliceRowsBinder{})).Bind(&got)
+	err := rows.SetBinder(ComposeRowsBinders(custom, SliceRowsBinder{})).Bind(&got)
 	if err != nil || !called || !reflect.DeepEqual(got, [][]any{{int64(1)}}) {
 		t.Fatal(got, err, called)
 	}
@@ -337,7 +337,7 @@ func TestMapFailuresKeepDestination(t *testing.T) {
 
 		original := map[int]int{7: 7}
 		got := original
-		err := rows.WithBinder(NewMapIndexBinder[map[int]int](key)).Merge(&got)
+		err := rows.SetBinder(NewMapIndexBinder[map[int]int](key)).Merge(&got)
 		if err == nil || !reflect.DeepEqual(got, map[int]int{7: 7}) ||
 			!reflect.DeepEqual(original, got) || f.closed.Load() != 1 {
 			t.Fatal(failure, got, err)

@@ -220,7 +220,7 @@ func TestMixRowsBinderSelectedErrorsDoNotFallBack(t *testing.T) {
 
 	original := []int64{9}
 	rows, fixture := bindTestRows(t, int64(7))
-	err := rows.WithBinder(registry).Bind(&original)
+	err := rows.SetBinder(registry).Bind(&original)
 	if !errors.Is(err, rejected) || original[0] != 9 || fixture.next.Load() != 0 || fixture.closed.Load() != 1 {
 		t.Fatal("registered error was retried or cursor leaked", original, err)
 	}
@@ -228,7 +228,7 @@ func TestMixRowsBinderSelectedErrorsDoNotFallBack(t *testing.T) {
 	var got []rejectingScanValue
 	registry.RegisterType[*[]rejectingScanValue](NewSliceRowsBinder[[]rejectingScanValue]())
 	rows, fixture = bindTestRows(t, "bad", int64(8))
-	err = rows.WithBinder(registry).Bind(&got)
+	err = rows.SetBinder(registry).Bind(&got)
 	if err == nil || got != nil || fixture.next.Load() != 1 || fixture.closed.Load() != 1 {
 		t.Fatal("scan failure was retried or committed", got, err)
 	}
@@ -276,8 +276,8 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 		{func() *Rows { return o.SelectStruct().QueryRowsContext(ctx) }, global},
 		{func() *Rows { return db.WithBinder(local).QueryRowsContext(ctx, "q") }, local},
 		{func() *Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx) }, local},
-		{func() *Rows { return o.SelectStruct().QueryRowsContext(ctx).WithBinder(local) }, local},
-		{func() *Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx).WithBinder(nil) }, global},
+		{func() *Rows { return o.SelectStruct().QueryRowsContext(ctx).SetBinder(local) }, local},
+		{func() *Rows { return o.WithBinder(local).SelectStruct().QueryRowsContext(ctx).SetBinder(nil) }, global},
 		{func() *Rows { return o.WithBinder(local).WithBinder(nil).SelectStruct().QueryRowsContext(ctx) }, global},
 		{func() *Rows { return db.WithBinder(local).WithBinder(nil).QueryRowsContext(ctx, "q") }, global},
 	}

@@ -63,7 +63,7 @@ func TestRowsBindingRejectsNilAndIncompleteOperations(t *testing.T) {
 				}
 			})
 
-			if err := rows.WithBinder(binder).Bind(&got); err == nil {
+			if err := rows.SetBinder(binder).Bind(&got); err == nil {
 				t.Fatal("invalid operation accepted")
 			}
 			if scans != 0 || commits != 0 || got != 7 ||
