@@ -83,13 +83,38 @@ type nullStructGroup struct {
 	columns []int
 }
 
-type captureScanner struct{ value any }
+// Deferred row input is borrowed by the converter and may be overwritten on
+// the next row. Bound reusable byte storage across the entire scan operation.
+const captureOperationBytes = 4096
+
+type captureScanner struct {
+	value  any
+	buffer []byte
+	bytes  any
+	limit  int
+}
 
 func (s *captureScanner) Scan(value any) error {
-	// Conversion happens after the driver's Scan returns, when cancellation
-	// may already have closed the cursor and invalidated its byte buffers.
+	// Nullable-parent layouts defer conversion until the entire row is known.
+	// Own byte values before returning to the source, which may immediately
+	// reuse its buffer for another column or close on cancellation.
 	if data, ok := value.([]byte); ok {
-		value = slices.Clone(data)
+		if len(data) == 0 || len(data) > s.limit {
+			// Large values are call-scoped; empty values must not retain backing
+			// storage. Neither may grow the reusable buffer without a bound.
+			value = slices.Clone(data)
+		} else {
+			if len(s.buffer) != len(data) {
+				if cap(s.buffer) < len(data) {
+					s.buffer = make([]byte, len(data))
+				} else {
+					s.buffer = s.buffer[:len(data)]
+				}
+				s.bytes = s.buffer[:len(data):len(data)]
+			}
+			copy(s.buffer, data)
+			value = s.bytes
+		}
 	}
 	s.value = value
 	return nil

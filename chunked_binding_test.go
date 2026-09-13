@@ -167,21 +167,30 @@ func TestChunkedBindingClearsPendingOnPanic(t *testing.T) {
 	type model struct {
 		Value consumePanicValue `sql:"value"`
 	}
-
-	r, f := bindTestRows(t, int64(1), int64(2))
 	old := &model{}
 	got := []*model{old}
-	binder := NewChunkedSliceRowsBinder[[]*model](3)
+	binding, err := NewChunkedSliceRowsBinder[[]*model](3).
+		Prepare(&got, BindOptions{Columns: []string{"value"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A caller-provided source has no database/sql lock. This verifies only
+	// the binding's own pending-slot cleanup, not a foreign cursor's recovery.
 	func() {
 		defer func() {
 			if recover() != "consume panic" {
 				t.Error("panic not propagated")
 			}
 		}()
-		_ = r.SetBinder(binder).Bind(&got)
+		_ = binding.Scan(&rawBindingCursor{})
 	}()
-	if len(got) != 1 || got[0] != old || f.closed.Load() != 1 {
-		t.Fatal("failed binding published or leaked")
+
+	state := binding.(*chunkedSliceBinding[[]*model, model])
+	if len(got) != 1 || got[0] != old || state.args[0] != nil ||
+		state.used != 1 || string(state.block[0].Value.Data) != "partial" ||
+		state.block[1].Value.Data != nil || state.block[2].Value.Data != nil {
+		t.Fatal("failed binding published or retained the pending slot")
 	}
 }
 

@@ -74,7 +74,7 @@ func (b *chunkedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
 
 func (b *chunkedSliceBinding[S, T]) Scan(cursor RowCursor) error {
 	defer b.clearUnused()
-	return b.mapping.WithScanAfterRead(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
+	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }

@@ -171,6 +171,8 @@ type Reuse [2]bool
 // callback must not retain it. Destination types must match the prepared types.
 // Scratch is cleared and returned on success, error and panic. reusable reports
 // whether map temporaries may safely be reused with this mapping and cursor.
+// Application Scanners receive borrowed inputs synchronously; they must copy
+// bytes they retain. Nullable-parent layouts own their deferred input storage.
 func (m Mapping) WithScan(cursor Cursor, run func(scan func(...any) error, reusable Reuse) error) error {
 	if m.flags&mappingPrepared == 0 || nilBindingValue(cursor) || run == nil {
 		return errors.New("sqlx: expected a prepared mapping, cursor and scan operation")

@@ -76,6 +76,10 @@ func initStructLayout(p *scanPlan, layout *structScanLayout, dstType reflect.Typ
 
 	if len(layout.groups) > 0 {
 		p.captured = reuseScanStorage(p.captured, count)
+		limit := captureOperationBytes / max(count, 1)
+		for i := range p.captured {
+			p.captured[i] = captureScanner{limit: limit}
+		}
 		p.skip = reuseScanStorage(p.skip, count)
 	}
 

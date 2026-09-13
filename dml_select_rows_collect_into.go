@@ -42,7 +42,7 @@ func (r *Rows) CollectInto[S ~[]T, T any](storage S) (result S, err error) {
 	}
 
 	collector.capacity = options.capacity()
-	err = mapping.WithScanAfterRead(r.rows, func(scan func(...any) error, _ rowbind.Reuse) error {
+	err = mapping.WithScan(r.rows, func(scan func(...any) error, _ rowbind.Reuse) error {
 		return collector.scanRows(r.rows, scan)
 	})
 

@@ -14,10 +14,15 @@ import (
 type cancelAfterCapture struct {
 	cancel context.CancelFunc
 	closed <-chan struct{}
+
+	waitForClose bool
 }
 
 func (s *cancelAfterCapture) Scan(any) error {
 	s.cancel()
+	if !s.waitForClose {
+		return nil
+	}
 	select {
 	case <-s.closed:
 		return nil
@@ -27,6 +32,15 @@ func (s *cancelAfterCapture) Scan(any) error {
 }
 
 func TestNullableParentOwnsCapturedBytes(t *testing.T) {
+	testScannersOwnCapturedBytes(t, ScanOptions{NestedPointers: NilNullNestedPointers})
+}
+
+func TestCustomScannerCancellationPreservesBuiltinResults(t *testing.T) {
+	testScannersOwnCapturedBytes(t, ScanOptions{})
+}
+
+func testScannersOwnCapturedBytes(t *testing.T, options ScanOptions) {
+	t.Helper()
 	for _, mode := range []string{"Row", "Rows", "PrepareScan"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -49,9 +63,12 @@ func TestNullableParentOwnsCapturedBytes(t *testing.T) {
 				} `sql:"child"`
 			}
 
-			got.Trigger = cancelAfterCapture{cancel, f.closeDone}
+			got.Trigger = cancelAfterCapture{
+				cancel,
+				f.closeDone,
+				options.NestedPointers == NilNullNestedPointers,
+			}
 			db := bindTestDB(t, f)
-			options := ScanOptions{NestedPointers: NilNullNestedPointers}
 
 			var err error
 			if mode == "Row" {
@@ -74,8 +91,14 @@ func TestNullableParentOwnsCapturedBytes(t *testing.T) {
 				err = scan(&got)
 			}
 
-			// The custom scanner waits until Close has invalidated all borrowed
-			// buffers, before subsequent fields consume the captured values.
+			select {
+			case <-f.closeDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancellation did not close")
+			}
+
+			// Deferred nullable-parent conversion owns captured inputs; ordinary
+			// conversion runs synchronously while database/sql protects the source.
 			if err != nil || got.Child == nil || got.Child.Name != "abc" ||
 				string(got.Child.Bytes) != "def" || !reflect.DeepEqual(got.Child.Any, []byte("ghi")) {
 				t.Fatalf("driver bytes lost after cancellation: child=%+v err=%v", got.Child, err)

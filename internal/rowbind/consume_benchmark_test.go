@@ -19,7 +19,7 @@ func (v *captureByteCount) Scan(src any) error {
 	return nil
 }
 
-func BenchmarkScanAfterReadBytes(b *testing.B) {
+func BenchmarkScanBorrowedBytes(b *testing.B) {
 	for _, count := range []int{1, 8} {
 		b.Run(fmt.Sprintf("columns_%d", count), func(b *testing.B) {
 			columns := make([]string, count)
@@ -60,7 +60,7 @@ func BenchmarkScanAfterReadBytes(b *testing.B) {
 							b.ReportAllocs()
 							for b.Loop() {
 								row = 0
-								err := mapping.WithScanAfterRead(cursor, func(scan func(...any) error, _ Reuse) error {
+								err := mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
 									for range 100 {
 										if err := scan(args...); err != nil {
 											return err

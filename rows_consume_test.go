@@ -129,53 +129,58 @@ func (v *consumePanicValue) Scan(src any) error {
 	return nil
 }
 
-func TestConsumeRowsPanicClosesAndClearsScratch(t *testing.T) {
+type consumeErrorValue struct{ Data []byte }
+
+var errConsumeScan = errors.New("consume conversion failed")
+
+func (v *consumeErrorValue) Scan(src any) error {
+	v.Data = []byte("partial")
+	if src.(int64) == 2 {
+		return errConsumeScan
+	}
+	return nil
+}
+
+func TestConsumeRowsScanErrorClosesAndClearsScratch(t *testing.T) {
 	for _, mode := range []string{
-		"into_scanner", "visit_scanner", "visit_callback", "into_pointer",
-		"visit_pointer", "into_field_pointer", "visit_field_pointer",
+		"into_scanner", "visit_scanner", "into_pointer", "visit_pointer",
+		"into_field_pointer", "visit_field_pointer",
 	} {
 		t.Run(mode, func(t *testing.T) {
 			r, f := bindTestRows(t, int64(1), int64(2), int64(3))
-			storage := make([]consumePanicValue, 3)
+			storage := make([]consumeErrorValue, 3)
 			for i := range storage {
 				storage[i].Data = []byte("old")
 			}
+			var err error
+			switch mode {
+			case "into_scanner":
+				_, err = r.CollectInto(storage)
 
-			func() {
-				defer func() {
-					if recover() != "consume panic" {
-						t.Error("panic was lost")
-					}
-				}()
+			case "visit_scanner":
+				err = r.Visit(func(consumeErrorValue) (bool, error) { return true, nil })
 
-				switch mode {
-				case "into_scanner":
-					_, _ = r.CollectInto(storage)
+			case "into_pointer":
+				_, err = r.CollectInto([]*consumeErrorValue(nil))
 
-				case "visit_scanner":
-					_ = r.Visit(func(consumePanicValue) (bool, error) { return true, nil })
+			case "visit_pointer":
+				err = r.Visit(func(*consumeErrorValue) (bool, error) { return true, nil })
 
-				case "into_pointer":
-					_, _ = r.CollectInto([]*consumePanicValue(nil))
-
-				case "visit_pointer":
-					_ = r.Visit(func(*consumePanicValue) (bool, error) { return true, nil })
-
-				case "into_field_pointer", "visit_field_pointer":
-					type model struct {
-						Value *consumePanicValue `sql:"value"`
-					}
-
-					if mode == "into_field_pointer" {
-						_, _ = r.CollectInto([]model(nil))
-					} else {
-						_ = r.Visit(func(model) (bool, error) { return true, nil })
-					}
-
-				default:
-					_ = r.Visit(func(int64) (bool, error) { panic("consume panic") })
+			default:
+				type model struct {
+					Value *consumeErrorValue `sql:"value"`
 				}
-			}()
+
+				if mode == "into_field_pointer" {
+					_, err = r.CollectInto([]model(nil))
+				} else {
+					err = r.Visit(func(model) (bool, error) { return true, nil })
+				}
+			}
+
+			if !errors.Is(err, errConsumeScan) {
+				t.Fatal("conversion error lost", err)
+			}
 
 			if f.closed.Load() != 1 {
 				t.Fatal("cursor leaked")
@@ -192,6 +197,21 @@ func TestConsumeRowsPanicClosesAndClearsScratch(t *testing.T) {
 				t.Fatal("later scan corrupted", got, err)
 			}
 		})
+	}
+}
+
+func TestVisitCallbackPanicClosesRows(t *testing.T) {
+	r, f := bindTestRows(t, int64(1))
+	func() {
+		defer func() {
+			if recover() != "consume panic" {
+				t.Error("callback panic lost")
+			}
+		}()
+		_ = r.Visit(func(int64) (bool, error) { panic("consume panic") })
+	}()
+	if f.closed.Load() != 1 {
+		t.Fatal("cursor leaked after callback panic")
 	}
 }
 
@@ -268,10 +288,8 @@ func TestConsumeRowsCancellation(t *testing.T) {
 			}
 			consumeCancel = func() {
 				cancel()
-				select {
-				case <-f.closeDone:
-				case <-time.After(5 * time.Second):
-					t.Error("cancellation did not close cursor")
+				if f.closed.Load() != 0 {
+					t.Error("driver closed during Scanner")
 				}
 			}
 			defer func() { consumeCancel = nil }()
@@ -288,8 +306,11 @@ func TestConsumeRowsCancellation(t *testing.T) {
 				})
 			}
 
-			if !errors.Is(err, context.Canceled) || len(got) != 2 ||
-				got[0].Value != 1 || got[1].Value != 2 || f.closed.Load() != 1 {
+			// Cancellation is asynchronous; the next row may already be read.
+			if (err != nil && !errors.Is(err, context.Canceled)) ||
+				(len(got) < 3 && !errors.Is(err, context.Canceled)) ||
+				len(got) < 2 || len(got) > 3 || got[0].Value != 1 ||
+				got[1].Value != 2 || f.closed.Load() != 1 {
 				t.Fatal(got, err)
 			}
 		})
@@ -320,7 +341,7 @@ func TestVisitCancellationOnEarlyStop(t *testing.T) {
 	}
 }
 
-func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
+func TestConsumeRowsCustomCancellationPreservesOwnedResults(t *testing.T) {
 	type model struct {
 		Trigger consumeCancelValue `sql:"trigger"`
 		Data    []byte             `sql:"data"`
@@ -338,10 +359,8 @@ func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
 			}
 			consumeCancel = func() {
 				cancel()
-				select {
-				case <-f.closeDone:
-				case <-time.After(5 * time.Second):
-					t.Error("cancellation did not close the cursor")
+				if f.closed.Load() != 0 {
+					t.Error("driver closed during Scanner")
 				}
 			}
 			defer func() { consumeCancel = nil }()
@@ -357,8 +376,10 @@ func TestConsumeRowsCustomCancellationOwnsCapturedBytes(t *testing.T) {
 					return true, nil
 				})
 			}
-			if !errors.Is(err, context.Canceled) || len(got) != 1 ||
-				string(got[0].Data) != "owned" || string(got[0].Custom) != "custom owned" {
+			if (err != nil && !errors.Is(err, context.Canceled)) ||
+				len(got) != 1 || f.closed.Load() != 1 ||
+				string(got[0].Custom) != "custom owned" ||
+				string(got[0].Data) != "owned" {
 				t.Fatal(got, err)
 			}
 		})

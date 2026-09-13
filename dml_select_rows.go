@@ -302,8 +302,10 @@ func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 
 // Scan scans the current row, reusing rowbind's private preparation and scratch
 // while destination types match. Individual columns may have been written on
-// error; custom scanner panics propagate. The destination slice is borrowed
-// only for the call and is not retained after returning.
+// error. Application Scanners must return errors instead of panicking; their
+// panics are not recovered and may prevent the underlying cursor from closing.
+// The destination slice is borrowed only for the call and is not retained
+// after returning.
 func (r *Rows) Scan(dst ...any) error {
 	columns, err := r.scanColumns()
 	if err != nil {

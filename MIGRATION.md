@@ -465,9 +465,10 @@ conversion options are applied independently on each query. Dynamic mapping
 caches are bounded (32 shapes per model, at most 256 columns and 16 KiB of labels
 per retained shape). Type metadata remains cached independently of those limits.
 `BindError` adds a one-based row number and preserves errors.Is/errors.As.
-Custom scanner/key-function panics
-propagate instead of being converted into ordinary binding errors; owning
-results are still closed. Custom binders must stage their writes and make Commit
+Custom binding/key-function panics outside the underlying Scan propagate after
+owning results are closed. Application Scanner panics inside the underlying
+Scan have no cursor-cleanup guarantee, as described below. Custom binders must
+stage their writes and make Commit
 non-failing. `Row.Scan` and manual `Rows.Scan` retain database/sql-style partial
 row writes on conversion errors.
 
@@ -553,14 +554,18 @@ atomic collection binding. Existing Bind/Append/Merge/Collect behavior is unchan
   the successfully scanned prefix on errors, and clears failed/unused slots.
   Always save its return value after growth. It does not preserve old aliases.
 - Visit delivers retainable values and closes the result after completion,
-  early stop, errors or panic. Returning false stops normally; callback errors
+  early stop, errors or a yield panic. Returning false stops normally; callback errors
   are wrapped with the current row number. Callbacks must not control the cursor.
 - Both use labels and ScanOptions directly; RowsBinder registrations do not
   apply. Visit does not use Capacity or DuplicateKeys. Close errors are joined
   with an earlier error instead of being discarded.
-- Custom Scanner methods execute after the underlying SQL read where needed
-  for panic/cancellation cleanup. This can add raw-value storage and byte copies.
-  Ordinary byte values remain owned.
+- Custom Scanner methods normally execute synchronously inside the underlying
+  SQL Scan with its original borrowed input. There is no input snapshot or panic
+  interception. Implementations must return errors instead of panicking and
+  manage their own resources; sqlx does not call their Close methods or guarantee
+  cursor cleanup after their panics. Scanners must copy borrowed bytes they retain.
+  `NilNullNestedPointers` still
+  captures byte inputs for deferred conversion. Ordinary byte results remain owned.
 
 ### Optional storage layouts and borrowed bytes
 
@@ -585,7 +590,7 @@ empty values can both yield nil, so use a separate NULL indicator if required.
 Cancellation cannot invalidate bytes during the callback, but closing may wait
 for the callback to return. Reentrant cursor access is rejected, Set methods are
 ignored during the callback, and concurrent use is unsupported. Ordinary byte
-scanning and P5's owned custom-Scanner capture remain unchanged.
+results remain owned; custom Scanners follow the borrowing contract above.
 
 ### Oper construction and registration
 

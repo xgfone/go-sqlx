@@ -333,21 +333,23 @@ err := db.Select("id", "name").From("users").QueryRowsContext(ctx).
 ```
 
 Callback values may be saved; later rows do not overwrite them. Pointer and byte
-fields still require their own storage, and custom Scanners must copy buffers
+fields still require their own storage. Custom Scanners must copy borrowed bytes
 they retain. A callback must not advance, scan, close, reconfigure or concurrently
 use the same Rows. Callback side effects are not rolled back.
 
 Both new methods use the result's column labels and `ScanOptions` directly,
 like `Rows.Scan`; collection-level `RowsBinder` registrations are not applied.
 `Visit` also ignores collection capacity and duplicate-key settings. They consume
-only the current result set and always close it, including on early stop or
-panic. Scan/callback errors report the current row through `BindError`; iteration
+only the current result set and close it on completion, errors, early stop or
+a Visit callback panic. Scan/callback errors report the current row through `BindError`; iteration
 errors report the next row. Close errors are returned or joined with an earlier
-error, so `errors.Is` can inspect both. Custom Scanner panics propagate after
-cleanup: these entry points execute application conversions after the underlying
-SQL read returns, copying raw bytes first where necessary for cancellation safety.
-This extra capture cost applies to custom conversions; ordinary types retain
-the direct scanning path.
+error, so `errors.Is` can inspect both. Application Scanners normally run
+synchronously inside the underlying SQL Scan and receive its borrowed input
+without a preliminary byte copy. Application Scanners must return errors instead
+of panicking; sqlx does not recover their panics or guarantee that the underlying
+cursor can close after such a panic. The `NilNullNestedPointers`
+policy uses deferred conversion and copies byte inputs when it must inspect
+the entire row before deciding which parents are NULL, as described below.
 
 Standard `sql.NullInt64`, `sql.NullString` and supported `sql.Null[T]` values can
 replace nullable pointers when their conversion rules suit the model. Inline
@@ -406,7 +408,8 @@ Nullable pointers, byte slices, and empty interfaces can retain NULL. Custom
 `sql.Scanner` value fields receive the original input, including NULL; nullable
 pointers to scanners remain nil on NULL. Custom scanners control their conversion.
 Built-in byte destinations (including `sql.RawBytes` and pointer chains) receive
-owned copies; a custom scanner must copy driver buffers it retains.
+owned copies. Custom scanners receive borrowed source bytes and are responsible
+for copying any bytes they retain.
 
 `NewRows` and all `QueryRowsContext` methods return `*Rows`. A Rows object
 must not be copied or used concurrently; pass its pointer to share it. A named
@@ -477,7 +480,48 @@ containing slice was cloned.
 When invoking a binding directly, pass a raw cursor matching the
 prepared column order and do not change result sets between Prepare and Scan.
 Built-in Scan operations borrow scratch until they return, including on errors or
-panics. Custom binders can call `options.PrepareMapping(types...)` during Prepare,
+panics. Row, Rows, prepared scans, and built-in collection bindings normally call
+application `sql.Scanner` methods synchronously inside the raw Scan, passing the
+original source without a preliminary byte copy. Input types and NULL semantics
+are preserved. As with `database/sql`, a Scanner must copy borrowed `[]byte` if it
+retains them; sqlx does not promise a stable byte snapshot. Slice type, capacity,
+or whether an upstream implementation happened to copy are not ownership signals.
+A caller supplying its own source may separately guarantee a longer lifetime.
+
+Application Scanners must return conversion failures as errors instead of
+panicking. sqlx passes them through without panic interception and does not
+guarantee cursor cleanup if a Scanner panics inside the underlying Scan.
+In particular, database/sql can retain an internal lock on that path, preventing
+Close from completing; recovering at an outer layer does not release that lock.
+Later columns are not converted after a conversion failure.
+
+Each Scanner implementation owns its private resources. Call-scoped resources
+must be released by that implementation, normally with defer; resources retained
+across calls need an explicit lifecycle managed by its owner. sqlx does not call
+Close on application Scanners. Its own scan plans, destination references and
+scratch buffers keep their existing Reset/Close and deferred cleanup paths.
+Scanners must not advance, rescan, close, or wait for closure of the same cursor
+while scanning it. Cancellation can be requested during Scan; driver close waits
+until synchronous conversion releases the cursor's lock.
+
+Built-in conversions only copy when their result must outlive borrowed input:
+byte slices (including `sql.RawBytes` and byte-valued `any`) own their output,
+string results have safe string storage, and numbers do not keep source bytes.
+`sqltype` JSON/list Scanners decode synchronously and retain their decoded output,
+without an extra input snapshot. Custom decoders they invoke have the same
+input-retention, resource-ownership and non-panicking obligations.
+
+`NilNullNestedPointers` is a necessary deferred-conversion exception: determining
+which parents are entirely NULL requires the selected row values. This internal
+capture copies byte inputs before their source callback returns, since another
+column or cancellation may invalidate them. Reusable column buffers are bounded
+to 4 KiB in total per operation, overwritten by later rows, and cleared on
+Reset/Close. Larger values use temporary copies released after conversion.
+This internal storage does not establish a longer public Scanner lifetime.
+`VisitRawBytes` keeps its separate callback-scoped borrowing contract.
+
+Custom binders can call
+`options.PrepareMapping(types...)` during Prepare,
 then `mapping.Scanner(cursor)` once at the start of Scan to obtain an independent,
 type-checked `PreparedScanner`; defer its Close to return scratch to the pool.
 Callback implementations can return
@@ -488,8 +532,8 @@ The owner still closes the cursor before Commit; direct callers own that close.
 only on `UnsupportedTypeError`. Once selected, scan errors never trigger another
 binder. Put `SliceRowsBinder{}` last for a general slice fallback. Custom binders
 must stage writes, honor or reject the requested mode, and provide a non-failing
-Commit; their own side effects cannot be rolled back. Custom callback panics
-propagate while the owning result is still closed. `BindError` exposes the
+Commit; their own side effects cannot be rolled back. Callback panics outside
+the underlying Scan propagate after the owner closes the result. `BindError` exposes the
 one-based failing row and unwraps the underlying error.
 
 MapPairs evaluates key and value scratch reuse independently. With the internal

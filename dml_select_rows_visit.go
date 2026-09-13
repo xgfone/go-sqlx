@@ -16,10 +16,12 @@ import (
 // rows. Custom Scanner implementations still own their buffer-copying duties.
 // Callbacks must not advance, scan, close, reconfigure or concurrently use r.
 //
-// Visit always closes r, including on an early stop, error or panic. Callback
-// side effects are not rolled back. A close error is returned, or joined with an
-// earlier error; a panic propagates after cleanup. Iteration errors report the
-// next row being requested. No subsequent result set is visited automatically.
+// Visit closes r on completion, an early stop, an error or a yield panic.
+// Application Scanners must not panic: sqlx cannot guarantee cursor cleanup
+// after a panic inside the underlying Scan. Callback side effects are not rolled
+// back. A close error is returned, or joined with an earlier error. Iteration
+// errors report the next row being requested. No subsequent result set is visited
+// automatically.
 //
 // Like Scan, Visit uses the result's labels and ScanOptions directly, ignoring
 // collection-level RowsBinder registrations, Capacity and DuplicateKeys.

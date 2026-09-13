@@ -7,10 +7,13 @@ import "github.com/xgfone/go-sqlx/internal/rowbind"
 
 // GeneralScanner adapts scalar values with SQL NULL mapped to the destination's
 // zero value (or rejected with NullError). Pointer chains use the same conversion
-// rules and remain nil on NULL. It copies driver byte buffers, checks numeric
-// ranges, and leaves the destination unchanged on conversion errors. Custom
-// sql.Scanner values receive the original source, including NULL. A nil Value
-// discards the column.
+// rules and remain nil on NULL. Results that retain driver bytes own their
+// storage; numeric conversions consume bytes without retaining them. It checks
+// numeric ranges and leaves destinations unchanged on conversion errors. Custom
+// sql.Scanner values receive the original source, including NULL, and must copy
+// borrowed bytes they retain. Their implementations must return errors instead
+// of panicking and release their own resources; sqlx does not recover their
+// panics or close application Scanners. A nil Value discards the column.
 //
 // Text numbers use decimal syntax; empty text is invalid. Boolean inputs accept
 // ParseBool text, numeric 0/1, and the single binary bytes 0/1. Integer conversions

@@ -32,8 +32,10 @@ const (
 )
 
 // ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns. Custom scanners
-// receive the original driver value and must copy byte buffers they retain.
+// maps NULL scalars to zero and rejects unknown result columns. Custom Scanners
+// receive original source types and must copy borrowed bytes they retain.
+// Their implementations must return errors instead of panicking and manage
+// their own resources. sqlx does not recover application Scanner panics.
 type ScanOptions struct {
 	Location      *time.Location
 	TimeLayouts   []string
