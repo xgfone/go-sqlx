@@ -232,10 +232,10 @@ positions and are not interchangeable. PostgreSQL also accepts
 
 SQLite permits targetless DO UPDATE and multiple ordered conflict clauses.
 Only the final clause may omit a target. PostgreSQL requires a target for
-DO UPDATE and permits one conflict clause. Existing `OnConflictDoNothing` and
-`OnConflictDoUpdate` remain available. `ClearConflict` clears both APIs.
-Avoid mixing the convenience and structured APIs; if both are used, the
-convenience clause is rendered first.
+DO UPDATE and permits one conflict clause. `OnConflict` appends independent
+clauses in call order, without merging their targets or assignments. Pass all
+assignments for one action to `ConflictColumns(...).DoUpdate(...)`.
+`ClearConflict` clears both ON CONFLICT and MySQL ON DUPLICATE KEY UPDATE.
 
 `Excluded(column)` is scoped to a PostgreSQL/SQLite conflict update. `IntoAlias`
 aliases an INSERT target on those engines. MySQL instead uses

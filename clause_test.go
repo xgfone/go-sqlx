@@ -75,7 +75,7 @@ func TestExternalClauseImplementations(t *testing.T) {
 	assertSQL(t, sqlx.Delete().From("items").Where(tenantCondition(7)).SetDialect(dialect.Postgres),
 		`DELETE FROM "items" WHERE "tenant"=$1`, 7)
 	assertSQL(t, sqlx.Insert().Into("items").Columns("id").Values(1).
-		OnConflictDoUpdate([]string{"id"}, increment{"n", 3}).SetDialect(dialect.Postgres),
+		OnConflict(sqlx.ConflictColumns("id").DoUpdate(increment{"n", 3})).SetDialect(dialect.Postgres),
 		`INSERT INTO "items" ("id") VALUES ($1) ON CONFLICT ("id") DO UPDATE SET "n"="n"+$2`, 1, 3)
 	oper := sqlx.NewOper[struct{ ID int }]("items").WithSorter(customOrder{"id"}).Where(tenantCondition(7))
 	assertSQL(t, oper.Select("id").SetDialect(dialect.Postgres), `SELECT "id" FROM "items" WHERE "tenant"=$1 ORDER BY "id" DESC`, 7)

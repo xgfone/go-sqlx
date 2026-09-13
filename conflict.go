@@ -72,8 +72,10 @@ func (a ConflictClause) Where(conditions ...Condition) ConflictClause {
 	return a
 }
 
-// OnConflict appends a PostgreSQL or SQLite conflict clause. Multiple clauses are
-// supported only by SQLite; an omitted target must belong to the final clause.
+// OnConflict appends PostgreSQL or SQLite conflict clauses in call order.
+// Each clause keeps its own target and action; calls do not merge targets or
+// assignments. Multiple clauses are supported only by SQLite; an omitted target
+// must belong to the final clause. ClearConflict removes all conflict handling.
 func (b *InsertBuilder) OnConflict(clauses ...ConflictClause) *InsertBuilder {
 	b.conflicts = append(b.conflicts, clauses...)
 	return b
@@ -200,14 +202,14 @@ func (t ConflictTarget) writeTo(s *strings.Builder, c *BuildContext) {
 }
 
 func (b *InsertBuilder) hasConflict() bool {
-	return b.conflictAction != "" || len(b.conflicts) > 0
+	return b.duplicateKey || len(b.conflicts) > 0
 }
 
 func (b *InsertBuilder) renderConflicts(s *strings.Builder, c *BuildContext) {
 	if !b.hasConflict() {
 		return
 	}
-	if b.conflictAction == "duplicate" {
+	if b.duplicateKey {
 		if len(b.conflicts) > 0 {
 			panic("cannot combine ON CONFLICT and ON DUPLICATE KEY UPDATE")
 		}
@@ -218,34 +220,16 @@ func (b *InsertBuilder) renderConflicts(s *strings.Builder, c *BuildContext) {
 		defer func() { c.conflictScope = old }()
 
 		_, _ = s.WriteString(" ON DUPLICATE KEY UPDATE ")
-		writeUpdaters(s, c, b.conflictSet)
+		writeUpdaters(s, c, b.duplicateSet)
 		return
 	}
 
 	count := len(b.conflicts)
-	legacy := b.conflictAction != ""
-	if legacy {
-		count++
-	}
 	requireFeature(c, dialect.OnConflict, "ON CONFLICT")
 	if count > 1 {
 		requireFeature(c, dialect.MultipleOnConflict, "multiple ON CONFLICT clauses")
 	}
-	for i := range count {
-		var a ConflictClause
-		if legacy && i == 0 {
-			a = ConflictClause{
-				target:  ConflictTarget{columns: b.conflictColumns},
-				nothing: b.conflictAction == "nothing",
-				setters: b.conflictSet,
-			}
-		} else {
-			index := i
-			if legacy {
-				index--
-			}
-			a = b.conflicts[index]
-		}
+	for i, a := range b.conflicts {
 		if a.target.empty() && i != count-1 {
 			panic("only the final conflict clause may omit its target")
 		}

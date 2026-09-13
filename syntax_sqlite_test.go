@@ -245,7 +245,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			"upsert select",
 			db.Insert().Into("t").Columns("id", "team", "v").
 				FromSelect(Select("id", "team", "v").From("t")).
-				OnConflictDoNothing().Returning("id"),
+				OnConflict(ConflictColumns().DoNothing()).Returning("id"),
 			nil,
 		},
 		{
@@ -253,13 +253,13 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			db.Insert().Into("t").Columns("id", "team", "v").
 				FromSelect(Select("id", "team", "v").From("t").Where(Gt("id", 0)).
 					UnionAll(Select("id", "team", "v").From("t"))).
-				OnConflictDoNothing().Returning("id"),
+				OnConflict(ConflictColumns().DoNothing()).Returning("id"),
 			nil,
 		},
 		{
 			"targetless update",
 			db.Insert().Into("t").Columns("id", "team", "v").Values(2, "a", 40).
-				OnConflictDoUpdate(nil, Set("v", Excluded("v"))).Returning("id", "v"),
+				OnConflict(ConflictColumns().DoUpdate(Set("v", Excluded("v")))).Returning("id", "v"),
 			[][]any{{2, 40}},
 		},
 		{
@@ -281,8 +281,8 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"multiple conflicts",
 			db.Insert().Into("users").Columns("id", "email", "v").Values(99, "one", 50).
-				OnConflict(ConflictColumns("id").DoNothing(), ConflictColumns().
-					DoUpdate(Set("v", Excluded("v")))).Returning("id", "v"),
+				OnConflict(ConflictColumns("id").DoNothing()).
+				OnConflict(ConflictColumns().DoUpdate(Set("v", Excluded("v")))).Returning("id", "v"),
 			[][]any{{1, 50}},
 		},
 		{

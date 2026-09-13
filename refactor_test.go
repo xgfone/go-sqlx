@@ -133,16 +133,16 @@ func TestInsertAlignmentDefaultsAndErrors(t *testing.T) {
 func TestReturningAndConflictPolicies(t *testing.T) {
 	db := &DB{Dialect: dialect.Postgres}
 	checkSQL(t, db.Insert().Into("t").Columns("id", "v").Values(1, "a").
-		OnConflictDoUpdate([]string{"id"}, Set("v", Ident("excluded", "v"))).Returning("id"),
+		OnConflict(ConflictColumns("id").DoUpdate(Set("v", Ident("excluded", "v")))).Returning("id"),
 		`INSERT INTO "t" ("id", "v") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "v"="excluded"."v" RETURNING "id"`,
 		1, "a")
 
-	checkSQL(t, db.Insert().Into("t").Values(1).OnConflictDoNothing(),
+	checkSQL(t, db.Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoNothing()),
 		`INSERT INTO "t" VALUES ($1) ON CONFLICT DO NOTHING`, 1)
 	checkSQL(t, Insert().Into("t").Values(1).OnDuplicateKeyUpdate(Set("v", 2)),
 		"INSERT INTO `t` VALUES (?) ON DUPLICATE KEY UPDATE `v`=?", 1, 2)
 
-	checkBuildError(t, Insert().Into("t").Values(1).OnConflictDoNothing())
+	checkBuildError(t, Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoNothing()))
 	checkBuildError(t, Insert().Into("t").Values(1).Returning("id"))
 	checkSQL(t, db.Delete().From("t").Using("u", "a").Where(On("t.id", "a.id")).Returning("t.id"),
 		`DELETE FROM "t" USING "u" AS "a" WHERE "t"."id"="a"."id" RETURNING "t"."id"`)
@@ -380,11 +380,7 @@ func TestSQLiteExecution(t *testing.T) {
 	}{
 		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "one", 10).Returning("id"), [][]any{{1}}},
 		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "two", 20).
-			OnConflictDoUpdate(
-				[]string{"id"},
-				Set("v", Ident("excluded", "v")),
-				Set("n", Ident("excluded", "n")),
-			).
+			OnConflict(ConflictColumns("id").DoUpdate(Set("v", Ident("excluded", "v")), Set("n", Ident("excluded", "n")))).
 			Returning("v", "n"), [][]any{{"two", 20}}},
 		{db.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 2)).
 			Where(Eq("id", 1)).Returning("n"), [][]any{{22}}},

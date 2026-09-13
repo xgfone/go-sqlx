@@ -39,9 +39,8 @@ type InsertBuilder struct {
 	values          insertBatch
 	columns         []string
 	returning       []selectedColumn
-	conflictColumns []string
-	conflictSet     []Updater
-	conflictAction  string
+	duplicateSet    []Updater
+	duplicateKey    bool
 	explicitColumns bool
 	defaults        bool
 }
@@ -126,27 +125,10 @@ func (b *InsertBuilder) FromSelect(q *SelectBuilder) *InsertBuilder {
 
 func (b *InsertBuilder) DefaultValues() *InsertBuilder { b.defaults = true; return b }
 
-// OnConflictDoNothing ignores matching conflicts on PostgreSQL or SQLite.
-func (b *InsertBuilder) OnConflictDoNothing(columns ...string) *InsertBuilder {
-	b.conflictAction = "nothing"
-	b.conflictColumns = append(b.conflictColumns, columns...)
-	return b
-}
-
-// OnConflictDoUpdate updates matching conflicts on PostgreSQL or SQLite.
-// SQLite permits an empty target list; PostgreSQL requires a conflict target.
-// Use OnConflict for predicates, expression targets, or named constraints.
-func (b *InsertBuilder) OnConflictDoUpdate(columns []string, updaters ...Updater) *InsertBuilder {
-	b.conflictAction = "update"
-	b.conflictColumns = append(b.conflictColumns, columns...)
-	b.conflictSet = append(b.conflictSet, updaters...)
-	return b
-}
-
 // OnDuplicateKeyUpdate explicitly selects MySQL's duplicate-key update semantics.
 func (b *InsertBuilder) OnDuplicateKeyUpdate(updaters ...Updater) *InsertBuilder {
-	b.conflictAction = "duplicate"
-	b.conflictSet = append(b.conflictSet, updaters...)
+	b.duplicateKey = true
+	b.duplicateSet = append(b.duplicateSet, updaters...)
 	return b
 }
 
@@ -165,9 +147,8 @@ func (b *InsertBuilder) ClearValues() *InsertBuilder {
 
 func (b *InsertBuilder) ClearConflict() *InsertBuilder {
 	b.conflicts = nil
-	b.conflictColumns = nil
-	b.conflictSet = nil
-	b.conflictAction = ""
+	b.duplicateSet = nil
+	b.duplicateKey = false
 	return b
 }
 
@@ -183,8 +164,7 @@ func (b *InsertBuilder) Clone() *InsertBuilder {
 	v.rowsAliasColumns = slices.Clone(b.rowsAliasColumns)
 	v.columns = slices.Clone(b.columns)
 	v.returning = cloneColumns(b.returning)
-	v.conflictColumns = slices.Clone(b.conflictColumns)
-	v.conflictSet = slices.Clone(b.conflictSet)
+	v.duplicateSet = slices.Clone(b.duplicateSet)
 	v.values = b.values.clone()
 	return &v
 }
@@ -276,7 +256,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 	switch {
 	case b.defaults:
-		if b.hasConflict() && (b.conflictAction != "duplicate" ||
+		if b.hasConflict() && (!b.duplicateKey ||
 			!dialect.Supports(c.Dialect(), dialect.EmptyInsert)) {
 			requireFeature(c, dialect.DefaultValuesConflict, "conflict handling with DEFAULT VALUES")
 		}

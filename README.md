@@ -665,7 +665,9 @@ successful no-op. `Default()` represents a SQL DEFAULT value where supported.
 Nil INSERT/SET values bind SQL NULL. `Eq(column,nil)` renders IS NULL.
 Other predicates can use `Expr(...).Condition()` or a custom `Condition`.
 
-PostgreSQL/SQLite support `OnConflictDoNothing` and `OnConflictDoUpdate`.
+PostgreSQL/SQLite use `OnConflict(ConflictColumns(...).DoNothing())` or
+`OnConflict(ConflictColumns(...).DoUpdate(...))`. Calls append independent
+clauses in order; `ClearConflict` removes all conflict handling.
 MySQL has explicit `OnDuplicateKeyUpdate`, `Ignore`, and `Replace` modes, which
 are not presented as equivalent conflict policies. SQLite does not support
 ON CONFLICT after DEFAULT VALUES. Constraint names, expression targets,

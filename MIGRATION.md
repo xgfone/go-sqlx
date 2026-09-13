@@ -133,6 +133,21 @@ Existing calls without column names keep working; function values now have a
 variadic column parameter. `WithCTE` remains available for other CTE bodies and
 advanced options. Single-row `Row.WithColumns` is unrelated and remains available.
 
+`OnConflictDoNothing` and `OnConflictDoUpdate` have been removed:
+
+```go
+builder.OnConflict(sqlx.ConflictColumns(columns...).DoNothing())
+builder.OnConflict(sqlx.ConflictColumns(columns...).DoUpdate(setters...))
+```
+
+`ConflictColumns()` omits the target where the dialect permits it. Each OnConflict
+call appends independent clauses in order. Old repeated convenience calls
+accumulated columns and setters into one action: combine those arguments into
+one ConflictColumns/DoUpdate call when migrating. For multiple SQLite conflict
+clauses, supply separate actions; PostgreSQL permits only one. ClearConflict
+removes all conflict handling. MySQL's distinct `OnDuplicateKeyUpdate` API remains
+available and cannot be combined with OnConflict.
+
 `SelectBuilder.ClearUnion` has been removed. Use `ClearSetOperations`, which
 clears UNION, INTERSECT and EXCEPT, including their ALL variants.
 

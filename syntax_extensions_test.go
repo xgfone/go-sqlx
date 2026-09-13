@@ -44,7 +44,7 @@ func TestNativeDefaultContexts(t *testing.T) {
 
 	for _, b := range []SQLBuilder{
 		Update().Table("t").Set(Set("v", Default())).SetDialect(dialect.SQLite),
-		Insert().Into("t").Values(1).OnConflictDoUpdate(nil, Set("v", Default())).SetDialect(dialect.SQLite),
+		Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoUpdate(Set("v", Default()))).SetDialect(dialect.SQLite),
 		Select().SelectExpr(Default()),
 		Insert().Into("t").Values(Expr("COALESCE(?, ?)", Default(), 1)),
 	} {
@@ -74,7 +74,7 @@ func TestConditionalUpsertsAndAliases(t *testing.T) {
 		`INSERT INTO "t" VALUES ($1) ON CONFLICT ON CONSTRAINT "t_pkey" DO NOTHING`,
 		1)
 	checkSQL(t,
-		Insert().Into("t").Values(1).OnConflictDoUpdate(nil, Set("v", 2)).SetDialect(dialect.SQLite),
+		Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoUpdate(Set("v", 2))).SetDialect(dialect.SQLite),
 		`INSERT INTO "t" VALUES (?) ON CONFLICT DO UPDATE SET "v"=?`,
 		1, 2)
 
@@ -90,7 +90,7 @@ func TestConditionalUpsertsAndAliases(t *testing.T) {
 
 	for _, b := range []SQLBuilder{
 		q.Clone().SetDialect(dialect.MySQL),
-		Insert().Into("t").Values(1).OnConflictDoUpdate(nil, Set("v", 2)).SetDialect(pg),
+		Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoUpdate(Set("v", 2))).SetDialect(pg),
 		Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoNothing(), ConflictColumns("id").DoNothing()).SetDialect(dialect.SQLite),
 		Insert().Into("t").Values(1).OnConflict(ConflictColumns("id").DoNothing(), ConflictColumns().DoNothing()).SetDialect(pg),
 		Insert().Into("t").Values(1).OnConflict(ConflictColumns("id").DoNothing().Where(Eq("id", 1))).SetDialect(pg),
@@ -107,7 +107,7 @@ func TestConditionalUpsertsAndAliases(t *testing.T) {
 func TestInsertSelectConflictDialectRules(t *testing.T) {
 	source := Select("id").From("src")
 	checkSQL(t,
-		Insert().Into("t").FromSelect(source).OnConflictDoNothing().SetDialect(dialect.Postgres),
+		Insert().Into("t").FromSelect(source).OnConflict(ConflictColumns().DoNothing()).SetDialect(dialect.Postgres),
 		`INSERT INTO "t" SELECT "id" FROM "src" ON CONFLICT DO NOTHING`)
 	checkSQL(t,
 		Insert().Into("t").FromSelect(source).OnDuplicateKeyUpdate(Set("id", 1)),
@@ -118,7 +118,7 @@ func TestInsertSelectConflictDialectRules(t *testing.T) {
 		source,
 		source.Clone().Where(Eq("id", 1)).UnionAll(Select("id").From("src")),
 	} {
-		q, _, e := Insert().Into("t").FromSelect(source).OnConflictDoNothing().SetDialect(dialect.SQLite).Build()
+		q, _, e := Insert().Into("t").FromSelect(source).OnConflict(ConflictColumns().DoNothing()).SetDialect(dialect.SQLite).Build()
 		if e != nil || !strings.Contains(q, `) AS "_sqlx_insert" WHERE (TRUE) ON CONFLICT`) {
 			t.Fatalf("%s %v", q, e)
 		}

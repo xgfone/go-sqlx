@@ -435,7 +435,7 @@ func TestInsertPlanConcurrentAndStatementTemplate(t *testing.T) {
 					return
 				}
 
-				tmpl, err := b.OnConflictDoUpdate([]string{"id"}, Set("name", "updated")).Returning("id").Compile()
+				tmpl, err := b.OnConflict(ConflictColumns("id").DoUpdate(Set("name", "updated"))).Returning("id").Compile()
 				if err != nil {
 					t.Error(err)
 					return
