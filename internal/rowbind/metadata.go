@@ -21,8 +21,13 @@ type Field struct {
 	Column     string
 	Indexes    []int
 	IgnoreZero bool
-	scanMode   uint8
-	setter     fieldSetter
+
+	// PointerParent reports whether reaching the field crosses a pointer.
+	// It excludes the leaf field and the pointer wrapping the root model.
+	PointerParent bool
+
+	scanMode uint8
+	setter   fieldSetter
 }
 
 type structParent struct {
@@ -120,7 +125,7 @@ func Describe(t reflect.Type) (*Metadata, error) {
 	}
 
 	m := &Metadata{}
-	m.fields, m.err = collectFields(t, "", nil, map[reflect.Type]bool{})
+	m.fields, m.err = collectFields(t, "", nil, false, map[reflect.Type]bool{})
 	if m.err == nil {
 		m.byName = make(map[string]*Field, len(m.fields))
 		for i := range m.fields {
@@ -141,7 +146,13 @@ func Describe(t reflect.Type) (*Metadata, error) {
 	return m, m.err
 }
 
-func collectFields(t reflect.Type, prefix string, path []int, active map[reflect.Type]bool) ([]Field, error) {
+func collectFields(
+	t reflect.Type,
+	prefix string,
+	path []int,
+	pointerParent bool,
+	active map[reflect.Type]bool,
+) ([]Field, error) {
 	if active[t] {
 		return nil, fmt.Errorf(`sqlx: recursive struct %v; exclude recursive fields with sql:"-"`, t)
 	}
@@ -176,7 +187,13 @@ func collectFields(t reflect.Type, prefix string, path []int, active map[reflect
 				next = formatFieldName(prefix, name)
 			}
 
-			nested, e := collectFields(ft, next, indexes, active)
+			nested, e := collectFields(
+				ft,
+				next,
+				indexes,
+				pointerParent || f.Type.Kind() == reflect.Pointer,
+				active,
+			)
 			if e != nil {
 				return nil, e
 			}
@@ -207,8 +224,11 @@ func collectFields(t reflect.Type, prefix string, path []int, active map[reflect
 			Column:     formatFieldName(prefix, name),
 			Indexes:    indexes,
 			IgnoreZero: omit,
-			scanMode:   fieldScanMode(f.Type),
-			setter:     compileFieldSetter(f.Type),
+
+			PointerParent: pointerParent,
+
+			scanMode: fieldScanMode(f.Type),
+			setter:   compileFieldSetter(f.Type),
 		})
 	}
 	return fields, nil
