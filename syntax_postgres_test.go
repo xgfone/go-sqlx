@@ -36,12 +36,62 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	e := Coalesce(Ident("v"), 0)
 	scalar := Coalesce(Subquery(Select().SelectExpr(Sum("v")).From("other")), 0)
 	cases := []struct {
 		name string
 		b    SQLBuilder
 		want [][]any
 	}{
+		{
+			"group",
+			Select().SelectExpr(e, Count("*")).From("t").GroupByExpr(e).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0, 1}, {2, 2}, {10, 1}},
+		},
+		{
+			"distinct order",
+			Select().SelectExpr(e).From("t").Distinct().OrderByExpr(e, Asc).
+				SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"nested group expression",
+			Select().SelectExpr(Cast(e, "TEXT"), Count("*")).From("t").
+				GroupByExpr(e).OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{"0", 1}, {"2", 2}, {"10", 1}},
+		},
+		{
+			"having",
+			Select().SelectExpr(e, Count("*")).From("t").GroupByExpr(e).
+				Having(Gt(e, 0)).OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{2, 2}, {10, 1}},
+		},
+		{
+			"grouping sets",
+			Select().SelectExpr(e, Count("*")).From("t").
+				GroupByExpr(GroupingSets(GroupingSet(e), GroupingSet())).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0, 1}, {2, 2}, {10, 1}, {nil, 4}},
+		},
+		{
+			"group alias with repeated projection and having",
+			Select().SelectExprAlias(e, "a").SelectExprAlias(e, "b").From("t").
+				GroupBy("a").Having(Gt(e, 0)).OrderByAsc("a").SetDialect(dialect.Postgres),
+			[][]any{{2, 2}, {10, 10}},
+		},
+		{
+			"rollup",
+			Select().SelectExpr(e, Count("*")).From("t").GroupByRollupExpr(e).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0, 1}, {2, 2}, {10, 1}, {nil, 4}},
+		},
+		{
+			"distinct on",
+			Select().SelectExpr(e).From("t").DistinctOnExpr(e).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
 		{
 			"returning aggregate subquery",
 			Update().Table("t").Set(Set("v", 1)).Where(Eq("v", 10)).
@@ -74,6 +124,41 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		queries = append(queries, query{tc.name, s, args, tc.want})
+	}
+
+	p := Coalesce(Ident("v"), Param(0))
+	shared := Param(0)
+	compiled := []struct {
+		b    *SelectBuilder
+		args []any
+		want [][]any
+	}{
+		{
+			Select().SelectExpr(p, Count("*")).From("t").GroupByExpr(p).
+				Having(Gt(p, Param(1))).OrderByExpr(p, Asc).SetDialect(dialect.Postgres),
+			[]any{0, 0},
+			[][]any{{2, 2}, {10, 1}},
+		},
+		{
+			Select().SelectExprAlias(Coalesce(Expr("NULL::INTEGER"), shared), "n").
+				SelectExprAlias(Coalesce(Expr("NULL::TEXT"), shared), "s").Distinct().
+				OrderByAsc("n").SetDialect(dialect.Postgres),
+			[]any{"2"},
+			[][]any{{2, "2"}},
+		},
+	}
+	for _, tc := range compiled {
+		tmpl, err := tc.b.Compile()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s, args, err := tmpl.Bind(tc.args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		queries = append(queries, query{"compiled query", s, args, tc.want})
 	}
 
 	input, err := json.Marshal(queries)

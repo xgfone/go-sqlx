@@ -375,6 +375,11 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	orders := b.orderbys
+	reuse := false
+	if len(b.groups) > 0 || len(orders) > 0 || len(b.distinctOn) > 0 {
+		reuse = c.Dialect().Grammar().ReuseExpressionParameters && b.needsExpressionReuse()
+	}
+	c.recordExpressions, c.reuseExpressions = reuse, reuse
 	if len(b.distinctOn) > 0 {
 		requireFeature(c, dialect.DistinctOn, "DISTINCT ON")
 		keys, terms := b.renderDistinctOn(c)
@@ -383,6 +388,7 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	writeColumns(s, c, b.columns)
+	c.recordExpressions, c.reuseExpressions = false, false
 	if len(b.ftables) > 0 {
 		_, _ = s.WriteString(" FROM ")
 		for i, table := range b.ftables {
@@ -400,6 +406,7 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	writeClause(s, c, "WHERE", b.wheres)
+	c.recordExpressions, c.reuseExpressions = reuse, reuse
 	if len(b.groups) > 0 {
 		_, _ = s.WriteString(" GROUP BY ")
 		if b.rollup {
@@ -418,11 +425,15 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 			}
 		}
 	}
+	c.recordExpressions = false
 
 	writeClause(s, c, "HAVING", b.havings)
 	b.writeWindows(s, c)
+	// A compound query owns its final ORDER BY independently of this SELECT.
+	c.reuseExpressions = reuse && len(b.unions) == 0
 	b.renderSetOperations(s, c)
 	writeOrderBy(s, c, orders)
+	c.reuseExpressions = false
 	b.writePagination(s, c)
 
 	if b.lock != "" {

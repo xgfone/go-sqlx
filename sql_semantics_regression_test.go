@@ -4,10 +4,76 @@
 package sqlx
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
+
+func TestRepeatedExpressionParameters(t *testing.T) {
+	e := Coalesce(Ident("v"), 0)
+	q := Select().SelectExpr(e, Count("*")).From("t").Where(Gt("v", -1)).
+		GroupByExpr(e).Having(Gt(e, 0)).OrderByExpr(e, Asc)
+
+	for _, d := range []Dialect{dialect.Postgres, dialect.WithVersion(dialect.Postgres, 14, 0, 0)} {
+		checkSQL(t, q.Clone().SetDialect(d),
+			`SELECT COALESCE("v", $1), COUNT(*) FROM "t" WHERE ("v" > $2) GROUP BY COALESCE("v", $1) HAVING (COALESCE("v", $1) > $3) ORDER BY COALESCE("v", $1) ASC`, 0, -1, 0)
+		checkSQL(t, Select().SelectExpr(e).From("t").Distinct().OrderByExpr(e, Desc).SetDialect(d),
+			`SELECT DISTINCT COALESCE("v", $1) FROM "t" ORDER BY COALESCE("v", $1) DESC`, 0)
+		checkSQL(t, Select().SelectExpr(Cast(e, "TEXT"), Count("*")).From("t").
+			GroupByExpr(GroupingSets(GroupingSet(e), GroupingSet())).SetDialect(d),
+			`SELECT CAST(COALESCE("v", $1) AS TEXT), COUNT(*) FROM "t" GROUP BY GROUPING SETS ((COALESCE("v", $1)), ())`, 0)
+	}
+
+	checkSQL(t, q.Clone().SetDialect(dialect.SQLite),
+		`SELECT COALESCE("v", ?), COUNT(*) FROM "t" WHERE ("v" > ?) GROUP BY COALESCE("v", ?) HAVING (COALESCE("v", ?) > ?) ORDER BY COALESCE("v", ?) ASC`, 0, -1, 0, 0, 0, 0)
+	checkSQL(t, q.Clone().SetDialect(dialect.MySQL),
+		"SELECT COALESCE(`v`, ?), COUNT(*) FROM `t` WHERE (`v` > ?) GROUP BY COALESCE(`v`, ?) HAVING (COALESCE(`v`, ?) > ?) ORDER BY COALESCE(`v`, ?) ASC", 0, -1, 0, 0, 0, 0)
+
+	// Equal constants in different expressions do not imply expression identity.
+	other := Coalesce(Ident("w"), 0)
+	checkSQL(t, Select().SelectExpr(e, other).From("t").GroupByExpr(e, other).SetDialect(dialect.Postgres),
+		`SELECT COALESCE("v", $1), COALESCE("w", $2) FROM "t" GROUP BY COALESCE("v", $1), COALESCE("w", $2)`, 0, 0)
+	// The same expression in a subquery gets that query's own bindings.
+	sub := Select().SelectExpr(e).From("other").Distinct().OrderByExpr(e, Asc).Limit(1)
+	checkSQL(t, Select().SelectExpr(e, Subquery(sub)).From("t").GroupByExpr(e).SetDialect(dialect.Postgres),
+		`SELECT COALESCE("v", $1), (SELECT DISTINCT COALESCE("v", $2) FROM "other" ORDER BY COALESCE("v", $2) ASC LIMIT 1) FROM "t" GROUP BY COALESCE("v", $1)`, 0, 0)
+
+	e = Coalesce(Ident("v"), Param(0))
+	tmpl, err := Select().SelectExpr(e, Count("*")).From("t").GroupByExpr(e).
+		Having(Gt(e, Param(1))).SetDialect(dialect.Postgres).Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, fallback := range []int{0, 7} {
+		query, args, err := tmpl.Bind(fallback, 1)
+		if err != nil || query != `SELECT COALESCE("v", $1), COUNT(*) FROM "t" GROUP BY COALESCE("v", $1) HAVING (COALESCE("v", $1) > $2)` || !reflect.DeepEqual(args, []any{fallback, 1}) {
+			t.Fatalf("compiled reuse: %q %#v %v", query, args, err)
+		}
+	}
+
+	// Sharing a runtime input across different type contexts must not unify its
+	// placeholders just because both expressions contain the same Param.
+	p := Param(0)
+	left, right := Coalesce(Ident("n"), p), Coalesce(Ident("s"), p)
+	tmpl, err = Select().SelectExprAlias(left, "a").SelectExprAlias(right, "b").From("t").
+		Distinct().OrderByAsc("a").SetDialect(dialect.Postgres).Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	query, args, err := tmpl.Bind("2")
+	if err != nil || query != `SELECT DISTINCT COALESCE("n", $1) AS "a", COALESCE("s", $2) AS "b" FROM "t" ORDER BY "a" ASC` || !reflect.DeepEqual(args, []any{"2", "2"}) {
+		t.Fatalf("independent parameter type contexts: %q %#v %v", query, args, err)
+	}
+
+	v := Value("2")
+	checkSQL(t, Select().SelectExpr(Coalesce(Ident("n"), v), Coalesce(Ident("s"), v)).From("t").Distinct().OrderByExpr(Expr("1"), Asc).SetDialect(dialect.Postgres),
+		`SELECT DISTINCT COALESCE("n", $1), COALESCE("s", $2) FROM "t" ORDER BY 1 ASC`, "2", "2")
+	checkSQL(t, Select().SelectExpr(v).Distinct().OrderByExpr(v, Asc).SetDialect(dialect.Postgres),
+		`SELECT DISTINCT $1 ORDER BY $1 ASC`, "2")
+}
 
 func TestQueryLevelAggregateAndWindowValidation(t *testing.T) {
 	custom := ConditionWriterFunc(func(w *SQLWriter) (bool, error) {

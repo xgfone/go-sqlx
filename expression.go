@@ -299,7 +299,43 @@ func (e Expression) writeTo(buf *strings.Builder, c *BuildContext) {
 	if e.kind() == windowFunctionExpression {
 		panic("window function requires OVER")
 	}
+	if !c.reuseExpressions && !c.recordExpressions {
+		e.writeBody(buf, c)
+		return
+	}
+	e.writeReusable(buf, c)
+}
+
+func (e Expression) writeReusable(buf *strings.Builder, c *BuildContext) {
+	cacheable := e.isCustom() || len(e.args()) > 0
+	// A bare value reused inside different expressions may require different
+	// server types (for example COALESCE(integer, p) and COALESCE(text, p)).
+	// Reuse the enclosing SQL expression, not its individual data operands.
+	_, boundValue := e.node.(*expressionValue)
+	if c.expressionDepth > 0 && (boundValue || e.kind() == parameterExpression ||
+		len(e.args()) == 1 && strings.TrimSpace(e.sql) == "?") {
+		cacheable = false
+	}
+	if !cacheable {
+		e.writeBody(buf, c)
+		return
+	}
+	if c.reuseExpressions && c.expressionCache != nil {
+		if sql := c.expressionCache.find(e); sql != "" {
+			_, _ = buf.WriteString(sql)
+			return
+		}
+	}
+	start, args := buf.Len(), len(c.args)
+	c.expressionDepth++
+	defer func() { c.expressionDepth-- }()
 	e.writeBody(buf, c)
+	if c.recordExpressions && len(c.args) > args {
+		if c.expressionCache == nil {
+			c.expressionCache = expressionCachePool.Get().(*expressionCache)
+		}
+		c.expressionCache.add(e, buf.String()[start:])
+	}
 }
 
 // OVER alone may render a bare window function. All other validation remains.

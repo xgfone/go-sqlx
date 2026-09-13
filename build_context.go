@@ -72,6 +72,9 @@ func releaseBuildContext(a *BuildContext) {
 		a.args = a.args[:0]
 	}
 
+	if a.expressionCache != nil {
+		releaseExpressionCache(a.expressionCache)
+	}
 	a.statementScope = statementScope{}
 	a.writer = SQLWriter{}
 	a.buffer.Reset()
@@ -112,6 +115,9 @@ func (a *BuildContext) enterStatement() statementScope {
 }
 
 func (a *BuildContext) leaveStatement(parent statementScope) {
+	if a.expressionCache != nil {
+		releaseExpressionCache(a.expressionCache)
+	}
 	a.statementScope = parent
 	a.statementDepth--
 }

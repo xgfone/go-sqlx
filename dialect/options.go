@@ -18,6 +18,7 @@ type Grammar struct {
 	MutationOrderRequiresLimit    bool // SQLite ORDER BY requires a LIMIT clause.
 	RowInViaValues                bool // SQLite row IN requires a query on the right.
 	WindowGroupsRequiresOrder     bool // PostgreSQL GROUPS frames require ORDER BY.
+	ReuseExpressionParameters     bool // Repeated SELECT/GROUP/ORDER expressions share numbered parameters.
 	ReturningTargetOnly           bool // SQLite RETURNING permits table.column, but no aliases or qualified wildcards.
 }
 
@@ -34,6 +35,7 @@ func (d builtin) Grammar() Grammar {
 	case "postgres":
 		return Grammar{
 			WindowGroupsRequiresOrder: true,
+			ReuseExpressionParameters: true,
 		}
 
 	case "sqlite3":

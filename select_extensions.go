@@ -232,6 +232,25 @@ func equivalentExpression(a, b Expression) bool {
 	return reflect.DeepEqual(a, b)
 }
 
+// ORDER BY names and ordinals do not introduce new parameters. GROUP BY still
+// needs reuse: an output alias may group a selected expression repeated in
+// another selected column or in HAVING.
+func (b *SelectBuilder) needsExpressionReuse() bool {
+	if len(b.distinctOn) > 0 || len(b.groups) > 0 {
+		return true
+	}
+
+	if len(b.unions) == 0 {
+		for _, order := range b.orderbys {
+			if e := order.Expr; e != nil && (e.isCustom() || len(e.args()) > 0) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // ORDER BY and DISTINCT ON may refer to a selected output name or ordinal.
 // Resolve only direct references, leaving the underlying expression untouched.
 func (b *SelectBuilder) outputExpression(e Expression) Expression {

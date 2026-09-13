@@ -13,6 +13,10 @@ type statementScope struct {
 	forbidSetFunctions string
 	returningTable     string
 
+	expressionCache   *expressionCache
+	recordExpressions bool
+	reuseExpressions  bool
+	expressionDepth   int
 }
 
 func (c *BuildContext) validateExpression(e Expression) {

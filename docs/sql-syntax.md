@@ -129,6 +129,17 @@ WITH ROLLUP. `GroupingSets(GroupingSet(...), GroupingSet())`, `Cube(...)`, and
 `Rollup(...)` compose as GROUP BY expressions where supported. SQLite rejects
 these grouping extensions; MySQL supports only its ROLLUP form.
 
+On PostgreSQL, reuse the same helper-generated Expression value in SELECT,
+GROUP BY, HAVING, and ORDER BY. The builder retains its parameter numbers,
+including when that expression is nested inside another structured expression
+or a grouping set. This prevents fresh parameters from making an otherwise
+identical grouping or DISTINCT ordering expression different to PostgreSQL.
+Reuse is local to one SELECT; subqueries and compound operands keep their own
+expression bindings. Independently constructed custom helper expressions are
+not assumed equivalent, and equal data values alone do not imply equivalence.
+Bare Param/Value operands inside different expressions retain independent
+placeholders so the server can infer a different type in each context.
+
 ## CTEs and set operations
 
 All four builders accept `With(name, query, columns...)` and

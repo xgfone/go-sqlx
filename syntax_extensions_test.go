@@ -332,9 +332,9 @@ func TestDistinctOnCompoundOrdering(t *testing.T) {
 			e := Coalesce(Ident("a"), 0)
 			first := Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e)
 			q := set.apply(first, Select("a").From("u")).SetDialect(dialect.Postgres)
-			prefix := `SELECT DISTINCT ON (COALESCE("a", $1)) COALESCE("a", $2) AS "key" FROM "t" ` + set.name + ` SELECT "a" FROM "u" ORDER BY `
-			checkSQL(t, q.Clone().OrderByAsc("key"), prefix+`"key" ASC`, 0, 0)
-			checkSQL(t, q.Clone().OrderByExpr(Expr("1"), Desc), prefix+`1 DESC`, 0, 0)
+			prefix := `SELECT DISTINCT ON (COALESCE("a", $1)) COALESCE("a", $1) AS "key" FROM "t" ` + set.name + ` SELECT "a" FROM "u" ORDER BY `
+			checkSQL(t, q.Clone().OrderByAsc("key"), prefix+`"key" ASC`, 0)
+			checkSQL(t, q.Clone().OrderByExpr(Expr("1"), Desc), prefix+`1 DESC`, 0)
 			// Global ordering need not start with the first operand's DISTINCT key.
 			checkSQL(t, set.apply(Select("a", "b").From("t").DistinctOn("a"), Select("a", "b").From("u")).
 				OrderByAsc("b").SetDialect(dialect.Postgres),
@@ -400,8 +400,8 @@ func TestComputedDistinctOnReusesParameters(t *testing.T) {
 			SetDialect(dialect.Postgres))
 	checkSQL(t,
 		Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e).OrderByAsc("key").SetDialect(dialect.Postgres),
-		`SELECT DISTINCT ON (COALESCE("name", $1)) COALESCE("name", $2) AS "key" FROM "t" ORDER BY COALESCE("name", $1) ASC`,
-		"fallback", "fallback")
+		`SELECT DISTINCT ON (COALESCE("name", $1)) COALESCE("name", $1) AS "key" FROM "t" ORDER BY COALESCE("name", $1) ASC`,
+		"fallback")
 	checkSQL(t,
 		Select("id").From("t").DistinctOn("id", "id").OrderByAsc("id").OrderByAsc("v").SetDialect(dialect.Postgres),
 		`SELECT DISTINCT ON ("id", "id") "id" FROM "t" ORDER BY "id" ASC, "v" ASC`)
