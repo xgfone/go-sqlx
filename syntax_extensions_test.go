@@ -331,6 +331,20 @@ func TestDistinctOnCompoundOrdering(t *testing.T) {
 	}
 }
 
+func TestReplaceRejectsInsertedRowAlias(t *testing.T) {
+	d := dialect.WithVersion(dialect.MySQL, 8, 0, 19)
+	base := Insert().Into("t").Columns("id").Values(1).SetDialect(d)
+	for _, b := range []*InsertBuilder{
+		base.Clone().Replace().RowsAlias("new"),
+		base.Clone().RowsAlias("new", "new_id").Replace(),
+	} {
+		checkBuildError(t, b)
+		checkSQL(t, b.ClearRowsAlias(), "REPLACE INTO `t` (`id`) VALUES (?)", 1)
+	}
+	checkSQL(t, base.Clone().RowsAlias("new"), "INSERT INTO `t` (`id`) VALUES (?) AS `new`", 1)
+	checkSQL(t, base.Clone().Ignore().RowsAlias("new"), "INSERT IGNORE INTO `t` (`id`) VALUES (?) AS `new`", 1)
+}
+
 func TestNewClauseCloneIsolationAndClears(t *testing.T) {
 	e := Ident("id")
 	terms := SortColumns{{Expr: &e, Order: Asc, Nulls: NullsLast}}

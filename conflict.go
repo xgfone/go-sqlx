@@ -268,6 +268,9 @@ func (b *InsertBuilder) renderRowsAlias(s *strings.Builder, c *BuildContext) {
 	}
 
 	requireFeature(c, dialect.InsertRowAlias, "inserted-row alias")
+	if b.verb == "REPLACE" {
+		panic("REPLACE does not support inserted-row aliases")
+	}
 	if b.values.rows == 0 || b.rowsAlias == b.table {
 		panic("inserted-row alias requires VALUES and must differ from the table name")
 	}

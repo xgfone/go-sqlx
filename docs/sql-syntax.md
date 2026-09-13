@@ -255,6 +255,8 @@ q := sqlx.Insert().Into("users").Columns("id", "name").Values(1, "new name").
 `RowsAlias` optionally names the row's columns. `Inserted` requires the alias
 and ON DUPLICATE KEY UPDATE. The API does not generate deprecated VALUES(col)
 references. INSERT SELECT can reference its selected source columns directly.
+REPLACE rejects `RowsAlias`; use `ClearRowsAlias` when changing an aliased INSERT
+builder to REPLACE.
 
 For SQLite INSERT SELECT UPSERT, the builder wraps sources needing
 disambiguation in `SELECT * FROM (...) AS ... WHERE TRUE`. This includes
