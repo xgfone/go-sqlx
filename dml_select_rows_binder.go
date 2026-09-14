@@ -176,12 +176,12 @@ func (b *sliceRowsBinding) Commit() {
 }
 
 func (b *sliceRowsBinding) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
+	return b.mapping.WithScan(cursor, func(scan RowScanFunc, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }
 
-func (b *sliceRowsBinding) scanRows(scanner RowCursor, scan func(...any) error) error {
+func (b *sliceRowsBinding) scanRows(scanner RowCursor, scan RowScanFunc) error {
 	defer clear(b.args[:])
 	t := b.pointer.Elem().Type()
 
@@ -298,12 +298,12 @@ type typedSliceBinding[S ~[]T, T any] struct {
 func (b *typedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
 
 func (b *typedSliceBinding[S, T]) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
+	return b.mapping.WithScan(cursor, func(scan RowScanFunc, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }
 
-func (b *typedSliceBinding[S, T]) scanRows(scanner RowCursor, scan func(...any) error) error {
+func (b *typedSliceBinding[S, T]) scanRows(scanner RowCursor, scan RowScanFunc) error {
 	defer clear(b.args[:])
 
 	b.staged = make(S, 0)
@@ -349,7 +349,7 @@ func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
 	}, scanMapPairs[K, V])
 }
 
-func scanMapPairs[K comparable, V any](scan func(...any) error, reusable rowbind.Reuse) func() (K, V, error) {
+func scanMapPairs[K comparable, V any](scan RowScanFunc, reusable rowbind.Reuse) func() (K, V, error) {
 	args := make([]any, 2)
 	if reusable[0] && reusable[1] {
 		var key K
@@ -413,7 +413,7 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 		false,
 		configError,
 		[]reflect.Type{reflect.TypeFor[*V]()},
-		func(scan func(...any) error, reusable rowbind.Reuse) func() (K, V, error) {
+		func(scan RowScanFunc, reusable rowbind.Reuse) func() (K, V, error) {
 			args := []any{nil}
 			if reusable[0] {
 				var value V
@@ -446,7 +446,7 @@ func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
 		true,
 		nil,
 		[]reflect.Type{reflect.TypeFor[*K]()},
-		func(scan func(...any) error, reusable rowbind.Reuse) func() (K, struct{}, error) {
+		func(scan RowScanFunc, reusable rowbind.Reuse) func() (K, struct{}, error) {
 			args := []any{nil}
 			if reusable[0] {
 				var key K
@@ -512,7 +512,7 @@ func mapRowsBinder[M ~map[K]V, K comparable, V any](
 	})
 }
 
-type scanMaker[K comparable, V any] func(func(...any) error, rowbind.Reuse) func() (K, V, error)
+type scanMaker[K comparable, V any] func(RowScanFunc, rowbind.Reuse) func() (K, V, error)
 
 type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
 	pointer    *M
@@ -529,12 +529,12 @@ type mapRowsBinding[M ~map[K]V, K comparable, V any] struct {
 func (b *mapRowsBinding[M, K, V]) Commit() { *b.pointer = b.staged }
 
 func (b *mapRowsBinding[M, K, V]) Scan(cursor RowCursor) error {
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, reusable rowbind.Reuse) error {
+	return b.mapping.WithScan(cursor, func(scan RowScanFunc, reusable rowbind.Reuse) error {
 		return b.scanRows(cursor, scan, reusable)
 	})
 }
 
-func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan func(...any) error, reusable rowbind.Reuse) error {
+func (b *mapRowsBinding[M, K, V]) scanRows(scanner RowCursor, scan RowScanFunc, reusable rowbind.Reuse) error {
 	base := 0
 	if b.bindMode == BindMerge {
 		base = len(*b.pointer)

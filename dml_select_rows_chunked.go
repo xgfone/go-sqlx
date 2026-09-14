@@ -74,7 +74,7 @@ func (b *chunkedSliceBinding[S, T]) Commit() { *b.pointer = b.staged }
 
 func (b *chunkedSliceBinding[S, T]) Scan(cursor RowCursor) error {
 	defer b.clearUnused()
-	return b.mapping.WithScan(cursor, func(scan func(...any) error, _ rowbind.Reuse) error {
+	return b.mapping.WithScan(cursor, func(scan RowScanFunc, _ rowbind.Reuse) error {
 		return b.scanRows(cursor, scan)
 	})
 }
@@ -84,7 +84,7 @@ func (b *chunkedSliceBinding[S, T]) clearUnused() {
 	clear(b.block[b.used:])
 }
 
-func (b *chunkedSliceBinding[S, T]) scanRows(cursor RowCursor, scan func(...any) error) error {
+func (b *chunkedSliceBinding[S, T]) scanRows(cursor RowCursor, scan RowScanFunc) error {
 	base := 0
 	if b.mode == BindAppend {
 		base = len(*b.pointer)

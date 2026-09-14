@@ -9,7 +9,7 @@ import "errors"
 // public extension boundary. Each call owns independent scratch. Retained scan
 // functions remain invalid after return, including after errors and panics.
 // The source and callback must run synchronously; source ownership is unchanged.
-func (m Mapping) WithCheckedScan(source func(...any) error, run func(func(...any) error) error) error {
+func (m Mapping) WithCheckedScan(source RowScanFunc, run func(RowScanFunc) error) error {
 	if run == nil {
 		return errors.New("sqlx: nil scan callback")
 	}
@@ -26,7 +26,7 @@ func (m Mapping) WithCheckedScan(source func(...any) error, run func(func(...any
 // Scanner borrows private scratch until Close. Each scanner validates destination
 // types and must not be copied or used concurrently. Closing it releases only
 // scanning resources; ownership of the source stays with the caller.
-func (m Mapping) Scanner(source func(...any) error) (*PreparedScanner, error) {
+func (m Mapping) Scanner(source RowScanFunc) (*PreparedScanner, error) {
 	if m.flags&mappingPrepared == 0 || source == nil {
 		return nil, errors.New("sqlx: expected a prepared mapping and scan function")
 	}
@@ -41,7 +41,7 @@ func (m Mapping) Scanner(source func(...any) error) (*PreparedScanner, error) {
 // handle must never regain access to a recycled plan.
 type PreparedScanner struct {
 	plan   *scanPlan
-	source func(...any) error
+	source RowScanFunc
 }
 
 func (s *PreparedScanner) Scan(dst ...any) error {

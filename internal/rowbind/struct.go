@@ -175,7 +175,7 @@ func (p *scanPlan) mapStruct(v reflect.Value, adapt bool) error {
 	return nil
 }
 
-func (p *scanPlan) scanStruct(scan func(...any) error, dst any) error {
+func (p *scanPlan) scanStruct(scan RowScanFunc, dst any) error {
 	v := reflect.ValueOf(dst)
 	if v.IsNil() {
 		return errors.New("sqlx: expected non-nil pointer to struct")
@@ -204,7 +204,7 @@ func (p *scanPlan) scanStruct(scan func(...any) error, dst any) error {
 // call; it must clone the slice before retaining it or any subslice. The cloned
 // entries refer to the caller's fields. Scratch is released on return or panic.
 // Use [Rows.Scan] or [WithScan] for conversion policies and cached plans.
-func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
+func ScanColumnsToStruct(scan RowScanFunc, columns []string, dst any) error {
 	if scan == nil {
 		return errors.New("sqlx: nil scan function")
 	}

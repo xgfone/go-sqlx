@@ -42,7 +42,7 @@ func (r *Rows) CollectInto[S ~[]T, T any](storage S) (result S, err error) {
 	}
 
 	collector.capacity = options.capacity()
-	err = mapping.WithScan(r.rows, func(scan func(...any) error, _ rowbind.Reuse) error {
+	err = mapping.WithScan(r.rows, func(scan RowScanFunc, _ rowbind.Reuse) error {
 		return collector.scanRows(r.rows, scan)
 	})
 
@@ -62,7 +62,7 @@ func (c *sliceCollector[S, T]) clearUnused() {
 	clear(c.values[len(c.values):cap(c.values)])
 }
 
-func (c *sliceCollector[S, T]) scanRows(cursor RowCursor, scan func(...any) error) error {
+func (c *sliceCollector[S, T]) scanRows(cursor RowCursor, scan RowScanFunc) error {
 	var zero T
 	for cursor.Next() {
 		n := len(c.values)

@@ -125,7 +125,7 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 			var recovered any
 			func() {
 				defer func() { recovered = recover() }()
-				err = m.withBoundVisitScan(source, func(scan func(...any) error, reusable Reuse) error {
+				err = m.withBoundVisitScan(source, func(scan RowScanFunc, reusable Reuse) error {
 					if !reusable[0] {
 						t.Fatal("stable target is not reusable")
 					}
@@ -228,7 +228,7 @@ func TestVisitScanUnknownCursorKeepsPerCallCleanup(t *testing.T) {
 		args = values
 		return scanCacheSource(int64(7))(values...)
 	}}
-	err = m.WithVisitScan(cursor, func(scan func(...any) error, reusable Reuse) error {
+	err = m.WithVisitScan(cursor, func(scan RowScanFunc, reusable Reuse) error {
 		if reusable[0] {
 			t.Fatal("unknown cursor allowed destination reuse")
 		}
@@ -253,7 +253,7 @@ func TestVisitScanUnknownCursorKeepsPerCallCleanup(t *testing.T) {
 	}
 
 	for _, mapping := range []Mapping{{}, m} {
-		err := mapping.WithVisitScan((*sql.Rows)(nil), func(func(...any) error, Reuse) error {
+		err := mapping.WithVisitScan((*sql.Rows)(nil), func(RowScanFunc, Reuse) error {
 			t.Fatal("invalid cursor accepted")
 			return nil
 		})

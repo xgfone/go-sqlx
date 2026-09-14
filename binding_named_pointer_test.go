@@ -31,7 +31,7 @@ func TestNamedTimePointersAcrossScanAPIs(t *testing.T) {
 			} else {
 				rows := db.QueryRowsContext(context.Background(), "q")
 				defer rows.Close() //nolint:errcheck
-				run := func(scan func(...any) error) error {
+				run := func(scan RowScanFunc) error {
 					if !rows.Next() {
 						t.Fatal("missing row", rows.Err())
 					}

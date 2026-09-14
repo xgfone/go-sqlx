@@ -55,7 +55,7 @@ func BenchmarkScannerMixedColumns(b *testing.B) {
 						b.ReportAllocs()
 						for b.Loop() {
 							rows := db.QueryRowsContext(context.Background(), "q")
-							run := func(scan func(...any) error) error {
+							run := func(scan RowScanFunc) error {
 								for rows.Next() {
 									if err := scan(args...); err != nil {
 										return err

@@ -12,7 +12,7 @@ import (
 )
 
 // ScanScalarRow validates and adapts positional scalar destinations once.
-func ScanScalarRow(scan func(...any) error, dst []any, options ScanOptions) error {
+func ScanScalarRow(scan RowScanFunc, dst []any, options ScanOptions) error {
 	if scan == nil {
 		return errors.New("sqlx: nil scan function")
 	}
@@ -178,7 +178,7 @@ func releasePlan(p *scanPlan) {
 //
 // dst must contain exactly one struct pointer. The scan callback must clone its
 // argument slice before retaining it; temporary adapters remain call-scoped.
-func ScanStruct(scan func(...any) error, columns []string, dst []any, options ScanOptions) error {
+func ScanStruct(scan RowScanFunc, columns []string, dst []any, options ScanOptions) error {
 	if len(dst) != 1 || dst[0] == nil || scan == nil {
 		return errors.New("sqlx: expected one struct destination and a scan function")
 	}
@@ -227,7 +227,7 @@ func (p *scanPlan) matches(dst []any) bool {
 }
 
 // Scan checks destination types before scanning. The scan function must be non-nil.
-func (p *scanPlan) Scan(scan func(...any) error, dst []any) error {
+func (p *scanPlan) Scan(scan RowScanFunc, dst []any) error {
 	if !p.matches(dst) {
 		return errors.New("sqlx: prepared scan destination types changed")
 	}
@@ -236,7 +236,7 @@ func (p *scanPlan) Scan(scan func(...any) error, dst []any) error {
 
 // scanValues scans destinations whose count and types are already validated.
 // The scan function must be non-nil. Use Scan when types can change between rows.
-func (p *scanPlan) scanValues(scan func(...any) error, dst []any) error {
+func (p *scanPlan) scanValues(scan RowScanFunc, dst []any) error {
 	if p.layout != nil {
 		defer p.releaseDestinations()
 		return p.scanStruct(scan, dst[0])

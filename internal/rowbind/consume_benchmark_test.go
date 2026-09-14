@@ -60,7 +60,7 @@ func BenchmarkScanBorrowedBytes(b *testing.B) {
 							b.ReportAllocs()
 							for b.Loop() {
 								row = 0
-								err := mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
+								err := mapping.WithScan(cursor, func(scan RowScanFunc, _ Reuse) error {
 									for range 100 {
 										if err := scan(args...); err != nil {
 											return err

@@ -367,7 +367,7 @@ func TestWithScanWithRawAndWrappedRows(t *testing.T) {
 			scanner = rows.rows
 		}
 
-		err := WithScan(scanner, []reflect.Type{reflect.TypeFor[**time.Duration]()}, func(scan func(...any) error) error {
+		err := WithScan(scanner, []reflect.Type{reflect.TypeFor[**time.Duration]()}, func(scan RowScanFunc) error {
 			if !rows.Next() {
 				t.Fatal("missing row")
 			}
@@ -398,7 +398,7 @@ func TestWithScanWithRawAndWrappedRows(t *testing.T) {
 		t.Fatal("Row must not be an iterator")
 	}
 
-	err := WithScan(row, []reflect.Type{reflect.TypeFor[*int]()}, func(func(...any) error) error { return nil })
+	err := WithScan(row, []reflect.Type{reflect.TypeFor[*int]()}, func(RowScanFunc) error { return nil })
 	if err == nil {
 		t.Fatal("single-use Row cannot supply a prepared current-row scan")
 	}

@@ -14,7 +14,7 @@ import (
 // and zero it before each row. Flat struct fields can then stay bound until the
 // operation ends. Other layouts keep WithScan's per-row mapping.
 // Neither the scan function nor its adapters may escape the operation.
-func (m Mapping) WithVisitScan(cursor Cursor, run func(func(...any) error, Reuse) error) error {
+func (m Mapping) WithVisitScan(cursor Cursor, run func(RowScanFunc, Reuse) error) error {
 	if m.layout == nil || !m.layout.stableFields || m.types[0].Elem().Kind() != reflect.Struct {
 		return m.WithScan(cursor, run)
 	}
@@ -27,7 +27,7 @@ func (m Mapping) WithVisitScan(cursor Cursor, run func(func(...any) error, Reuse
 	return m.withBoundVisitScan(rows.Scan, run)
 }
 
-func (m Mapping) withBoundVisitScan(source func(...any) error, run func(func(...any) error, Reuse) error) error {
+func (m Mapping) withBoundVisitScan(source RowScanFunc, run func(RowScanFunc, Reuse) error) error {
 	p := scanPlanPool.Get().(*scanPlan)
 	defer releasePlan(p)
 	m.init(p)

@@ -21,6 +21,13 @@ type Cursor interface {
 	Err() error
 }
 
+// RowScanFunc scans one row into the supplied destinations. The source function
+// determines whether scanning is positional or applies struct mapping.
+// It borrows the destination slice only for the call; retaining the slice or a
+// subslice requires a copy. Temporary scanner adapters must be used synchronously.
+// Functions lent by a Mapping are valid only within their callbacks.
+type RowScanFunc func(...any) error
+
 // Mapping is immutable preparation for one ordered result shape and destination
 // signature. Copies may be shared concurrently; each execution owns its scratch.
 // Its zero value is not prepared.
@@ -166,7 +173,7 @@ type Reuse [2]bool
 // whether map temporaries may safely be reused with this mapping and cursor.
 // Application Scanners receive borrowed inputs synchronously; they must copy
 // bytes they retain. Nullable-parent layouts own their deferred input storage.
-func (m Mapping) WithScan(cursor Cursor, run func(scan func(...any) error, reusable Reuse) error) error {
+func (m Mapping) WithScan(cursor Cursor, run func(scan RowScanFunc, reusable Reuse) error) error {
 	if m.flags&mappingPrepared == 0 || nilBindingValue(cursor) || run == nil {
 		return errors.New("sqlx: expected a prepared mapping, cursor and scan operation")
 	}

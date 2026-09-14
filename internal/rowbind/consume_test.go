@@ -268,7 +268,7 @@ func TestScanPassesOriginalBytesAndClearsTargets(t *testing.T) {
 				return nil
 			}}
 
-			err = mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
+			err = mapping.WithScan(cursor, func(scan RowScanFunc, _ Reuse) error {
 				for _, size := range []int{256, 4096, 0, 7} {
 					input = bytes.Repeat([]byte{'x'}, size)
 					for range count {
@@ -377,7 +377,7 @@ func TestScanFailureOrderAndCleanup(t *testing.T) {
 			var recovered any
 			func() {
 				defer func() { recovered = recover() }()
-				err = mapping.WithScan(cursor, func(scan func(...any) error, _ Reuse) error {
+				err = mapping.WithScan(cursor, func(scan RowScanFunc, _ Reuse) error {
 					defer func() {
 						for _, arg := range scanArgs {
 							if arg != nil {

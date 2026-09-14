@@ -41,7 +41,7 @@ func (*exampleDurationRows) Columns() ([]string, error) { return []string{"durat
 
 func ExampleWithScan() {
 	rows := &exampleDurationRows{}
-	err := sqlx.WithScan(rows, []reflect.Type{reflect.TypeFor[*time.Duration]()}, func(scan func(...any) error) error {
+	err := sqlx.WithScan(rows, []reflect.Type{reflect.TypeFor[*time.Duration]()}, func(scan sqlx.RowScanFunc) error {
 		for rows.Next() {
 			var duration time.Duration
 			if err := scan(&duration); err != nil {
@@ -72,7 +72,7 @@ func ExampleBindOptions_PrepareMapping() {
 
 	// The cursor and mutable scratch are attached when execution starts.
 	cursor := &exampleDurationCursor{}
-	err = mapping.WithScan(cursor, func(scan func(...any) error) error {
+	err = mapping.WithScan(cursor, func(scan sqlx.RowScanFunc) error {
 		var value time.Duration
 		args := []any{&value}
 		for cursor.Next() {

@@ -444,7 +444,7 @@ reuse preparation across rows, then release them automatically.
 `RowScanner` supplies `Columns` and `Scan`; `RowCursor` supplies `Next`, raw
 `Scan`, and `Err` for binding execution. Row is not an iterator.
 `WithScan(scanner, types, run)` validates column/type mapping before invoking
-`run`, even for an empty result. It lends `run` a `func(...any) error` that checks
+`run`, even for an empty result. It lends `run` a `RowScanFunc` that checks
 destination types on every call. Struct mappings
 are cached across results by model type, ordered result labels, and mapping
 policies. Each concrete struct type caches up to 256 layouts, growing on demand;

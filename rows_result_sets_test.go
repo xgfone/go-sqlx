@@ -134,8 +134,8 @@ func TestRowsResultSetMappingAcrossAliases(t *testing.T) {
 			}
 		}
 
-		err = WithScan(alias, []reflect.Type{reflect.TypeFor[*model]()}, func(scoped func(...any) error) error {
-			for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scoped} {
+		err = WithScan(alias, []reflect.Type{reflect.TypeFor[*model]()}, func(scoped RowScanFunc) error {
+			for _, scan := range []RowScanFunc{rows.Scan, alias.Scan, scoped} {
 				var got model
 				if err := scan(&got); err != nil || got != wants[set] {
 					t.Fatalf("set %d: got %+v, err %v", set, got, err)
@@ -184,7 +184,7 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 		t.Fatal("stale two-column plan accepted one-column result")
 	}
 
-	if err := WithScan(rows, []reflect.Type{reflect.TypeFor[*int](), reflect.TypeFor[*int]()}, func(func(...any) error) error {
+	if err := WithScan(rows, []reflect.Type{reflect.TypeFor[*int](), reflect.TypeFor[*int]()}, func(RowScanFunc) error {
 		t.Fatal("invalid shape reached callback")
 		return nil
 	}); err == nil {

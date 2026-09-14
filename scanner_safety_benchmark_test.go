@@ -64,7 +64,7 @@ func benchmarkScannerSafety[T any](b *testing.B, value driver.Value, count int, 
 				}
 
 				args := []any{&dst}
-				run := func(scan func(...any) error) error {
+				run := func(scan RowScanFunc) error {
 					for rows.Next() {
 						if err := scan(args...); err != nil {
 							return err

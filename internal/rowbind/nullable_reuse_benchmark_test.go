@@ -24,7 +24,7 @@ func BenchmarkNullableStructScan(b *testing.B) {
 		b.Run(entry, func(b *testing.B) {
 			var dst record
 			args := []any{&dst}
-			var scan func(...any) error
+			var scan RowScanFunc
 			if entry == "prepared" {
 				mapping, err := Prepare(columns, []reflect.Type{reflect.TypeFor[*record]()}, ScanOptions{})
 				if err != nil {

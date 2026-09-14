@@ -214,7 +214,7 @@ func BenchmarkBindingSetup(b *testing.B) {
 			var v performanceRecord
 			r := db.QueryRowsContext(context.Background(), "q")
 			args := []any{&v}
-			err := WithScan(r, []reflect.Type{reflect.TypeFor[*performanceRecord]()}, func(scan func(...any) error) error {
+			err := WithScan(r, []reflect.Type{reflect.TypeFor[*performanceRecord]()}, func(scan RowScanFunc) error {
 				for r.Next() {
 					if err := scan(args...); err != nil {
 						return err

@@ -79,7 +79,7 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 				if mode == "ScanRow" {
 					err = ScanRow(r.rows.Scan, &got)
 				} else {
-					err = WithScan(r.rows, []reflect.Type{reflect.TypeOf(&got)}, func(scan func(...any) error) error {
+					err = WithScan(r.rows, []reflect.Type{reflect.TypeOf(&got)}, func(scan RowScanFunc) error {
 						return scan(&got)
 					})
 				}
@@ -126,7 +126,7 @@ func TestBorrowedScannerBytesSurviveCancellationDuringScan(t *testing.T) {
 				r := db.QueryRowsContext(ctx, "q")
 				defer r.Close() //nolint:errcheck
 
-				run := func(scan func(...any) error) error {
+				run := func(scan RowScanFunc) error {
 					if !r.Next() {
 						t.Fatal("missing row", r.Err())
 					}
@@ -281,7 +281,7 @@ func TestScannerOwnedBytesAndDecodedResultsSurviveReuse(t *testing.T) {
 				got = []record{mapped[42], mapped[17]}
 
 			default:
-				run := func(scan func(...any) error) error {
+				run := func(scan RowScanFunc) error {
 					for r.Next() {
 						var v record
 						if e := scan(&v); e != nil {

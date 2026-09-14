@@ -19,7 +19,7 @@ func TestCheckedScanScopeReleasesAfterSourceFailure(t *testing.T) {
 		cause := errors.New("source failed")
 		calls := 0
 
-		var saved func(...any) error
+		var saved RowScanFunc
 		var caught any
 		func() {
 			defer func() { caught = recover() }()
@@ -29,7 +29,7 @@ func TestCheckedScanScopeReleasesAfterSourceFailure(t *testing.T) {
 					panic(cause)
 				}
 				return cause
-			}, func(scan func(...any) error) error {
+			}, func(scan RowScanFunc) error {
 				saved = scan
 				if err := scan(new(int)); err == nil {
 					t.Fatal("changed type accepted")
@@ -59,7 +59,7 @@ func TestCheckedScanScopeReleasesAfterSourceFailure(t *testing.T) {
 			t.Fatal("source survived callback exit", err, calls)
 		}
 
-		err := mapping.WithCheckedScan(scanCacheSource(int64(42)), func(scan func(...any) error) error {
+		err := mapping.WithCheckedScan(scanCacheSource(int64(42)), func(scan RowScanFunc) error {
 			var got int64
 			if err := saved(&got); err == nil || got != 0 {
 				t.Fatal("expired callback revived", got, err)
@@ -81,7 +81,7 @@ func TestCheckedScanRejectsInvalidScopeBeforeCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unreachable := func(func(...any) error) error { t.Fatal("invalid scope reached callback"); return nil }
+	unreachable := func(RowScanFunc) error { t.Fatal("invalid scope reached callback"); return nil }
 	if err := mapping.WithCheckedScan(nil, unreachable); err == nil {
 		t.Fatal("nil source accepted")
 	}

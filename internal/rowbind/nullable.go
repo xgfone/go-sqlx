@@ -48,7 +48,7 @@ func (s *nullableCaptureScanner) Scan(value any) error {
 }
 
 // scanNullableStruct preserves column conversion order after capturing a row.
-func (p *scanPlan) scanNullableStruct(scan func(...any) error, v reflect.Value) error {
+func (p *scanPlan) scanNullableStruct(scan RowScanFunc, v reflect.Value) error {
 	// Capture owns any borrowed bytes before the source callback returns.
 	// Conversion waits until all selected NULL-parent groups have been examined.
 	defer func() {

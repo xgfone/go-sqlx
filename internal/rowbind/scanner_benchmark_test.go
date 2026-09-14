@@ -14,7 +14,7 @@ import (
 // Factories stay opaque to prevent devirtualization of the interface comparison.
 //
 //go:noinline
-func benchmarkScanClosure(m Mapping, source func(...any) error) func(...any) error {
+func benchmarkScanClosure(m Mapping, source RowScanFunc) RowScanFunc {
 	p := &scanPlan{}
 	m.init(p)
 	return func(dst ...any) error { return p.Scan(source, dst) }
@@ -27,7 +27,7 @@ type benchmarkScanCloser interface {
 
 type benchmarkOwnedScanner struct {
 	plan   *scanPlan
-	source func(...any) error
+	source RowScanFunc
 }
 
 func (s *benchmarkOwnedScanner) Scan(dst ...any) error {
@@ -43,7 +43,7 @@ func (s *benchmarkOwnedScanner) Close() error {
 }
 
 //go:noinline
-func benchmarkScanInterface(m Mapping, source func(...any) error, pooled bool) benchmarkScanCloser {
+func benchmarkScanInterface(m Mapping, source RowScanFunc, pooled bool) benchmarkScanCloser {
 	if pooled {
 		s, err := m.Scanner(source)
 		if err != nil {

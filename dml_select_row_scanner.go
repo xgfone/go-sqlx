@@ -20,6 +20,14 @@ type RowScanner interface {
 	Scan(...any) error
 }
 
+// RowScanFunc scans one row into the supplied destinations. The source function
+// determines whether scanning is positional or applies struct mapping.
+// It borrows the destination slice only for the call; retaining the slice or a
+// subslice requires a copy. Temporary scanner adapters must be used synchronously.
+// Functions supplied by WithScan and RowMapping.WithScan are valid only within
+// their callbacks.
+type RowScanFunc = rowbind.RowScanFunc
+
 // RowCursor supplies Next, Err and raw positional Scan. Scan must write source
 // column values into the supplied destinations, honoring sql.Scanner, without
 // applying another sqlx struct mapping or ScanOptions conversion layer. In
@@ -54,7 +62,7 @@ var (
 // synchronously within run; calls after run returns fail. Scratch and source
 // references are released on return, error or panic; panics propagate. WithScan
 // does not advance or close the cursor. The caller owns iteration, Err and Close.
-func WithScan(scanner RowScanner, types []reflect.Type, run func(scan func(...any) error) error) error {
+func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFunc) error) error {
 	if run == nil {
 		return errors.New("sqlx: nil scan callback")
 	}
@@ -93,7 +101,7 @@ var errScanScopeChanged = errors.New("sqlx: result set or scan configuration cha
 
 // Select the raw function so a prepared scan does not repeat Rows.Scan's
 // mapping and adaptation. Only this public convenience API infers configuration.
-func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, error) {
+func scanSource(scanner RowScanner) (RowScanFunc, []string, ScanOptions, error) {
 	if nilBindingValue(scanner) {
 		return nil, nil, ScanOptions{}, errors.New("sqlx: nil row scanner")
 	}
@@ -118,7 +126,7 @@ func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, 
 // For repeated scanning or struct mapping use WithScan or [Rows.Scan].
 // The callback borrows its destination slice and must clone it before retaining
 // it or a subslice. Temporary scanner adapters are valid only during the call.
-func ScanRow(scan func(...any) error, dst ...any) error {
+func ScanRow(scan RowScanFunc, dst ...any) error {
 	return rowbind.ScanScalarRow(scan, dst, ScanOptions{})
 }
 
@@ -151,6 +159,6 @@ func nilBindingValue(v any) bool {
 // use slices.Clone(dst) or an equivalent copy before retaining it or a subslice.
 // The cloned entries still point to the caller's fields. Internal scratch is
 // released automatically on success, error or panic.
-func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
+func ScanColumnsToStruct(scan RowScanFunc, columns []string, dst any) error {
 	return rowbind.ScanColumnsToStruct(scan, columns, dst)
 }

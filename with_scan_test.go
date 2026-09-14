@@ -14,7 +14,7 @@ import (
 )
 
 // Exercise both public entry points and the raw/wrapped convenience paths.
-func withScanEntry(mode string, rows *Rows, types []reflect.Type, run func(func(...any) error) error) error {
+func withScanEntry(mode string, rows *Rows, types []reflect.Type, run func(RowScanFunc) error) error {
 	switch mode {
 	case "Rows":
 		return WithScan(rows, types, run)
@@ -49,12 +49,12 @@ func TestWithScanLifetimeOwnsOnlyScratch(t *testing.T) {
 				types := []reflect.Type{reflect.TypeFor[*int64]()}
 				cause := errors.New("callback failed")
 
-				var saved func(...any) error
+				var saved RowScanFunc
 				var err error
 				var caught any
 				func() {
 					defer func() { caught = recover() }()
-					err = withScanEntry(mode, rows, types, func(scan func(...any) error) error {
+					err = withScanEntry(mode, rows, types, func(scan RowScanFunc) error {
 						saved = scan
 						if !rows.Next() {
 							t.Fatal(rows.Err())
@@ -96,7 +96,7 @@ func TestWithScanLifetimeOwnsOnlyScratch(t *testing.T) {
 				}
 
 				// A later borrower must not revive the expired function.
-				err = withScanEntry(mode, rows, types, func(scan func(...any) error) error {
+				err = withScanEntry(mode, rows, types, func(scan RowScanFunc) error {
 					if err := saved(&got); err == nil || got != -1 {
 						t.Fatal("expired callback accessed another scope", got, err)
 					}
@@ -121,7 +121,7 @@ func TestWithScanValidatesDestinationsBeforeSource(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			rows, _ := bindTestRows(t, int64(7))
 			defer rows.Close() //nolint:errcheck
-			err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan func(...any) error) error {
+			err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan RowScanFunc) error {
 				if !rows.Next() {
 					t.Fatal(rows.Err())
 				}
@@ -158,7 +158,7 @@ func TestWithScanRejectsInvalidPreparation(t *testing.T) {
 	rows, _ := bindTestRows(t, int64(1))
 	defer rows.Close() //nolint:errcheck
 
-	unreachable := func(func(...any) error) error {
+	unreachable := func(RowScanFunc) error {
 		t.Fatal("invalid preparation reached callback")
 		return nil
 	}
@@ -221,7 +221,7 @@ func TestWithScanValidatesEmptyResultsBeforeCallback(t *testing.T) {
 			rows, _ := bindTestRows(t)
 			defer rows.Close() //nolint:errcheck
 
-			if err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[int64]()}, func(func(...any) error) error {
+			if err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[int64]()}, func(RowScanFunc) error {
 				t.Fatal("invalid empty-result mapping reached callback")
 				return nil
 			}); err == nil {
@@ -229,7 +229,7 @@ func TestWithScanValidatesEmptyResultsBeforeCallback(t *testing.T) {
 			}
 
 			called := false
-			if err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[*int64]()}, func(func(...any) error) error {
+			if err := withScanEntry(mode, rows, []reflect.Type{reflect.TypeFor[*int64]()}, func(RowScanFunc) error {
 				called = true
 				if rows.Next() {
 					t.Fatal("unexpected row")
@@ -274,9 +274,9 @@ func TestWithScanRejectsRowsScopeChanges(t *testing.T) {
 					{[]string{"value"}, [][]driver.Value{{int64(2)}}},
 				}, nil)
 
-				var saved func(...any) error
+				var saved RowScanFunc
 				types := []reflect.Type{reflect.TypeFor[*int64]()}
-				err := WithScan(rows, types, func(scan func(...any) error) error {
+				err := WithScan(rows, types, func(scan RowScanFunc) error {
 					saved = scan
 					if !rows.Next() {
 						t.Fatal(rows.Err())
@@ -306,7 +306,7 @@ func TestWithScanRejectsRowsScopeChanges(t *testing.T) {
 				}
 
 				if change.name != "close" {
-					err := WithScan(rows, types, func(scan func(...any) error) error {
+					err := WithScan(rows, types, func(scan RowScanFunc) error {
 						want := int64(1)
 						if change.name == "result set" {
 							if !rows.Next() {

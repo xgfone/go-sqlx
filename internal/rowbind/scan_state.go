@@ -25,7 +25,7 @@ func (s *ScanState) Reset() {
 // Scan reuses preparation while destination types match. Columns and options
 // must remain immutable until Reset. Each call clears destination references,
 // including when conversion fails or a custom scanner panics.
-func (s *ScanState) Scan(source func(...any) error, columns []string, dst []any, options ScanOptions) error {
+func (s *ScanState) Scan(source RowScanFunc, columns []string, dst []any, options ScanOptions) error {
 	if source == nil {
 		return errors.New("sqlx: nil scan function")
 	}

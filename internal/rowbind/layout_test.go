@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func scanCacheSource(src ...any) func(...any) error {
+func scanCacheSource(src ...any) RowScanFunc {
 	return func(dst ...any) error {
 		for i, value := range src {
 			if err := dst[i].(sql.Scanner).Scan(value); err != nil {

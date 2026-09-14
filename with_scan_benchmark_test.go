@@ -36,7 +36,7 @@ func BenchmarkWithScan(b *testing.B) {
 
 						var value int64
 						args := []any{&value}
-						run := func(scan func(...any) error) error {
+						run := func(scan RowScanFunc) error {
 							for rows.Next() {
 								if err := scan(args...); err != nil {
 									return err

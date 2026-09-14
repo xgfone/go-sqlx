@@ -116,7 +116,7 @@ func TestWithScanSurvivesInterleavedBindings(t *testing.T) {
 	r, _ := bindTestRows(t, int64(1), int64(2))
 	defer r.Close() //nolint:errcheck
 
-	err := WithScan(r, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan func(...any) error) error {
+	err := WithScan(r, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan RowScanFunc) error {
 		for _, want := range []int64{1, 2} {
 			if !r.Next() {
 				t.Fatal(r.Err())

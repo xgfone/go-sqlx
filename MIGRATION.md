@@ -512,7 +512,7 @@ Collection helpers consume the current set and close the entire result.
 
 `PrepareScan` and the public `PreparedScanner` interface have been removed.
 Use `WithScan(scanner, types, run)`, passing destination types as a
-`[]reflect.Type`. Move the iteration loop into `run func(func(...any) error) error`
+`[]reflect.Type`. Move the iteration loop into `run func(RowScanFunc) error`
 and call the supplied scan function directly. Remove the separate scanner Close;
 the callback scope returns its scratch automatically on success, error or panic.
 Panics propagate. The caller still owns cursor iteration, Err and Close.

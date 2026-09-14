@@ -76,7 +76,7 @@ func testScannersOwnCapturedBytes(t *testing.T, options ScanOptions) {
 			} else {
 				rows := db.QueryRowsContext(ctx, "q").SetScanOptions(options)
 				defer rows.Close() //nolint:errcheck
-				run := func(scan func(...any) error) error {
+				run := func(scan RowScanFunc) error {
 					if !rows.Next() {
 						t.Fatal("missing row", rows.Err())
 					}
