@@ -32,11 +32,26 @@ func (s GeneralScanner) scanDuration(src any) (time.Duration, error) {
 
 	v := reflect.ValueOf(src)
 	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
-		f := v.Float() * float64(unit)
-		if !finite(f) || f < -math.Ldexp(1, 63) || f >= math.Ldexp(1, 63) || math.Trunc(f) != f {
+		n := v.Float()
+		f := n * float64(unit)
+		if !finite(f) || f < -math.Ldexp(1, 63) || f >= math.Ldexp(1, 63) {
 			return 0, errors.New("duration is out of range or has fractional nanoseconds")
 		}
-		return time.Duration(f), nil
+
+		rounded := math.Round(f)
+		if rounded != f {
+			// Scaling 1.001 milliseconds can produce 1000999.9999999999 ns.
+			// Accept the integer only if it reproduces the original input at
+			// its own precision; actual fractional nanoseconds still fail.
+			back := rounded / float64(unit)
+			if v.Kind() == reflect.Float32 {
+				back = float64(float32(back))
+			}
+			if back != n {
+				return 0, errors.New("duration is out of range or has fractional nanoseconds")
+			}
+		}
+		return time.Duration(rounded), nil
 	}
 
 	if v.Kind() == reflect.Bool {

@@ -30,6 +30,8 @@ import (
 // time.Time values retain their location unless Location is explicitly set.
 // Numeric timestamps are Unix seconds. Numeric durations use DurationUnit
 // (milliseconds by default), regardless of whether the source is integral.
+// Floating durations tolerate scaling roundoff only when integer nanoseconds
+// convert back to the original value at the source's floating-point precision.
 type GeneralScanner = rowbind.GeneralScanner
 
 // RowScanner exposes column metadata and row scanning without iteration methods.

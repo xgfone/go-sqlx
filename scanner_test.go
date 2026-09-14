@@ -220,3 +220,58 @@ func TestGeneralScannerTimeAndDuration(t *testing.T) {
 		}
 	}
 }
+
+func TestGeneralScannerFloatDurationScaling(t *testing.T) {
+	type namedFloat float32
+	for _, tc := range []struct {
+		name string
+		src  any
+		unit time.Duration
+		want time.Duration
+	}{
+		{"default milliseconds", 1.001, 0, 1001000},
+		{"negative milliseconds", -1.003, time.Millisecond, -1003000},
+		{"float32 milliseconds", float32(1.001), time.Millisecond, 1001000},
+		{"named float32 milliseconds", namedFloat(-1.003), time.Millisecond, -1003000},
+		{"seconds", 1.001, time.Second, 1001000000},
+		{"fractional source unit", float64(1) / 3, 3 * time.Nanosecond, 1},
+		{"zero", float64(0), time.Second, 0},
+		{"minimum", -math.Ldexp(1, 63), time.Nanosecond, time.Duration(math.MinInt64)},
+		{"below maximum", math.Nextafter(math.Ldexp(1, 63), 0), time.Nanosecond, time.Duration(math.MaxInt64 - 1023)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got time.Duration
+			err := (GeneralScanner{Value: &got, DurationUnit: tc.unit}).Scan(tc.src)
+			if err != nil || got != tc.want {
+				t.Fatalf("%v: got %v, %v; want %v", tc.src, got, err, tc.want)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name string
+		src  any
+		unit time.Duration
+	}{
+		{"half nanosecond", 0.5, time.Nanosecond},
+		{"negative half nanosecond", -0.5, time.Nanosecond},
+		{"scaled fraction", 0.0000011, time.Millisecond},
+		{"scaled float32 fraction", float32(0.0000011), time.Millisecond},
+		{"nearly one nanosecond", math.Nextafter(1, 0), time.Nanosecond},
+		{"tiny float64", math.SmallestNonzeroFloat64, time.Millisecond},
+		{"tiny float32", float32(math.SmallestNonzeroFloat32), time.Millisecond},
+		{"positive overflow", math.Ldexp(1, 63), time.Nanosecond},
+		{"negative overflow", math.Nextafter(-math.Ldexp(1, 63), math.Inf(-1)), time.Nanosecond},
+		{"scaled overflow", math.MaxFloat64, time.Second},
+		{"NaN", math.NaN(), time.Millisecond},
+		{"infinity", math.Inf(1), time.Millisecond},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := time.Second
+			err := (GeneralScanner{Value: &got, DurationUnit: tc.unit}).Scan(tc.src)
+			if err == nil || got != time.Second {
+				t.Fatalf("invalid %v changed destination or succeeded: %v, %v", tc.src, got, err)
+			}
+		})
+	}
+}

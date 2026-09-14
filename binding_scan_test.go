@@ -36,6 +36,7 @@ func checkPointerScan[T any](t *testing.T, source driver.Value, want T) {
 
 func TestPointerConversionsAndBufferOwnership(t *testing.T) {
 	checkPointerScan(t, int64(1000), time.Second)
+	checkPointerScan(t, float64(1.001), 1001000*time.Nanosecond)
 	checkPointerScan(t, "2026-09-08", time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC))
 	checkPointerScan(t, []byte{1}, true)
 	checkPointerScan(t, []byte("abc"), []byte("abc"))
@@ -71,6 +72,29 @@ func TestPointerConversionsAndBufferOwnership(t *testing.T) {
 	}
 
 	_ = rows.Close()
+}
+
+func TestFloatDurationCollectionAndFields(t *testing.T) {
+	rows, _ := bindTestRows(t, float64(1.001), float64(-1.003))
+	values, err := rows.Collect[time.Duration]()
+	if err != nil || !reflect.DeepEqual(values, []time.Duration{1001000, -1003000}) {
+		t.Fatal(values, err)
+	}
+
+	type model struct {
+		Value time.Duration  `sql:"value"`
+		Ptr   *time.Duration `sql:"pointer"`
+	}
+
+	db := bindTestDB(t, &bindFixture{
+		columns: []string{"value", "pointer"},
+		values:  [][]driver.Value{{float64(1.001), float64(-1.003)}},
+	})
+	models, err := db.QueryRowsContext(context.Background(), "q").Collect[model]()
+	if err != nil || len(models) != 1 || models[0].Value != 1001000 ||
+		models[0].Ptr == nil || *models[0].Ptr != -1003000 {
+		t.Fatal(models, err)
+	}
 }
 
 func TestPointerConversionFailurePreservesPointee(t *testing.T) {
