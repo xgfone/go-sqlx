@@ -138,6 +138,65 @@ func TestTableOperAndSoftDeleteScopes(t *testing.T) {
 	checkSQL(t, o.Table.Update().Set(Set("value", nil)), `UPDATE "t" SET "value"=$1`, nil)
 }
 
+func TestOperUpdateNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	db := &DB{Executor: templateTestExecutor{
+		exec: func(context.Context, string, ...any) (sql.Result, error) {
+			t.Fatal("nil updater executed SQL")
+			return nil, nil
+		},
+	}}
+
+	condition := ConditionWriterFunc(func(*SQLWriter) (bool, error) {
+		t.Fatal("nil updater evaluated conditions")
+		return false, nil
+	})
+
+	for _, o := range []Oper[struct{}]{
+		{}, // A no-op does not require a configured table or database.
+		NewOper[struct{}]("t").WithDB(db).Where(condition),
+	} {
+		for _, ctx := range []context.Context{context.Background(), ctx} {
+			result, err := o.Update(ctx, nil, condition)
+			if err != nil || result == nil {
+				t.Fatal(result, err)
+			}
+			if n, err := result.LastInsertId(); err != nil || n != 0 {
+				t.Fatal(n, err)
+			}
+			if n, err := result.RowsAffected(); err != nil || n != 0 {
+				t.Fatal(n, err)
+			}
+		}
+	}
+}
+
+func TestOperUpdateExecutesNonNilUpdater(t *testing.T) {
+	ctx := context.Background()
+	for _, wantErr := range []error{nil, errors.New("update failed")} {
+		calls := 0
+		wantResult := driver.RowsAffected(2)
+		db := &DB{Dialect: dialect.SQLite, Executor: templateTestExecutor{
+			exec: func(gotCtx context.Context, query string, args ...any) (sql.Result, error) {
+				calls++
+				if gotCtx != ctx || query != `UPDATE "t" SET "value"=? WHERE (("tenant" = ?) AND ("id" = ?))` ||
+					!reflect.DeepEqual(args, []any{3, 7, 9}) {
+					t.Fatal(gotCtx, query, args)
+				}
+				return wantResult, wantErr
+			},
+		}}
+
+		o := NewOper[struct{}]("t").WithDB(db).Where(Eq("tenant", 7))
+		result, err := o.Update(ctx, Set("value", 3), Eq("id", 9))
+		if result != wantResult || err != wantErr || calls != 1 {
+			t.Fatal(result, err, calls)
+		}
+	}
+}
+
 type operPaginationFunc func() (int64, int64)
 
 func (f operPaginationFunc) LimitOffset() (int64, int64) { return f() }

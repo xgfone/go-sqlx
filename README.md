@@ -898,6 +898,9 @@ first, then fetches a page if it is positive. It validates pagination before
 querying and does not promise a shared database snapshot without an appropriate
 transaction.
 
+`Update(ctx, nil, ...)` skips SQL execution and succeeds; both `LastInsertId()`
+and `RowsAffected()` on its result return `(0, nil)`.
+
 `Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;
 `SoftDelete` uses a configurable `func() Updater`, defaulting to the current time.

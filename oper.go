@@ -114,7 +114,17 @@ func (o Oper[T]) Add(ctx context.Context, v T) (sql.Result, error) {
 	return o.Table.Insert().Struct(v).ExecContext(ctx)
 }
 
+type zeroResult struct{}
+
+func (zeroResult) LastInsertId() (int64, error) { return 0, nil }
+func (zeroResult) RowsAffected() (int64, error) { return 0, nil }
+
+// Update does nothing when u is nil and returns a result whose LastInsertId
+// and RowsAffected both return zero without an error.
 func (o Oper[T]) Update(ctx context.Context, u Updater, cs ...Condition) (sql.Result, error) {
+	if u == nil {
+		return zeroResult{}, nil
+	}
 	return o.Table.Update().Set(u).Where(o.conditions...).Where(cs...).ExecContext(ctx)
 }
 
