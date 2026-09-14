@@ -626,23 +626,37 @@ the `*sql.Tx` is bound through those methods. A nil interceptor disables the
 hook. Configure it before concurrent use; changing it affects subsequently
 attached executors, not existing wrappers.
 
-For example, given an `auditExecutor` that implements the four `Executor`
-methods and `Unwrap() Executor`:
+`WrapExecutor(e, after)` provides a simple wrapper that calls
+`after(query string, args []any, err error)` once after each underlying method
+returns, preserving its result and error:
 
 ```go
 sqlx.DefaultExecutorInterceptor = func(e sqlx.Executor) sqlx.Executor {
-    // Rebinding an already audited executor need not duplicate logging.
-    if _, ok := sqlx.AsExecutor[*auditExecutor](e); ok {
-        return e
-    }
-    return &auditExecutor{Executor: e}
+    return sqlx.WrapExecutor(e, func(query string, args []any, err error) {
+        slog.Info("sql audit", "query", query, "args", args, "error", err)
+    })
 }
 ```
 
-See the [complete slog middleware example](executor_example_test.go) for all
-four method implementations. Middleware receives the rendered SQL and bound
-arguments. Arguments may be borrowed until the call returns; copy any slice
-you retain for later processing.
+The wrapper implements `Unwrap() Executor`. Passing a nil executor or callback
+returns the executor unchanged. Each call adds a wrapper; see the
+[slog middleware example](executor_example_test.go) for a marker type that
+avoids duplicate audit logging when rebinding an already wrapped executor.
+Callbacks run synchronously and must support concurrent calls when needed.
+Arguments are borrowed; do not modify them, and copy any slice retained for
+later processing.
+
+The callback reports the error available when the executor method returns.
+`PrepareContext` passes nil arguments and reports preparation only.
+`QueryRowContext` uses `Row.Err()` without scanning: errors from later `Scan`,
+including `sql.ErrNoRows`, cannot be reported. Later `Rows.Next`/`Close` errors
+are also outside the callback's scope. A nil callback error does not mean the
+result has been read successfully.
+
+SQL audits can classify statements such as SELECT, INSERT, UPDATE, and DELETE
+using the query text; the callback does not need an executor method-kind
+parameter. The wrapper forwards SQL unchanged and does not parse or classify
+it. Classifiers should account for leading comments and `WITH` clauses.
 
 `AsExecutor[T](e)` searches from the outermost executor inward through
 `Unwrap() Executor`, returning the first matching value and a boolean. `DB`

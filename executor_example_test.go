@@ -4,7 +4,6 @@
 package sqlx_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -12,31 +11,10 @@ import (
 	"github.com/xgfone/go-sqlx"
 )
 
-// auditExecutor records each Executor operation before forwarding it. Unwrap
-// lets sqlx find the underlying database and its optional capabilities.
+// auditExecutor marks the audit middleware so rebinding does not duplicate it.
 type auditExecutor struct{ sqlx.Executor }
 
 func (e *auditExecutor) Unwrap() sqlx.Executor { return e.Executor }
-
-func (e *auditExecutor) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	slog.InfoContext(ctx, "sql audit", "operation", "prepare", "query", query)
-	return e.Executor.PrepareContext(ctx, query)
-}
-
-func (e *auditExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	slog.InfoContext(ctx, "sql audit", "operation", "exec", "query", query, "args", args)
-	return e.Executor.ExecContext(ctx, query, args...)
-}
-
-func (e *auditExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	slog.InfoContext(ctx, "sql audit", "operation", "query", "query", query, "args", args)
-	return e.Executor.QueryContext(ctx, query, args...)
-}
-
-func (e *auditExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	slog.InfoContext(ctx, "sql audit", "operation", "queryrow", "query", query, "args", args)
-	return e.Executor.QueryRowContext(ctx, query, args...)
-}
 
 func ExampleDefaultExecutorInterceptor() {
 	// Configure this once during application startup, before opening databases.
@@ -46,7 +24,11 @@ func ExampleDefaultExecutorInterceptor() {
 		if _, ok := sqlx.AsExecutor[*auditExecutor](e); ok {
 			return e
 		}
-		return &auditExecutor{Executor: e}
+		return &auditExecutor{
+			Executor: sqlx.WrapExecutor(e, func(query string, args []any, err error) {
+				slog.Info("sql audit", "query", query, "args", args, "error", err)
+			}),
+		}
 	}
 
 	// Open applies the same hook after configuring its underlying *sql.DB.
