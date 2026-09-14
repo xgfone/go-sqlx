@@ -112,35 +112,35 @@ func TestMapAggregateKeyChecksDynamicComparability(t *testing.T) {
 	}
 }
 
-func TestPreparedScanSurvivesInterleavedBindings(t *testing.T) {
+func TestWithScanSurvivesInterleavedBindings(t *testing.T) {
 	r, _ := bindTestRows(t, int64(1), int64(2))
 	defer r.Close() //nolint:errcheck
 
-	scan, err := PrepareScan(r, reflect.TypeFor[*int64]())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer scan.Close() //nolint:errcheck
+	err := WithScan(r, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan func(...any) error) error {
+		for _, want := range []int64{1, 2} {
+			if !r.Next() {
+				t.Fatal(r.Err())
+			}
 
-	for _, want := range []int64{1, 2} {
-		if !r.Next() {
-			t.Fatal(r.Err())
-		}
+			// Use and release differently shaped internal scratch while the public
+			// scan callback remains live on its original cursor.
+			for range 4 {
+				other, _ := bindTestRows(t, "hello")
+				var words []string
+				if err := other.Bind(&words); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-		// Use and release differently shaped internal scratch while the public
-		// prepared function remains live on its original cursor.
-		for range 4 {
-			other, _ := bindTestRows(t, "hello")
-			var words []string
-			if err := other.Bind(&words); err != nil {
-				t.Fatal(err)
+			var got int64
+			if err := scan(&got); err != nil || got != want {
+				t.Fatalf("%d: %v", got, err)
 			}
 		}
-
-		var got int64
-		if err := scan.Scan(&got); err != nil || got != want {
-			t.Fatalf("%d: %v", got, err)
-		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

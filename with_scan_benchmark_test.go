@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-// Include query setup, preparation, scanning and both scanner/cursor cleanup.
+// Include query setup, preparation, scanning and callback/cursor cleanup.
 // The immutable RowMapping is shared when benchmarking custom binder execution.
-func BenchmarkPreparedScanner(b *testing.B) {
+func BenchmarkWithScan(b *testing.B) {
 	for _, source := range []string{"Rows", "raw", "mapping"} {
 		b.Run(source, func(b *testing.B) {
 			for _, count := range []int{0, 1, 20, 100, 1000} {
@@ -33,34 +33,33 @@ func BenchmarkPreparedScanner(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {
 						rows := db.QueryRowsContext(context.Background(), "q")
-						var scanner PreparedScanner
+
+						var value int64
+						args := []any{&value}
+						run := func(scan func(...any) error) error {
+							for rows.Next() {
+								if err := scan(args...); err != nil {
+									return err
+								}
+							}
+							return rows.Err()
+						}
+
 						var err error
 						switch source {
 						case "Rows":
-							scanner, err = PrepareScan(rows, types...)
+							err = WithScan(rows, types, run)
+
 						case "raw":
-							scanner, err = PrepareScan(rows.rows, types...)
+							err = WithScan(rows.rows, types, run)
+
 						case "mapping":
-							scanner, err = mapping.Scanner(rows.rows)
+							err = mapping.WithScan(rows.rows, run)
 						}
 						if err != nil {
 							b.Fatal(err)
 						}
 
-						var value int64
-						args := []any{&value}
-						for rows.Next() {
-							if err := scanner.Scan(args...); err != nil {
-								b.Fatal(err)
-							}
-						}
-
-						if err := rows.Err(); err != nil {
-							b.Fatal(err)
-						}
-						if err := scanner.Close(); err != nil {
-							b.Fatal(err)
-						}
 						if err := rows.Close(); err != nil {
 							b.Fatal(err)
 						}

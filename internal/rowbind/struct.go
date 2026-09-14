@@ -203,7 +203,7 @@ func (p *scanPlan) scanStruct(scan func(...any) error, dst any) error {
 // errors. The callback borrows its destination slice for the duration of the
 // call; it must clone the slice before retaining it or any subslice. The cloned
 // entries refer to the caller's fields. Scratch is released on return or panic.
-// Use [Rows.Scan] or [PrepareScan] for conversion policies and cached plans.
+// Use [Rows.Scan] or [WithScan] for conversion policies and cached plans.
 func ScanColumnsToStruct(scan func(...any) error, columns []string, dst any) error {
 	if scan == nil {
 		return errors.New("sqlx: nil scan function")

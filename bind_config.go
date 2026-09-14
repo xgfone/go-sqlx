@@ -109,22 +109,25 @@ func (o BindOptions) PrepareMapping(types ...reflect.Type) (RowMapping, error) {
 	return RowMapping{mapping: mapping}, err
 }
 
-// Scanner creates an independent current-row scanner for a raw cursor matching
-// this mapping's column order. Prepare it once before iteration. Destinations may
-// change addresses but must retain their prepared types. Call Close on the
-// scanner to release its scratch; this does not close the cursor. Do not use the
-// scanner concurrently or on another result set. The cursor must obey RowCursor's
-// raw-scan contract; passing *Rows would apply an additional conversion layer.
-func (m RowMapping) Scanner(cursor RowCursor) (PreparedScanner, error) {
+// WithScan lends a type-checked current-row scan function to run. Each call
+// borrows independent scratch, released when run returns or panics. Panics
+// propagate. The scan function is valid only synchronously within run; later
+// calls fail. Destination addresses may change, but their types must match the
+// prepared signature. The callback must keep the cursor on the same result set.
+//
+// The caller owns iteration, Err and cursor closing. The cursor must obey
+// RowCursor's raw-scan contract; *Rows is rejected to avoid a second mapping and
+// conversion layer. Use the package-level WithScan for *Rows instead.
+func (m RowMapping) WithScan(cursor RowCursor, run func(scan func(...any) error) error) error {
 	if nilBindingValue(cursor) {
-		return nil, errors.New("sqlx: nil row cursor")
+		return errors.New("sqlx: nil row cursor")
 	}
 
-	scanner, err := m.mapping.Scanner(cursor.Scan)
-	if err != nil {
-		return nil, err
+	if _, ok := cursor.(*Rows); ok {
+		return errors.New("sqlx: RowMapping.WithScan requires a raw cursor; use WithScan for *Rows")
 	}
-	return scanner, nil
+
+	return m.mapping.WithCheckedScan(cursor.Scan, run)
 }
 
 func (o BindOptions) capacity() int {

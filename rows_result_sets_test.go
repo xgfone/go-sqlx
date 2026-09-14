@@ -104,12 +104,6 @@ func TestRowsResultSetMappingAcrossAliases(t *testing.T) {
 		B int `sql:"b"`
 	}
 
-	scan, err := PrepareScan(alias, reflect.TypeFor[*model]())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer scan.Close() //nolint:errcheck
-
 	wants := []model{{2, 1}, {10, 20}, {100, 200}, {0, 2000}}
 	for set, f := range sets {
 		if !rows.Next() {
@@ -140,11 +134,17 @@ func TestRowsResultSetMappingAcrossAliases(t *testing.T) {
 			}
 		}
 
-		for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scan.Scan} {
-			var got model
-			if err := scan(&got); err != nil || got != wants[set] {
-				t.Fatalf("set %d: got %+v, err %v", set, got, err)
+		err = WithScan(alias, []reflect.Type{reflect.TypeFor[*model]()}, func(scoped func(...any) error) error {
+			for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scoped} {
+				var got model
+				if err := scan(&got); err != nil || got != wants[set] {
+					t.Fatalf("set %d: got %+v, err %v", set, got, err)
+				}
 			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		if rows.Next() {
@@ -169,12 +169,6 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 		{[]string{"b"}, [][]driver.Value{{int64(3)}}},
 	}, nil)
 
-	scan, err := PrepareScan(rows, reflect.TypeFor[*int](), reflect.TypeFor[*int]())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer scan.Close() //nolint:errcheck
-
 	var a, b int
 	if !rows.Next() {
 		t.Fatal("missing first row")
@@ -186,10 +180,15 @@ func TestRowsResultSetShapeValidation(t *testing.T) {
 		t.Fatal("missing second set")
 	}
 
-	for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
-		if err := scan(&a, &b); err == nil {
-			t.Fatal("stale two-column plan accepted one-column result")
-		}
+	if err := rows.Scan(&a, &b); err == nil {
+		t.Fatal("stale two-column plan accepted one-column result")
+	}
+
+	if err := WithScan(rows, []reflect.Type{reflect.TypeFor[*int](), reflect.TypeFor[*int]()}, func(func(...any) error) error {
+		t.Fatal("invalid shape reached callback")
+		return nil
+	}); err == nil {
+		t.Fatal("one-column result accepted a two-column signature")
 	}
 
 	if err := rows.SetColumns("a", "b").Scan(&a, &b); err == nil {

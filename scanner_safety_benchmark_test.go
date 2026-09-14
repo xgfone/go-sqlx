@@ -26,7 +26,7 @@ func (v *safetyNumber) Scan(src any) error {
 // destination so capture overhead is distinguishable from result allocation.
 // A func(int) driver.Value supplies varying rows without generation in the timer.
 func benchmarkScannerSafety[T any](b *testing.B, value driver.Value, count int, options ...ScanOptions) {
-	for _, mode := range []string{"Row", "Rows", "Prepared"} {
+	for _, mode := range []string{"Row", "Rows", "WithScan"} {
 		if mode == "Row" && count != 1 {
 			continue
 		}
@@ -63,31 +63,26 @@ func benchmarkScannerSafety[T any](b *testing.B, value driver.Value, count int, 
 					rows.SetScanOptions(options[0])
 				}
 
-				scan := rows.Scan
-				var prepared PreparedScanner
-				if mode == "Prepared" {
-					var err error
-					prepared, err = PrepareScan(rows, types...)
-					if err != nil {
-						b.Fatal(err)
+				args := []any{&dst}
+				run := func(scan func(...any) error) error {
+					for rows.Next() {
+						if err := scan(args...); err != nil {
+							return err
+						}
 					}
-					scan = prepared.Scan
+					return rows.Err()
 				}
 
-				args := []any{&dst}
-				for rows.Next() {
-					if err := scan(args...); err != nil {
-						b.Fatal(err)
-					}
+				var err error
+				if mode == "WithScan" {
+					err = WithScan(rows, types, run)
+				} else {
+					err = run(rows.Scan)
 				}
-				if err := rows.Err(); err != nil {
+				if err != nil {
 					b.Fatal(err)
 				}
-				if prepared != nil {
-					if err := prepared.Close(); err != nil {
-						b.Fatal(err)
-					}
-				}
+
 				if err := rows.Close(); err != nil {
 					b.Fatal(err)
 				}

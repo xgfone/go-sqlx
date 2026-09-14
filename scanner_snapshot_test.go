@@ -32,7 +32,7 @@ func (v *snapshotRetainedBytes) Scan(src any) error {
 
 func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 	for _, mode := range []string{
-		"Row", "Pointer", "Struct", "NullableParent", "PreparedRaw", "ScanRow",
+		"Row", "Pointer", "Struct", "NullableParent", "WithScanRaw", "ScanRow",
 	} {
 		t.Run(mode, func(t *testing.T) {
 			r, f := bindTestRows(t, []byte("snapshot"))
@@ -79,14 +79,9 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 				if mode == "ScanRow" {
 					err = ScanRow(r.rows.Scan, &got)
 				} else {
-					p, e := PrepareScan(r.rows, reflect.TypeOf(&got))
-					if e != nil {
-						t.Fatal(e)
-					}
-					err = p.Scan(&got)
-					if e := p.Close(); e != nil {
-						t.Fatal(e)
-					}
+					err = WithScan(r.rows, []reflect.Type{reflect.TypeOf(&got)}, func(scan func(...any) error) error {
+						return scan(&got)
+					})
 				}
 
 				if e := r.Close(); e != nil {
@@ -102,7 +97,7 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 }
 
 func TestBorrowedScannerBytesSurviveCancellationDuringScan(t *testing.T) {
-	for _, mode := range []string{"Row", "Rows", "Prepared"} {
+	for _, mode := range []string{"Row", "Rows", "WithScan"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -131,20 +126,17 @@ func TestBorrowedScannerBytesSurviveCancellationDuringScan(t *testing.T) {
 				r := db.QueryRowsContext(ctx, "q")
 				defer r.Close() //nolint:errcheck
 
-				scan := r.Scan
-				if mode == "Prepared" {
-					p, e := PrepareScan(r, reflect.TypeOf(&scanner), reflect.TypeOf(&second))
-					if e != nil {
-						t.Fatal(e)
+				run := func(scan func(...any) error) error {
+					if !r.Next() {
+						t.Fatal("missing row", r.Err())
 					}
-					defer p.Close() //nolint:errcheck
-					scan = p.Scan
+					return scan(&scanner, &second)
 				}
-
-				if !r.Next() {
-					t.Fatal(r.Err())
+				if mode == "WithScan" {
+					err = WithScan(r, []reflect.Type{reflect.TypeOf(&scanner), reflect.TypeOf(&second)}, run)
+				} else {
+					err = run(r.Scan)
 				}
-				err = scan(&scanner, &second)
 			}
 
 			if err != nil || first != "first" || second != "second" {
@@ -242,7 +234,9 @@ func TestScannerOwnedBytesAndDecodedResultsSurviveReuse(t *testing.T) {
 		},
 	}
 
-	for _, mode := range []string{"Bind", "Collect", "CollectInto", "Visit", "Map", "Rows", "Prepared"} {
+	for _, mode := range []string{
+		"Bind", "Collect", "CollectInto", "Visit", "Map", "Rows", "WithScan",
+	} {
 		t.Run(mode, func(t *testing.T) {
 			f := &bindFixture{
 				columns: []string{"text", "strings", "number", "float", "bytes"},
@@ -287,24 +281,22 @@ func TestScannerOwnedBytesAndDecodedResultsSurviveReuse(t *testing.T) {
 				got = []record{mapped[42], mapped[17]}
 
 			default:
-				scan := r.Scan
-				if mode == "Prepared" {
-					p, e := PrepareScan(r, reflect.TypeFor[*record]())
-					if e != nil {
-						t.Fatal(e)
+				run := func(scan func(...any) error) error {
+					for r.Next() {
+						var v record
+						if e := scan(&v); e != nil {
+							return e
+						}
+						got = append(got, v)
 					}
-					defer p.Close() //nolint:errcheck
-					scan = p.Scan
+					return r.Err()
 				}
 
-				for r.Next() {
-					var v record
-					if e := scan(&v); e != nil {
-						t.Fatal(e)
-					}
-					got = append(got, v)
+				if mode == "WithScan" {
+					err = WithScan(r, []reflect.Type{reflect.TypeFor[*record]()}, run)
+				} else {
+					err = run(r.Scan)
 				}
-				err = r.Err()
 			}
 
 			if err != nil || !reflect.DeepEqual(got, want) || f.closed.Load() != 1 {

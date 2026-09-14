@@ -349,8 +349,9 @@ func (r *Rows) Next() bool {
 }
 
 // NextResultSet advances to the next result set and invalidates cached labels,
-// the query's capacity hint and prepared scans. All aliases refer to this same
-// object. Call Next before scanning its rows; check Err when the result is false.
+// the query's capacity hint and active WithScan scopes. All aliases refer to
+// this same object. Call Next before scanning its rows; check Err when the
+// result is false.
 func (r *Rows) NextResultSet() bool {
 	if r == nil || r.err != nil || r.rows == nil {
 		return false

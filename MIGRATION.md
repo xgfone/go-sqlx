@@ -486,7 +486,7 @@ non-failing. `Row.Scan` and manual `Rows.Scan` retain database/sql-style partial
 row writes on conversion errors.
 
 `ScanColumnsToStruct` remains a low-level field-address mapper with strict label
-validation. It does not perform scalar conversion. Use `PrepareScan` for raw
+validation. It does not perform scalar conversion. Use `WithScan` for raw
 `*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
 for single-use results. Result labels and `Rows.SetColumns` / `Row.WithColumns`
 inputs are copied.
@@ -497,27 +497,39 @@ as `saved = dst` (including subslices) with `saved = slices.Clone(dst)` or an
 equivalent copy. The copy does not extend the lifetime of temporary adapters or
 driver buffers. `ScanColumnsToStruct` now borrows and automatically returns its
 scan plan on success, error or panic; a clone of its destination slice still
-contains the caller's actual field addresses. Prepared scanners continue to
-reuse their plans until Close.
+contains the caller's actual field addresses. `WithScan` reuses its plan for
+the callback and releases it automatically afterward.
 
 `Rows` no longer embeds or exposes `*sql.Rows`. Replace `rows.Rows.Method(...)`
 with `rows.Method(...)`; all seven public cursor methods remain available:
 `Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`, and `Close`.
 Construct wrappers with `NewRows` instead of a struct literal. After transferring
 ownership, advance through the wrapper so its metadata stays synchronized.
-`NextResultSet` refreshes mappings for aliases of the same `*Rows` and scanners
-prepared from it; `SetColumns` and `NewRows` label overrides expire at the
-next result set. `ColumnTypes` returns driver names and types independently of
-label overrides. Recreate prepared scans from raw `*sql.Rows` after switching
-sets. Collection helpers consume the current set and close the entire result.
+`NextResultSet` refreshes the manual scan state for aliases of the same `*Rows`;
+`SetColumns` and `NewRows` label overrides expire at the next result set.
+`ColumnTypes` returns driver names and types independently of label overrides.
+Collection helpers consume the current set and close the entire result.
 
-`PrepareScan` now returns `PreparedScanner` instead of `RowScanFunc`. Replace
-`scan(dst...)` with `scanner.Scan(dst...)` and defer `scanner.Close()` after
-successful preparation. `RowMapping.ScanFunc(cursor)` is renamed to
-`RowMapping.Scanner(cursor)` and returns the same interface. Closing a prepared
-scanner releases its private scratch and source references; it does not close
-or advance the cursor. Close the cursor separately. Close is idempotent and Scan
-after Close fails; the scanner must not be used concurrently.
+`PrepareScan` and the public `PreparedScanner` interface have been removed.
+Use `WithScan(scanner, types, run)`, passing destination types as a
+`[]reflect.Type`. Move the iteration loop into `run func(func(...any) error) error`
+and call the supplied scan function directly. Remove the separate scanner Close;
+the callback scope returns its scratch automatically on success, error or panic.
+Panics propagate. The caller still owns cursor iteration, Err and Close.
+
+For custom binders, replace `RowMapping.Scanner(cursor)` (formerly `ScanFunc`)
+with `RowMapping.WithScan(cursor, run)` and move row scanning into its callback.
+It requires a raw cursor and rejects `*Rows`; use package-level `WithScan` for
+wrapped results. Mapping preparation still occurs separately through
+`BindOptions.PrepareMapping` before the cursor is available.
+
+Each scope uses one result set with fixed labels, options and destination types.
+Unlike the former prepared scanner, it does not rebuild mappings when the source
+changes. For `*Rows`, SetColumns, SetScanOptions, SetBindConfig, NextResultSet or
+Close during the callback returns an error; make those changes between scopes.
+Raw cursors must obey this contract themselves. Destination addresses can change,
+but types must match. Scan functions must be used synchronously within the
+callback; calls after it exits return an error.
 
 Struct metadata, column layouts, compiled setters and scan plans now live in
 `internal/rowbind`, together with the shared scalar conversion rules. The root

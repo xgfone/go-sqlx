@@ -438,13 +438,14 @@ still obey their own lifetimes.
 `ScanColumnsToStruct` supplies actual field addresses to its callback and
 returns its private scan plan to the scratch pool on success, error, or panic.
 A cloned destination slice keeps those field addresses without retaining pooled
-slice storage. Prepared scanners instead hold their plans until `Close` so they
-can reuse preparation across rows.
+slice storage. `WithScan` scopes hold their plans for the callback so they can
+reuse preparation across rows, then release them automatically.
 
 `RowScanner` supplies `Columns` and `Scan`; `RowCursor` supplies `Next`, raw
-`Scan`, and `Err` for binding execution. Row is not an iterator. `PrepareScan`
-validates column/type mapping before iteration and returns a `PreparedScanner`
-with `Scan(...any) error` and `Close() error`. Struct mappings
+`Scan`, and `Err` for binding execution. Row is not an iterator.
+`WithScan(scanner, types, run)` validates column/type mapping before invoking
+`run`, even for an empty result. It lends `run` a `func(...any) error` that checks
+destination types on every call. Struct mappings
 are cached across results by model type, ordered result labels, and mapping
 policies. Each concrete struct type caches up to 256 layouts, growing on demand;
 positional scalar scans do not use this cache. Query predicates and parameter
@@ -453,23 +454,26 @@ labels, and additional shapes after the cache fills, still work without being
 cached. Manual `Rows.Scan` reuses preparation and scratch through a
 `rowbind.ScanState` value in Rows; its plan pointer and implementation remain
 private to `rowbind`. Configuration changes, result-set changes, and `Close`
-release this state. Each prepared scanner holds independent scratch until its
-`Close`, which releases scanning resources without closing or advancing the
-underlying cursor. Close it even after scan errors or panics, normally using
-`defer scanner.Close()` immediately after successful preparation. Repeated Close
-calls are harmless; Scan after Close fails. The handle and its cursor must not
-be used concurrently. `Row.Scan`/`Rows.Scan`
+release this state. Each `WithScan` call borrows independent scratch and releases
+it on return, error or panic; panics propagate. The scan function is valid only
+synchronously within its callback. Calls after the callback exits fail, even
+while another scope uses pooled storage. The caller still owns iteration,
+checking `Err`, and closing the cursor; `WithScan` does not advance or close it.
+`Row.Scan`/`Rows.Scan`
 may partially update a row on error, as in `database/sql`; collection binding
 provides the staged commit guarantee.
 
 `Rows` exposes `Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`,
 and `Close`, while keeping the underlying `*sql.Rows` private. `NextResultSet`
 clears cached columns and label overrides even if the next set has identical
-column names. Prepared scans from `*Rows` follow result-set and scan-configuration
-changes made through any alias of that object. Call `Next` before scanning each
-result set. `SetColumns` overrides only the current set's labels; `ColumnTypes`
-always returns driver metadata. For a scan prepared from raw `*sql.Rows`, call
-`PrepareScan` again after switching result sets. Collection helpers consume the
+column names. Each `WithScan` scope covers one result set with fixed binding
+labels, scan options and destination types. With `*Rows`, changing columns,
+scan options, binding configuration or result sets, or explicitly closing the
+result during the callback, invalidates the scope and returns an error. Raw
+scanners must honor the same single-result-set contract; their changes cannot
+be tracked. Change sets or options between `WithScan` calls. Call `Next` before
+scanning each result set. `SetColumns` overrides binding labels only;
+`ColumnTypes` always returns driver metadata. Collection helpers consume the
 current set and close the cursor. Single-row `Row.Bind` uses the row scanner and
 does not invoke `RowsBinder`; customize field conversion with `sql.Scanner` or
 `Row.WithScanOptions`.
@@ -493,7 +497,7 @@ containing slice was cloned.
 When invoking a binding directly, pass a raw cursor matching the
 prepared column order and do not change result sets between Prepare and Scan.
 Built-in Scan operations borrow scratch until they return, including on errors or
-panics. Row, Rows, prepared scans, and built-in collection bindings normally call
+panics. Row, Rows, WithScan callbacks, and built-in collection bindings normally call
 application `sql.Scanner` methods synchronously inside the raw Scan, passing the
 original source without a preliminary byte copy. Input types and NULL semantics
 are preserved. As with `database/sql`, a Scanner must copy borrowed `[]byte` if it
@@ -533,10 +537,12 @@ Reset/Close. Larger values use temporary copies released after conversion.
 This internal storage does not establish a longer public Scanner lifetime.
 `VisitRawBytes` keeps its separate callback-scoped borrowing contract.
 
-Custom binders can call
-`options.PrepareMapping(types...)` during Prepare,
-then `mapping.Scanner(cursor)` once at the start of Scan to obtain an independent,
-type-checked `PreparedScanner`; defer its Close to return scratch to the pool.
+Custom binders can call `options.PrepareMapping(types...)` during Prepare,
+then `mapping.WithScan(cursor, run)` during Scan. It lends a type-checked scan
+function for the callback and releases scratch automatically afterward. It
+requires a raw cursor and rejects `*Rows` to avoid duplicate conversion; use
+package-level `WithScan` for `*Rows`, which inherits its labels and scan options.
+For raw `RowScanner` inputs, package-level `WithScan` uses zero `ScanOptions`.
 Callback implementations can return
 `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`; both callbacks are required.
 The owner still closes the cursor before Commit; direct callers own that close.

@@ -356,7 +356,7 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 	}
 }
 
-func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
+func TestWithScanWithRawAndWrappedRows(t *testing.T) {
 	for _, raw := range []bool{false, true} {
 		rows, _ := bindTestRows(t, int64(1000))
 		rows = rows.SetScanOptions(ScanOptions{DurationUnit: time.Second})
@@ -367,27 +367,28 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 			scanner = rows.rows
 		}
 
-		scan, err := PrepareScan(scanner, reflect.TypeFor[**time.Duration]())
+		err := WithScan(scanner, []reflect.Type{reflect.TypeFor[**time.Duration]()}, func(scan func(...any) error) error {
+			if !rows.Next() {
+				t.Fatal("missing row")
+			}
+
+			var dst *time.Duration
+			want := 1000 * time.Second
+			if raw {
+				want = time.Second
+			}
+			if err := scan(&dst); err != nil || *dst != want {
+				t.Fatal(dst, err)
+			}
+
+			var wrong int
+			if err := scan(&wrong); err == nil {
+				t.Fatal("changed type accepted")
+			}
+			return nil
+		})
 		if err != nil {
 			t.Fatal(err)
-		}
-		defer scan.Close() //nolint:errcheck
-		if !rows.Next() {
-			t.Fatal("missing row")
-		}
-
-		var dst *time.Duration
-		want := 1000 * time.Second
-		if raw {
-			want = time.Second
-		}
-		if err := scan.Scan(&dst); err != nil || *dst != want {
-			t.Fatal(dst, err)
-		}
-
-		var wrong int
-		if err := scan.Scan(&wrong); err == nil {
-			t.Fatal("changed type accepted")
 		}
 	}
 
@@ -396,7 +397,9 @@ func TestPrepareScanWithRawAndWrappedRows(t *testing.T) {
 	if _, ok := any(row).(RowCursor); ok {
 		t.Fatal("Row must not be an iterator")
 	}
-	if _, err := PrepareScan(row, reflect.TypeFor[*int]()); err == nil {
+
+	err := WithScan(row, []reflect.Type{reflect.TypeFor[*int]()}, func(func(...any) error) error { return nil })
+	if err == nil {
 		t.Fatal("single-use Row cannot supply a prepared current-row scan")
 	}
 

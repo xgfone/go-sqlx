@@ -55,31 +55,25 @@ func BenchmarkScannerMixedColumns(b *testing.B) {
 						b.ReportAllocs()
 						for b.Loop() {
 							rows := db.QueryRowsContext(context.Background(), "q")
-							scan := rows.Scan
-							var ps PreparedScanner
+							run := func(scan func(...any) error) error {
+								for rows.Next() {
+									if err := scan(args...); err != nil {
+										return err
+									}
+								}
+								return rows.Err()
+							}
+
+							var err error
 							if prepared {
-								var err error
-								ps, err = PrepareScan(rows, types...)
-								if err != nil {
-									b.Fatal(err)
-								}
-								scan = ps.Scan
+								err = WithScan(rows, types, run)
+							} else {
+								err = run(rows.Scan)
 							}
-
-							for rows.Next() {
-								if err := scan(args...); err != nil {
-									b.Fatal(err)
-								}
-							}
-
-							if err := rows.Err(); err != nil {
+							if err != nil {
 								b.Fatal(err)
 							}
-							if ps != nil {
-								if err := ps.Close(); err != nil {
-									b.Fatal(err)
-								}
-							}
+
 							if err := rows.Close(); err != nil {
 								b.Fatal(err)
 							}

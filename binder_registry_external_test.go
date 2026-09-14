@@ -35,6 +35,29 @@ func (c *exampleDurationCursor) Scan(dst ...any) error {
 	return dst[0].(sql.Scanner).Scan(int64(c.row))
 }
 
+type exampleDurationRows struct{ exampleDurationCursor }
+
+func (*exampleDurationRows) Columns() ([]string, error) { return []string{"duration"}, nil }
+
+func ExampleWithScan() {
+	rows := &exampleDurationRows{}
+	err := sqlx.WithScan(rows, []reflect.Type{reflect.TypeFor[*time.Duration]()}, func(scan func(...any) error) error {
+		for rows.Next() {
+			var duration time.Duration
+			if err := scan(&duration); err != nil {
+				return err
+			}
+			fmt.Println(duration)
+		}
+		return rows.Err()
+	})
+	fmt.Println(err)
+	// Output:
+	// 1ms
+	// 2ms
+	// <nil>
+}
+
 func ExampleBindOptions_PrepareMapping() {
 	options := sqlx.BindOptions{
 		Columns:     []string{"duration"},
@@ -49,21 +72,18 @@ func ExampleBindOptions_PrepareMapping() {
 
 	// The cursor and mutable scratch are attached when execution starts.
 	cursor := &exampleDurationCursor{}
-	scan, err := mapping.Scanner(cursor)
-	if err != nil {
-		panic(err)
-	}
-	defer scan.Close() //nolint:errcheck
-
-	var value time.Duration
-	args := []any{&value}
-	for cursor.Next() {
-		if err := scan.Scan(args...); err != nil {
-			panic(err)
+	err = mapping.WithScan(cursor, func(scan func(...any) error) error {
+		var value time.Duration
+		args := []any{&value}
+		for cursor.Next() {
+			if err := scan(args...); err != nil {
+				return err
+			}
+			fmt.Println(value)
 		}
-		fmt.Println(value)
-	}
-	fmt.Println(cursor.Err())
+		return cursor.Err()
+	})
+	fmt.Println(err)
 	// Output:
 	// 1s
 	// 2s

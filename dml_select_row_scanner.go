@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"reflect"
-	"slices"
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
@@ -40,101 +39,57 @@ var (
 	_ RowCursor  = (*sql.Rows)(nil)
 )
 
-// PreparedScanner scans the current row using a prepared destination signature.
-// Scan borrows dst for the call; retaining the slice or a subslice requires a
-// clone. This does not change the scanner's own lifetime, which ends at Close.
-// Call Close when finished, including after scan errors or panics, to release
-// its scratch and source references. Close does not close or advance the cursor;
-// the caller owns that separately. Close is idempotent; Scan after Close fails.
-// Scan and Close must not be called concurrently.
-type PreparedScanner interface {
-	Scan(...any) error
-	Close() error
-}
+// WithScan prepares and lends a type-checked current-row scan function to run.
+// It validates the result shape before calling run, even for an empty result.
+// *Rows supplies its binding labels and ScanOptions; other RowScanners use zero
+// ScanOptions. Single-use Row values are rejected; use Row.Scan instead.
+//
+// Each call covers one result set with fixed labels, options and destination
+// types. Destination addresses may change. For *Rows, SetColumns, SetScanOptions,
+// SetBindConfig, NextResultSet or Close during run invalidates the scope and
+// returns an error. For raw scanners, the caller must keep the result set and
+// metadata unchanged. Start a new WithScan call after changing sets or options.
+//
+// The scan function borrows its destinations only for each call. Use it only
+// synchronously within run; calls after run returns fail. Scratch and source
+// references are released on return, error or panic; panics propagate. WithScan
+// does not advance or close the cursor. The caller owns iteration, Err and Close.
+func WithScan(scanner RowScanner, types []reflect.Type, run func(scan func(...any) error) error) error {
+	if run == nil {
+		return errors.New("sqlx: nil scan callback")
+	}
 
-// PrepareScan validates the result shape before Next and prepares a reusable
-// scanner. *Rows supplies its current conversion options and labels; raw
-// *sql.Rows and other scanners use zero ScanOptions. Row is single-use and is
-// rejected. Destination addresses may change but their types must stay fixed.
-// Scanners prepared from *Rows follow its SetColumns, SetScanOptions,
-// SetBindConfig and NextResultSet calls. For other scanners, prepare again after
-// changing sets. Close the prepared scanner separately from its cursor.
-// The scanner and cursor must not be used concurrently.
-func PrepareScan(scanner RowScanner, types ...reflect.Type) (PreparedScanner, error) {
 	source, columns, options, err := scanSource(scanner)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	mapping, err := rowbind.Prepare(columns, types, options)
 	if err != nil {
-		return nil, err
-	}
-
-	scan, err := mapping.Scanner(source)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, ok := scanner.(*Rows)
-	if !ok {
-		return scan, nil
-	}
-
-	return &preparedRowsScanner{
-		rows:     rows,
-		scan:     scan,
-		types:    slices.Clone(types),
-		revision: rows.revision,
-	}, nil
-}
-
-type preparedRowsScanner struct {
-	rows     *Rows
-	scan     *rowbind.PreparedScanner
-	types    []reflect.Type
-	revision uint64
-}
-
-func (s *preparedRowsScanner) Scan(dst ...any) error {
-	if s.scan == nil {
-		return errors.New("sqlx: prepared scanner is closed")
-	}
-	if err := s.rows.Err(); err != nil {
 		return err
 	}
 
-	if s.revision != s.rows.revision {
-		columns, err := s.rows.scanColumns()
-		if err != nil {
-			return err
+	if rows, ok := scanner.(*Rows); ok {
+		revision := rows.revision
+		err := mapping.WithCheckedScan(func(dst ...any) error {
+			if rows.revision != revision {
+				return errScanScopeChanged
+			}
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			return rows.rows.Scan(dst...)
+		}, run)
+		if err == nil && rows.revision != revision {
+			return errScanScopeChanged
 		}
-
-		mapping, err := rowbind.Prepare(columns, s.types, s.rows.config.ScanOptions)
-		if err != nil {
-			return err
-		}
-
-		next, err := mapping.Scanner(s.rows.rows.Scan)
-		if err != nil {
-			return err
-		}
-
-		_ = s.scan.Close()
-		s.scan, s.revision = next, s.rows.revision
+		return err
 	}
 
-	return s.scan.Scan(dst...)
+	return mapping.WithCheckedScan(source, run)
 }
 
-func (s *preparedRowsScanner) Close() error {
-	if s.scan != nil {
-		_ = s.scan.Close()
-		s.scan = nil
-	}
-	s.rows, s.types = nil, nil
-	return nil
-}
+var errScanScopeChanged = errors.New("sqlx: result set or scan configuration changed during WithScan")
 
 // Select the raw function so a prepared scan does not repeat Rows.Scan's
 // mapping and adaptation. Only this public convenience API infers configuration.
@@ -160,7 +115,7 @@ func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, 
 }
 
 // ScanRow adapts positional scalar destinations, including pointer chains.
-// For repeated scanning or struct mapping use PrepareScan or [Rows.Scan].
+// For repeated scanning or struct mapping use WithScan or [Rows.Scan].
 // The callback borrows its destination slice and must clone it before retaining
 // it or a subslice. Temporary scanner adapters are valid only during the call.
 func ScanRow(scan func(...any) error, dst ...any) error {
@@ -191,7 +146,7 @@ func nilBindingValue(v any) bool {
 
 // ScanColumnsToStruct is a low-level field mapper: it supplies field addresses
 // to scan without adapting scalar conversions. Unknown/duplicate columns are
-// errors. Use [Rows.Scan] or [PrepareScan] for conversion policies and cached
+// errors. Use [Rows.Scan] or [WithScan] for conversion policies and cached
 // plans. The callback borrows its destination slice only for the call; it must
 // use slices.Clone(dst) or an equivalent copy before retaining it or a subslice.
 // The cloned entries still point to the caller's fields. Internal scratch is

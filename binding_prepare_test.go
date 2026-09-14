@@ -172,20 +172,16 @@ func TestCustomBindingReceivesRawCursorAndConfigurationSnapshot(t *testing.T) {
 					t.Fatalf("expected raw cursor, got %T", cursor)
 				}
 
-				scan, err := mapping.Scanner(cursor)
-				if err != nil {
-					return err
-				}
-				defer scan.Close() //nolint:errcheck
-
-				for cursor.Next() {
-					var value time.Duration
-					if err := scan.Scan(&value); err != nil {
-						return err
+				return mapping.WithScan(cursor, func(scan func(...any) error) error {
+					for cursor.Next() {
+						var value time.Duration
+						if err := scan(&value); err != nil {
+							return err
+						}
+						staged = append(staged, value)
 					}
-					staged = append(staged, value)
-				}
-				return cursor.Err()
+					return cursor.Err()
+				})
 			},
 		}, nil
 	})

@@ -5,6 +5,24 @@ package rowbind
 
 import "errors"
 
+// WithCheckedScan lends a scan function with destination type checks at the
+// public extension boundary. Each call owns independent scratch. Retained scan
+// functions remain invalid after return, including after errors and panics.
+// The source and callback must run synchronously; source ownership is unchanged.
+func (m Mapping) WithCheckedScan(source func(...any) error, run func(func(...any) error) error) error {
+	if run == nil {
+		return errors.New("sqlx: nil scan callback")
+	}
+
+	scanner, err := m.Scanner(source)
+	if err != nil {
+		return err
+	}
+
+	defer scanner.Close() //nolint:errcheck
+	return run(scanner.Scan)
+}
+
 // Scanner borrows private scratch until Close. Each scanner validates destination
 // types and must not be copied or used concurrently. Closing it releases only
 // scanning resources; ownership of the source stays with the caller.

@@ -202,7 +202,7 @@ func BenchmarkBindingSetup(b *testing.B) {
 		}
 	})
 
-	b.Run("prepared", func(b *testing.B) {
+	b.Run("with_scan", func(b *testing.B) {
 		f := &bindFixture{columns: []string{"id", "a"}}
 		for i := range 1000 {
 			f.values = append(f.values, []driver.Value{int64(i), int64(i)})
@@ -213,25 +213,19 @@ func BenchmarkBindingSetup(b *testing.B) {
 		for b.Loop() {
 			var v performanceRecord
 			r := db.QueryRowsContext(context.Background(), "q")
-			scan, err := PrepareScan(r, reflect.TypeFor[*performanceRecord]())
+			args := []any{&v}
+			err := WithScan(r, []reflect.Type{reflect.TypeFor[*performanceRecord]()}, func(scan func(...any) error) error {
+				for r.Next() {
+					if err := scan(args...); err != nil {
+						return err
+					}
+				}
+				return r.Err()
+			})
 			if err != nil {
 				b.Fatal(err)
 			}
 
-			// Reuse the argument vector across calls through the scanner interface.
-			args := []any{&v}
-			for r.Next() {
-				if err := scan.Scan(args...); err != nil {
-					b.Fatal(err)
-				}
-			}
-
-			if err := r.Err(); err != nil {
-				b.Fatal(err)
-			}
-			if err := scan.Close(); err != nil {
-				b.Fatal(err)
-			}
 			if err := r.Close(); err != nil {
 				b.Fatal(err)
 			}

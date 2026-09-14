@@ -35,11 +35,11 @@ func TestScansFollowInPlaceOptions(t *testing.T) {
 	defer rows.Close() //nolint:errcheck
 	alias := rows
 	rows.SetScanOptions(ScanOptions{DurationUnit: time.Second})
-	scan, err := PrepareScan(rows, reflect.TypeFor[*time.Duration]())
-	if err != nil {
-		t.Fatal(err)
+	scopedScan := func(dst ...any) error {
+		return WithScan(rows, []reflect.Type{reflect.TypeFor[*time.Duration]()}, func(scan func(...any) error) error {
+			return scan(dst...)
+		})
 	}
-	defer scan.Close() //nolint:errcheck
 
 	if !rows.Next() {
 		t.Fatal(rows.Err())
@@ -47,7 +47,7 @@ func TestScansFollowInPlaceOptions(t *testing.T) {
 
 	for _, unit := range []time.Duration{time.Second, time.Minute, time.Hour} {
 		alias.SetScanOptions(ScanOptions{DurationUnit: unit})
-		for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
+		for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scopedScan} {
 			var got time.Duration
 			if err := scan(&got); err != nil || got != 2*unit {
 				t.Fatal(got, err)
@@ -57,7 +57,7 @@ func TestScansFollowInPlaceOptions(t *testing.T) {
 
 	alias.SetBindConfig(BindConfig{ScanOptions: ScanOptions{DurationUnit: time.Second}})
 	var got time.Duration
-	for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
+	for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scopedScan} {
 		if err := scan(&got); err != nil || got != 2*time.Second {
 			t.Fatal(got, err)
 		}
@@ -67,7 +67,7 @@ func TestScansFollowInPlaceOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
+	for _, scan := range []func(...any) error{rows.Scan, alias.Scan, scopedScan} {
 		if err := scan(&got); err == nil {
 			t.Fatal("scan accepted closed alias")
 		}
@@ -84,11 +84,12 @@ func TestScansFollowInPlaceLabels(t *testing.T) {
 	}
 
 	rows.SetColumns("a")
-	scan, err := PrepareScan(rows, reflect.TypeFor[*record]())
-	if err != nil {
-		t.Fatal(err)
+	alias := rows
+	scopedScan := func(dst ...any) error {
+		return WithScan(rows, []reflect.Type{reflect.TypeFor[*record]()}, func(scan func(...any) error) error {
+			return scan(dst...)
+		})
 	}
-	defer scan.Close() //nolint:errcheck
 
 	if !rows.Next() {
 		t.Fatal(rows.Err())
@@ -96,7 +97,11 @@ func TestScansFollowInPlaceLabels(t *testing.T) {
 
 	for _, column := range []string{"b", "missing", "a"} {
 		rows.SetColumns(column)
-		for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
+		for _, scan := range []func(...any) error{
+			rows.Scan,
+			alias.Scan,
+			scopedScan,
+		} {
 			var got record
 			err := scan(&got)
 			if column == "missing" {

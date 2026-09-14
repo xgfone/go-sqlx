@@ -41,7 +41,7 @@ func TestCustomScannerCancellationPreservesBuiltinResults(t *testing.T) {
 
 func testScannersOwnCapturedBytes(t *testing.T, options ScanOptions) {
 	t.Helper()
-	for _, mode := range []string{"Row", "Rows", "PrepareScan"} {
+	for _, mode := range []string{"Row", "Rows", "WithScan"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -76,19 +76,18 @@ func testScannersOwnCapturedBytes(t *testing.T, options ScanOptions) {
 			} else {
 				rows := db.QueryRowsContext(ctx, "q").SetScanOptions(options)
 				defer rows.Close() //nolint:errcheck
-				scan := rows.Scan
-				if mode == "PrepareScan" {
-					prepared, err := PrepareScan(rows, reflect.TypeOf(&got))
-					if err != nil {
-						t.Fatal(err)
+				run := func(scan func(...any) error) error {
+					if !rows.Next() {
+						t.Fatal("missing row", rows.Err())
 					}
-					defer prepared.Close() //nolint:errcheck
-					scan = prepared.Scan
+					return scan(&got)
 				}
-				if !rows.Next() {
-					t.Fatal("missing row", rows.Err())
+
+				if mode == "WithScan" {
+					err = WithScan(rows, []reflect.Type{reflect.TypeOf(&got)}, run)
+				} else {
+					err = run(rows.Scan)
 				}
-				err = scan(&got)
 			}
 
 			select {

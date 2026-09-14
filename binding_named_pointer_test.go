@@ -14,7 +14,7 @@ import (
 func TestNamedTimePointersAcrossScanAPIs(t *testing.T) {
 	type durationPointer *time.Duration
 	type timePointer *time.Time
-	for _, mode := range []string{"Row", "Rows", "PrepareScan"} {
+	for _, mode := range []string{"Row", "Rows", "WithScan"} {
 		t.Run(mode, func(t *testing.T) {
 			db := bindTestDB(t, &bindFixture{
 				columns: []string{"duration", "time"},
@@ -31,20 +31,18 @@ func TestNamedTimePointersAcrossScanAPIs(t *testing.T) {
 			} else {
 				rows := db.QueryRowsContext(context.Background(), "q")
 				defer rows.Close() //nolint:errcheck
-				scan := rows.Scan
-				if mode == "PrepareScan" {
-					prepared, err := PrepareScan(rows, reflect.TypeOf(dst[0]), reflect.TypeOf(dst[1]))
-					if err != nil {
-						t.Fatal(err)
+				run := func(scan func(...any) error) error {
+					if !rows.Next() {
+						t.Fatal("missing row", rows.Err())
 					}
-					defer prepared.Close() //nolint:errcheck
-					scan = prepared.Scan
+					return scan(dst...)
 				}
 
-				if !rows.Next() {
-					t.Fatal("missing row", rows.Err())
+				if mode == "WithScan" {
+					err = WithScan(rows, []reflect.Type{reflect.TypeOf(dst[0]), reflect.TypeOf(dst[1])}, run)
+				} else {
+					err = run(rows.Scan)
 				}
-				err = scan(dst...)
 			}
 
 			if err != nil || duration != time.Second || !timestamp.Equal(time.Unix(0, 0)) {

@@ -13,8 +13,9 @@
 // and publication live in layout_cache.go. Layouts never retain row values.
 //
 // Prepare creates an immutable Mapping without allocating execution scratch.
-// Mapping.WithScan borrows private scan plans only for synchronous operations;
-// Mapping.Scanner borrows independent scratch until the returned PreparedScanner.Close.
+// Mapping.WithScan lends private scan plans to trusted synchronous operations.
+// Mapping.WithCheckedScan adds per-call type and lifetime checks for public
+// callbacks, using a PreparedScanner internally to own and release its scratch.
 // ScanState reuses private preparation and scratch until the owner resets or
 // closes its result; ScanStruct and ScanColumnsToStruct borrow scratch for a
 // single call. Scanning clears
