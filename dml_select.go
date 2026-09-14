@@ -332,12 +332,7 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	if b.err != nil {
 		panic(b.err)
 	}
-	if b.lock != "" {
-		c.forbidSetFunctions = "row locking aggregate or window queries is unsupported"
-	}
-	if b.rollup && (b.distinct || len(b.orderbys) > 0 && len(b.unions) == 0) {
-		requireFeature(c, dialect.RollupOrderDistinct, "ROLLUP with ORDER BY or DISTINCT")
-	}
+	b.validateSelect(c)
 
 	// A nested statement starts at the current end of the shared buffer.
 	// Its estimate describes this fragment, not the entire enclosing SQL.
@@ -414,22 +409,8 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	b.writePagination(s, c)
 
 	if b.lock != "" {
-		if len(b.ftables) == 0 {
-			panic("row locking requires FROM")
-		}
-
-		requireFeature(c, dialect.RowLock, "row locking")
-		if b.lock == "NO KEY UPDATE" || b.lock == "KEY SHARE" {
-			requireFeature(c, dialect.KeyRowLock, "key row locking")
-		}
-		if b.distinct || len(b.distinctOn) > 0 || len(b.windows) > 0 ||
-			len(b.groups) > 0 || len(b.havings) > 0 || len(b.unions) > 0 {
-			panic("locking DISTINCT, grouped or compound queries is unsupported")
-		}
-
 		_, _ = s.WriteString(" FOR " + b.lock)
 		if len(b.lockTables) > 0 {
-			requireFeature(c, dialect.LockOf, "locking OF")
 			_, _ = s.WriteString(" OF ")
 			for i, t := range b.lockTables {
 				if i > 0 {
@@ -440,11 +421,8 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		}
 
 		if b.lockWait != "" {
-			requireFeature(c, dialect.LockWait, "lock wait options")
 			_, _ = s.WriteString(" " + b.lockWait)
 		}
-	} else if b.lockWait != "" {
-		panic("lock wait option requires ForUpdate or ForShare")
 	}
 
 	writeComment(s, b.comment)

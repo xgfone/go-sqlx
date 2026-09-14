@@ -236,15 +236,10 @@ func TestExternalCTEBodyFailures(t *testing.T) {
 		{"empty body", failingCTEBody{kind: sqlx.CTESelect}, "empty CTE body"},
 		{"nil snapshot", failingCTEBody{snapshot: func() sqlx.CTEBody { return nil }}, "nil CTE"},
 		{"typed nil snapshot", failingCTEBody{snapshot: func() sqlx.CTEBody { return (*customCTEBody)(nil) }}, "nil CTE"},
-		{"snapshot panic", failingCTEBody{snapshot: func() sqlx.CTEBody { panic(failure) }}, failure.Error()},
-		{"snapshot string panic", failingCTEBody{snapshot: func() sqlx.CTEBody { panic("snapshot failed") }}, "snapshot failed"},
 		{"returned error", failingCTEBody{kind: sqlx.CTESelect, write: func(buf *strings.Builder, ctx *sqlx.BuildContext) error {
 			buf.WriteString("SELECT ")
 			ctx.WriteArg(buf, 99)
 			return failure
-		}}, failure.Error()},
-		{"render panic", failingCTEBody{kind: sqlx.CTESelect, write: func(*strings.Builder, *sqlx.BuildContext) error {
-			panic(failure)
 		}}, failure.Error()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

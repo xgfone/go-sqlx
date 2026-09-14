@@ -105,7 +105,7 @@ func (a *BuildContext) releaseBuffer(buf *strings.Builder) {
 	}
 }
 
-// Every statement has its own expression rules and named windows. Parameters
+// Every statement has its own expression bindings and named windows. Parameters
 // remain shared; correlated subqueries retain the enclosing conflict context.
 func (a *BuildContext) enterStatement() statementScope {
 	parent := a.statementScope
@@ -130,18 +130,12 @@ func (a *BuildContext) Dialect() Dialect {
 // Quote quotes a dotted identifier path, preserving a trailing wildcard.
 // Expressions must be supplied through an explicit expression API.
 func (a *BuildContext) Quote(name string) string {
-	if a.returningTable != "" {
-		a.validateReturningPath(name)
-	}
 	return quotePath(a.Dialect(), name)
 }
 
 // WriteQuote appends a quoted identifier path, like Quote, without an
 // intermediate string for built-in dialects.
 func (a *BuildContext) WriteQuote(buf *strings.Builder, name string) {
-	if a.returningTable != "" {
-		a.validateReturningPath(name)
-	}
 	writeQuotedPath(buf, a.Dialect(), name)
 }
 

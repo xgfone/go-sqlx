@@ -272,9 +272,6 @@ func (e Expression) build(d Dialect) string {
 // render and writeTo share dispatch and validation, including nested context.
 func (e Expression) render(c *BuildContext) string {
 	if !e.isCustom() && len(e.args()) == 0 {
-		if c.forbidSetFunctions != "" || c.returningTable != "" {
-			c.validateExpression(e)
-		}
 		if e.kind() == defaultExpression {
 			panic("DEFAULT is only valid as a direct inserted or assigned value")
 		}
@@ -293,9 +290,6 @@ func (e Expression) render(c *BuildContext) string {
 }
 
 func (e Expression) writeTo(buf *strings.Builder, c *BuildContext) {
-	if c.forbidSetFunctions != "" || c.returningTable != "" {
-		c.validateExpression(e)
-	}
 	if e.kind() == windowFunctionExpression {
 		panic("window function requires OVER")
 	}

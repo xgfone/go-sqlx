@@ -4,7 +4,6 @@
 package sqlx
 
 import (
-	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -26,7 +25,8 @@ const (
 
 // CTEBody is the body inside a CTE's AS (...), without its name or parentheses.
 // All four built-in builders implement it; applications may implement it without
-// implementing SQLBuilder. Other composition APIs retain their own input types.
+// implementing SQLBuilder. Implementations must honor the borrowing/snapshot
+// contract and must not panic. Other composition APIs retain their own input types.
 type CTEBody interface {
 	// WriteSQL appends nonempty SQL using ctx's dialect and bindings.
 	//
@@ -34,9 +34,8 @@ type CTEBody interface {
 	// built placeholders into the statement. The buffer and context are borrowed:
 	// do not copy, reset, retain, or use them concurrently.
 	//
-	// Do not mutate the body. Return rendering errors; enclosing builders also
-	// recover panics. After an error, partial SQL and bindings must be discarded,
-	// not reused for a retry.
+	// Do not mutate the body or panic. Return rendering errors. After an error,
+	// discard partial SQL and bindings rather than reusing them for a retry.
 	WriteSQL(buf *strings.Builder, ctx *BuildContext) error
 
 	// Snapshot returns a non-nil body whose SQL description is independent of
@@ -64,16 +63,10 @@ type commonTable = CTE
 // NewCTE snapshots a body and optional output column names. PostgreSQL
 // additionally permits INSERT, UPDATE, and DELETE statements as the CTE body;
 // those data-modifying CTEs must belong to the top-level statement.
-// Nil bodies, nil snapshots, and snapshot panics become errors when a statement
-// containing the CTE is built. Custom bodies must honor the CTEBody contract.
+// Nil bodies and nil snapshots become errors when a statement containing the
+// CTE is built. Custom bodies must honor the CTEBody contract and must not panic.
 func NewCTE(name string, body CTEBody, columns ...string) (cte CTE) {
 	cte.name, cte.columns = name, slices.Clone(columns)
-	defer func() {
-		if r := recover(); r != nil {
-			err := fmt.Errorf("sqlx: CTE %q snapshot: %w", name, renderingError(r))
-			cte.body = failedCTEBody{err: err}
-		}
-	}()
 
 	if !nilCTEBody(body) {
 		cte.body = body.Snapshot()

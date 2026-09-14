@@ -15,7 +15,8 @@ import (
 
 // DistinctOn selects the first row of each key group using PostgreSQL DISTINCT ON.
 // When ORDER BY is supplied, its leading expressions must match these keys;
-// order within the key prefix may differ. Combine neither with Distinct nor locks.
+// order within the key prefix may differ. Callers own this semantic relationship.
+// Combine neither with Distinct nor locks.
 func (b *SelectBuilder) DistinctOn(columns ...string) *SelectBuilder {
 	for _, col := range columns {
 		b.distinctOn = append(b.distinctOn, Ident(strings.Split(col, ".")...))
@@ -282,51 +283,9 @@ func (b *SelectBuilder) outputExpression(e Expression) Expression {
 	return e
 }
 
-func (b *SelectBuilder) validateDistinctOn() {
-	if b.distinct {
-		panic("DISTINCT and DISTINCT ON cannot be combined")
-	}
-
-	// Set operations own the final ORDER BY; it does not order the first SELECT.
-	if len(b.unions) != 0 {
-		return
-	}
-
-	matched := make([]bool, len(b.distinctOn))
-	remaining := len(matched)
-	for _, term := range b.orderbys {
-		if remaining == 0 {
-			return
-		}
-
-		var e Expression
-		if term.Expr != nil {
-			e = *term.Expr
-		} else {
-			e = Ident(strings.Split(term.Column, ".")...)
-		}
-
-		found := false
-		for i, key := range b.distinctOn {
-			if equivalentExpression(b.outputExpression(key), b.outputExpression(e)) {
-				found = true
-				if !matched[i] {
-					matched[i] = true
-					remaining--
-				}
-			}
-		}
-
-		if !found {
-			panic("DISTINCT ON expressions must match the leading ORDER BY expressions; use the same structured expressions")
-		}
-	}
-}
-
 // Reuse rendered key expressions and their parameter numbers. Fresh PostgreSQL
 // parameters would make the repeated ORDER BY expression a different expression.
 func (b *SelectBuilder) renderDistinctOn(c *BuildContext) (string, []SortColumn) {
-	b.validateDistinctOn()
 	keys := make([]string, len(b.distinctOn))
 	for i, e := range b.distinctOn {
 		for j := range i {

@@ -127,7 +127,7 @@ func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	}
 
 	writeClause(s, c, "WHERE", b.wheres)
-	writeReturning(s, c, b.returning, b.ftables[0].Table)
+	writeReturning(s, c, b.returning)
 	multi := len(b.ftables) != 1 || len(b.jtables) > 0 || len(b.using) > 0
 	b.mutation.render(s, c, dialect.DeleteOrderLimit, multi)
 	writeComment(s, b.comment)

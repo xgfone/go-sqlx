@@ -8,14 +8,26 @@ not have deprecated aliases.
 `CommonTable` is now named `NewCTE`. The constructor accepts the open `CTEBody`
 interface; all four built-in builder pointers remain valid arguments. Custom
 bodies implement `WriteSQL(*strings.Builder, *BuildContext) error`,
-`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Snapshot panics and nil bodies or
-snapshots are reported by the enclosing `Build` call.
+`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Nil bodies or snapshots are reported
+by the enclosing `Build` call. Custom implementations must not panic; NewCTE no
+longer intercepts Snapshot panics or stores them for a later Build.
 
 The former public `Statement` interface is removed. Use `SQLBuilder` for code
 that calls `Build()` and `CTEBody` for CTE composition. They are independent:
 an external CTE body does not need a standalone `Build` method. `Kind` must
 return `CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete`; other values fail
 at build time. Other query composition methods keep their existing input types.
+
+## SQL construction and validation boundary
+
+This validation simplification does not change public builder or renderer
+interfaces. Normal SQL rendering, parameter reuse, and VALUES type handling
+remain unchanged. Build retains local structural checks and named-window checks,
+but no longer checks nested expressions for RETURNING/row-lock restrictions,
+SQLite RETURNING qualification, or the DISTINCT ON/ORDER BY semantic relationship.
+Applications must use valid SQL for their selected dialect; do not use Build as a
+complete SQL validator. No optional validation mode is introduced. See
+[SQL composition](docs/sql-syntax.md).
 
 ## Go 1.27 and generic model selection
 
@@ -71,8 +83,9 @@ func (p Predicate) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
 Replace function adapters with `ConditionWriterFunc` and `UpdaterWriterFunc`;
 these callbacks receive a `*SQLWriter` and return `(bool, error)` instead of SQL
 text. A custom renderer is invoked once per occurrence. Returning false must
-not change SQL or arguments; returning true requires SQL. Errors and panics
+not change SQL or arguments; returning true requires SQL. Returned errors
 abort the whole Build/Compile; error identity is preserved through wrapping.
+Custom implementations must not panic.
 Optional empty terms do not leave separators.
 
 For standalone rendering use `sqlx.BuildCondition(ctx, condition)` or
@@ -202,8 +215,8 @@ other predicates; the root package no longer exposes go-op comparison helpers.
 Append optional application filters conditionally.
 
 String() returns a diagnostic on invalid builders; execution must use Build or
-the context methods to retain structured errors. Custom clause renderer panics
-are contained at the statement build boundary.
+the context methods to retain structured errors. Custom clause renderers must
+return errors instead of panicking.
 Invalid dialect registration through MustRegister still panics at startup.
 
 ## Struct mapping

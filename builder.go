@@ -239,18 +239,12 @@ func cloneColumns(cols []selectedColumn) []selectedColumn {
 	return slices.Clone(cols)
 }
 
-func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn, target string) {
+func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
 	if len(cols) == 0 {
 		return
 	}
 
 	requireFeature(ctx, dialect.Returning, "RETURNING")
-	policy, table := ctx.forbidSetFunctions, ctx.returningTable
-	defer func() { ctx.forbidSetFunctions, ctx.returningTable = policy, table }()
-	ctx.forbidSetFunctions = "RETURNING cannot contain an aggregate or window function at the same query level"
-	if ctx.Dialect().Grammar().ReturningTargetOnly {
-		ctx.returningTable = target[strings.LastIndexByte(target, '.')+1:]
-	}
 	_, _ = buf.WriteString(" RETURNING ")
 	writeColumns(buf, ctx, cols)
 }

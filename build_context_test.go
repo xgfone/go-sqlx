@@ -90,8 +90,7 @@ func TestBuildContextPoolCleanup(t *testing.T) {
 	c.Add(sql.Named("id", &struct{}{}))
 	c.expressionCache = expressionCachePool.Get().(*expressionCache)
 	c.expressionCache.add(Value(&struct{}{}), "$1")
-	c.returningTable = "t"
-	c.forbidSetFunctions = "restricted"
+	c.windows = map[string]WindowSpec{"w": Window()}
 	c.reuseExpressions, c.recordExpressions = true, true
 	view := c.argsView()
 	saved := c.Args()
@@ -99,8 +98,7 @@ func TestBuildContextPoolCleanup(t *testing.T) {
 	if view[0] != nil || saved[0] == nil || c.named != nil || c.dialect != nil {
 		t.Fatal("incorrect context cleanup")
 	}
-	if c.expressionCache != nil || c.returningTable != "" ||
-		c.forbidSetFunctions != "" || c.reuseExpressions || c.recordExpressions {
+	if c.expressionCache != nil || c.windows != nil || c.reuseExpressions || c.recordExpressions {
 		t.Fatal("pooled context retained statement expression state")
 	}
 

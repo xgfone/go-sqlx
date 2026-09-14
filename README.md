@@ -27,8 +27,14 @@ q, args, err := sqlx.Select("id", "name").
 // args: [true]
 ```
 
-`Build()` returns `(string, []any, error)`. Validation failures, unsupported
-features, and failures from custom clause renderers become build errors.
+`Build()` returns `(string, []any, error)`. Local check failures, unsupported
+features, and returned errors from custom clause renderers become build errors.
+Given valid use of a supported dialect, builders own SQL emission, quoting, and
+parameter binding. Callers own SQL semantics and extension-interface contracts;
+successful Build is not a guarantee of database validity. Simple structural and
+named-window checks remain, but no full or optional semantic validator is provided.
+Custom implementations must not panic; contract violations are outside the
+library's guarantees. See [SQL composition](docs/sql-syntax.md) for the boundary.
 `MustBuild()` returns `(string, []any)` and panics on failure, for initialization
 or other explicitly asserted invariants. `String()` returns SQL or a diagnostic;
 it must not be used in place of checking `Build` errors.
@@ -128,9 +134,9 @@ Custom bodies append SQL using the supplied context's dialect and bindings.
 `BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` stream identifiers,
 bound parameters, and expressions into the shared `strings.Builder`. Do not
 reset, copy, retain, or concurrently use the borrowed buffer/context. Return
-rendering errors; enclosing `Build` calls also recover panics and discard partial
-output. Independently built placeholder strings cannot simply be spliced into
-the parent's binding context.
+rendering errors and do not panic, including from Snapshot or Kind. Build
+discards partial output on rendering errors. Independently built placeholder
+strings cannot simply be spliced into the parent's binding context.
 
 `Kind` returns `CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete` to enable
 dialect and placement checks. The implementation must write SQL matching that
@@ -751,11 +757,11 @@ DELETE USING are available with dialect capability checks. MySQL single-table
 UPDATE/DELETE also support OrderBy/Sort and Limit; SQLite requires an explicit
 capability override and SQLITE_ENABLE_UPDATE_DELETE_LIMIT for those clauses.
 
-Structured aggregate/window expressions are rejected at the RETURNING query
-level, including inside scalar wrappers; scalar subqueries have their own scope.
-SQLite RETURNING accepts `*`, unqualified columns, and actual target table names,
-but rejects qualified wildcards and target aliases. PostgreSQL VALUES sources
-cast ordinary Go values to preserve their types; use `.ColumnTypes(...)` for
+Callers must follow the target database's RETURNING expression and qualification
+rules; Build does not analyze them. SQLite RETURNING accepts `*`, unqualified
+columns, and actual target table names, but not qualified wildcards or target
+aliases. PostgreSQL VALUES sources cast ordinary Go values to preserve their
+types; use `.ColumnTypes(...)` for
 runtime Params, custom Valuers, or explicit SQL types. See
 [SQL syntax](docs/sql-syntax.md) for typing and repeated-expression rules.
 
@@ -950,8 +956,9 @@ predicates must preserve their own precedence, for example by parenthesizing OR.
 Return `true, nil` after writing nonempty SQL; `false, nil` must leave SQL and
 arguments untouched. Violations are build errors. Each occurrence renders once;
 callbacks are never evaluated to estimate capacity or count effective terms.
-An explicit error or panic aborts the entire build, which returns no partial SQL
-or arguments. A clause with no effective predicates or assignments is rejected;
+An explicit error aborts the entire build, which returns no partial SQL or
+arguments. Custom renderers must not panic. A clause with no effective predicates
+or assignments is rejected;
 nil conditions and native empty AND groups passed to Where/Having are skipped.
 Unknown groups may use temporary storage to determine grouping after rendering.
 

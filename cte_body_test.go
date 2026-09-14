@@ -19,7 +19,7 @@ func (b scopeCTEBody) WriteSQL(s *strings.Builder, c *BuildContext) error { retu
 
 func TestCTEBodyRestoresStatementScope(t *testing.T) {
 	failure := errors.New("render failed")
-	for _, outcome := range []string{"success", "error", "panic"} {
+	for _, outcome := range []string{"success", "error"} {
 		t.Run(outcome, func(t *testing.T) {
 			ctx := NewBuildContext(dialect.Postgres)
 			ctx.statementDepth = 1
@@ -34,12 +34,8 @@ func TestCTEBodyRestoresStatementScope(t *testing.T) {
 				s.WriteString("SELECT ")
 				c.WriteArg(s, 7)
 
-				switch outcome {
-				case "error":
+				if outcome == "error" {
 					return failure
-
-				case "panic":
-					panic(failure)
 				}
 
 				return nil

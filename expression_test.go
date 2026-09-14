@@ -154,13 +154,8 @@ func TestDistinctOnNestedExpressionIdentity(t *testing.T) {
 		{"tuple", func() Expression { return Tuple(Ident("a"), Ident("b")) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Independently built custom descriptions have distinct identities,
-			// even when a template wraps them and their payloads look equal.
-			left, right := Expr("?", tc.make()), Expr("?", tc.make())
-			checkBuildError(t, Select("id").DistinctOnExpr(left).
-				OrderByExpr(right, Asc).SetDialect(dialect.Postgres))
-
 			// Reusing the complete description still reuses its parameters.
+			left := Expr("?", tc.make())
 			if _, _, err := Select("id").DistinctOnExpr(left).
 				OrderByExpr(left, Asc).SetDialect(dialect.Postgres).Build(); err != nil {
 				t.Fatal(err)

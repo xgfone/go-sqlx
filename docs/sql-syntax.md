@@ -1,8 +1,21 @@
 # SQL composition
 
-Builders validate the structure they own and reject unsupported capabilities at
-Build time. Raw `Expr` SQL and `ExpressionSource` SQL remain the caller's
-responsibility, including database-specific functions, types, and operators.
+Builders generate SQL for supported dialects when callers follow the dialect's
+SQL rules and the extension interfaces' contracts. They own clause placement,
+identifier quoting, parameter binding, and snapshots of builder descriptions.
+Build performs inexpensive local checks, including source modes, row widths,
+feature support, and named-window definitions. It is not a SQL semantic validator;
+successful Build does not prove that a statement is legal in the database.
+
+Callers own expression placement, valid clause combinations, column and type
+resolution, and matching DISTINCT ON/ORDER BY keys. Builders do not inspect
+nested expressions to enforce RETURNING or row-lock restrictions. Raw `Expr`
+and `ExpressionSource` SQL also remain the caller's responsibility, including
+database-specific functions, types, and operators. Custom implementations must
+honor their borrowing, snapshot, and output contracts and must not panic; behavior
+after a contract violation is not guaranteed. No optional semantic-validation
+mode is currently provided.
+
 Values are bound; strings in column/table APIs are identifier paths. In expression
 arguments, strings are data: use `Ident` to refer to a column.
 
@@ -187,8 +200,9 @@ and the supplied dialect.
 
 Use `BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` to append to the
 borrowed buffer with the parent's bindings. Renderers must not reset or retain
-the buffer/context. Snapshot or rendering panics, returned rendering errors,
-invalid kinds, and nil bodies/snapshots become errors from the enclosing `Build`.
+the buffer/context and must not panic, including from Snapshot or Kind. Returned
+rendering errors, invalid kinds, and nil bodies/snapshots become errors from the
+enclosing `Build`. NewCTE does not intercept custom Snapshot panics.
 
 ```go
 numbers := sqlx.Select().SelectExpr(sqlx.Value(1)).UnionAll(
@@ -234,8 +248,9 @@ The built-in PostgreSQL dialect supports WITH TIES. `QueryRowContext` always
 uses ordinary limiting to return at most one row, preserving offset and LIMIT 0.
 
 PostgreSQL `DistinctOn`/`DistinctOnExpr` select the first row in each key group.
-Leading ORDER BY keys must match the DISTINCT ON keys. Reuse the same Expression
-value for helper-generated computed keys; their SQL and parameter numbers are
+Callers must ensure leading ORDER BY keys match the DISTINCT ON keys; Build does
+not validate that relationship. Reuse the same Expression value for
+helper-generated computed keys; their SQL and parameter numbers are
 reused in ORDER BY. `ClearSelect` clears both DISTINCT forms.
 With set operations, the final ORDER BY sorts the combined result and uses its
 output names or positions; it is not matched to or rewritten as the first
@@ -243,20 +258,18 @@ operand's DISTINCT ON keys.
 
 PostgreSQL `ForNoKeyUpdate` and `ForKeyShare` complement `ForUpdate` and
 `ForShare`. Lock setters replace the lock mode and OF aliases; `NoWait` and
-`SkipLocked` apply to the selected lock mode. Aggregate, window, distinct,
-grouped, and compound queries reject locking.
-The aggregate/window check applies inside structured scalar wrappers, CASE, and
-expression arguments at the same query level. A scalar subquery starts its own
-query level and may contain its own aggregates or windows. Trusted raw SQL and
-arbitrary function names supplied through Func remain the caller's responsibility.
+`SkipLocked` apply to the selected lock mode. Simple checks reject locking with
+explicit DISTINCT, grouping, named-window, and set-operation clauses. Callers
+must follow the remaining locking rules of the target database, including
+restrictions on aggregate/window expressions and outer joins. Expressions are
+rendered without a query-level semantic check.
 
-INSERT, UPDATE, and DELETE RETURNING use the same query-level aggregate/window
-restriction. On SQLite, use `Returning("*")`, unqualified column names, or the
-actual target table name such as `Returning("items.id")`. Qualified wildcards
+INSERT, UPDATE, and DELETE RETURNING expressions must follow the target database's
+aggregate/window restrictions. On SQLite, use `Returning("*")`, unqualified
+column names, or the actual target table name such as `Returning("items.id")`. Qualified wildcards
 (`items.*`), target aliases, other tables, and schema-qualified column references
-are rejected. These identifier checks also apply inside structured expressions;
-subquery scopes are independent. PostgreSQL retains its qualified wildcard and
-target-alias support.
+are not supported by SQLite. Build does not check these RETURNING restrictions.
+PostgreSQL retains its qualified wildcard and target-alias support.
 
 MySQL single-table UPDATE/DELETE support `OrderBy`, `Sort`, and `Limit`.
 Single-table DELETE aliases require MySQL 8.0.16+ and the `DeleteTargetAlias`

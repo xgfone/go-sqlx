@@ -8,14 +8,6 @@ import (
 	"strings"
 )
 
-// Retain snapshot failures on invalid nodes only, without enlarging every CTE.
-// Kind reports the failure before any dialect-specific body checks run.
-type failedCTEBody struct{ err error }
-
-func (b failedCTEBody) Kind() CTEBodyKind                              { panic(b.err) }
-func (b failedCTEBody) Snapshot() CTEBody                              { return b }
-func (b failedCTEBody) WriteSQL(*strings.Builder, *BuildContext) error { return b.err }
-
 // Native bodies already establish a statement scope and report failures to the
 // enclosing build. Match exact types: an embedding wrapper may override WriteSQL.
 func writeCTEBody(buf *strings.Builder, ctx *BuildContext, body CTEBody) {
@@ -48,8 +40,8 @@ func renderingError(value any) error {
 	return fmt.Errorf("%v", value)
 }
 
-// The public rendering path returns errors even when built-in validation or a
-// custom clause panics. Internal composition avoids this extra recovery boundary.
+// The public rendering path converts internal validation panics to errors.
+// Internal composition avoids this extra recovery boundary.
 func writeSQL(buf *strings.Builder, ctx *BuildContext, body statementWriter) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

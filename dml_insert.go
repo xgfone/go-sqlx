@@ -336,7 +336,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	b.renderRowsAlias(s, c)
 	b.renderConflicts(s, c)
 
-	writeReturning(s, c, b.returning, b.table)
+	writeReturning(s, c, b.returning)
 	writeComment(s, b.comment)
 
 }

@@ -12,7 +12,8 @@ import (
 // Condition writes a predicate without WHERE, HAVING, or ON. It must preserve
 // its own precedence (parenthesize OR when necessary). Return true after writing
 // nonempty SQL; false must have no SQL or argument side effects. An explicit
-// error or panic aborts the whole build. The writer is borrowed for this call.
+// error aborts the whole build. Implementations must not panic. The writer is
+// borrowed for this call.
 // Each callback is evaluated once per occurrence, never to estimate output.
 type Condition interface {
 	WriteCondition(*SQLWriter) (emitted bool, err error)
