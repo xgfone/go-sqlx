@@ -336,7 +336,7 @@ func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder { b.db = db; return b }
 func (b *InsertBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-// Non-nil executors are passed through DefaultExecutorInterceptor.
+// Non-nil executors use the interceptor set by SetDefaultExecutorInterceptor.
 func (b *InsertBuilder) SetExecutor(e Executor) *InsertBuilder {
 	b.executor = interceptExecutor(e)
 	return b

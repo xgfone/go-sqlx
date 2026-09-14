@@ -16,11 +16,10 @@ type auditExecutor struct{ sqlx.Executor }
 
 func (e *auditExecutor) Unwrap() sqlx.Executor { return e.Executor }
 
-func ExampleDefaultExecutorInterceptor() {
+func ExampleSetDefaultExecutorInterceptor() {
 	// Configure this once during application startup, before opening databases.
-	previous := sqlx.DefaultExecutorInterceptor
-	defer func() { sqlx.DefaultExecutorInterceptor = previous }()
-	sqlx.DefaultExecutorInterceptor = func(e sqlx.Executor) sqlx.Executor {
+	defer sqlx.SetDefaultExecutorInterceptor(nil)
+	sqlx.SetDefaultExecutorInterceptor(func(e sqlx.Executor) sqlx.Executor {
 		if _, ok := sqlx.AsExecutor[*auditExecutor](e); ok {
 			return e
 		}
@@ -29,7 +28,7 @@ func ExampleDefaultExecutorInterceptor() {
 				slog.Info("sql audit", "query", query, "args", args, "error", err)
 			}),
 		}
-	}
+	})
 
 	// Open applies the same hook after configuring its underlying *sql.DB.
 	// For an existing executor, use SetExecutor or WithExecutor.

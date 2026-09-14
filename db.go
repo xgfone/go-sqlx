@@ -78,7 +78,7 @@ func (db *DB) WithExecutor(e Executor) *DB {
 // SetExecutor replaces this DB's executor and returns db. It does not close the
 // previous executor. Existing builders without an executor override use the new
 // executor on their next execution. See DB for synchronization requirements.
-// Non-nil executors are passed through DefaultExecutorInterceptor.
+// Non-nil executors use the interceptor set by SetDefaultExecutorInterceptor.
 func (db *DB) SetExecutor(e Executor) *DB {
 	db.Executor = interceptExecutor(e)
 	return db
@@ -94,7 +94,7 @@ func (db *DB) Unwrap() Executor {
 
 // BeginTx starts a transaction using the first TxBeginner in the executor's
 // Unwrap chain. Bind the returned *sql.Tx with WithExecutor or a builder's
-// SetExecutor to apply DefaultExecutorInterceptor to its SQL execution.
+// SetExecutor to apply the configured interceptor to its SQL execution.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	if b, ok := AsExecutor[TxBeginner](db.Executor); ok {
 		return b.BeginTx(ctx, opts)

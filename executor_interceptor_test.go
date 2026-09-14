@@ -146,13 +146,13 @@ func (e *interceptedExecutor) QueryRowContext(ctx context.Context, query string,
 func installTestInterceptor(t *testing.T) *[]interceptedCall {
 	t.Helper()
 
-	previous := DefaultExecutorInterceptor
-	t.Cleanup(func() { DefaultExecutorInterceptor = previous })
+	previous := defaultExecutorInterceptor
+	t.Cleanup(func() { SetDefaultExecutorInterceptor(previous) })
 
 	var calls []interceptedCall
-	DefaultExecutorInterceptor = func(e Executor) Executor {
+	SetDefaultExecutorInterceptor(func(e Executor) Executor {
 		return &interceptedExecutor{executorLayer{e}, &calls}
-	}
+	})
 	return &calls
 }
 
@@ -314,17 +314,17 @@ func TestExecutorInterceptorOpen(t *testing.T) {
 
 func TestExecutorInterceptorDefaultsAndNil(t *testing.T) {
 	e := new(sql.DB)
-	if DefaultExecutorInterceptor != nil || new(DB).SetExecutor(e).Executor != e {
+	if new(DB).SetExecutor(e).Executor != e {
 		t.Fatal("default interceptor must leave executor unchanged")
 	}
 
-	previous := DefaultExecutorInterceptor
-	t.Cleanup(func() { DefaultExecutorInterceptor = previous })
+	previous := defaultExecutorInterceptor
+	t.Cleanup(func() { SetDefaultExecutorInterceptor(previous) })
 
-	DefaultExecutorInterceptor = func(Executor) Executor {
+	SetDefaultExecutorInterceptor(func(Executor) Executor {
 		t.Fatal("nil executor passed to interceptor")
 		return nil
-	}
+	})
 
 	db := (&DB{Executor: e}).SetExecutor(nil)
 	if db.Executor != nil || db.WithExecutor(nil).Executor != nil {
@@ -340,5 +340,10 @@ func TestExecutorInterceptorDefaultsAndNil(t *testing.T) {
 		if _, err := b.runner(); err == nil {
 			t.Fatal("missing executor was accepted")
 		}
+	}
+
+	SetDefaultExecutorInterceptor(nil)
+	if db.SetExecutor(e).Executor != e {
+		t.Fatal("reset interceptor must leave executor unchanged")
 	}
 }

@@ -30,10 +30,12 @@ type TxBeginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-// DefaultExecutorInterceptor is applied by Open, DB.SetExecutor (including
-// WithExecutor), and each builder's SetExecutor. When nil, executors are left
-// unchanged. Nil executors are skipped. Direct assignment to DB.Executor
-// bypasses this hook.
+var defaultExecutorInterceptor func(Executor) Executor
+
+// SetDefaultExecutorInterceptor sets the interceptor applied by Open,
+// DB.SetExecutor (including WithExecutor), and each builder's SetExecutor.
+// Passing nil disables interception (the default). Nil executors are skipped.
+// Direct assignment to DB.Executor bypasses this hook.
 //
 // The interceptor must return a usable executor and should preserve the original
 // through Unwrap() Executor. It may receive an already wrapped executor; use
@@ -42,13 +44,13 @@ type TxBeginner interface {
 // Configure this global before concurrent use, or synchronize changes with all
 // callers. Changes only affect subsequently attached executors. The interceptor
 // and its returned executors must support the callers' concurrency requirements.
-//
-// Default: nil
-var DefaultExecutorInterceptor func(Executor) Executor
+func SetDefaultExecutorInterceptor(interceptor func(Executor) Executor) {
+	defaultExecutorInterceptor = interceptor
+}
 
 func interceptExecutor(e Executor) Executor {
-	if e != nil && DefaultExecutorInterceptor != nil {
-		return DefaultExecutorInterceptor(e)
+	if e != nil && defaultExecutorInterceptor != nil {
+		return defaultExecutorInterceptor(e)
 	}
 	return e
 }

@@ -618,24 +618,24 @@ for the complete syntax guide, dialect constraints, and configuration examples.
 
 ## Executor middleware
 
-`DefaultExecutorInterceptor` is a replaceable `func(Executor) Executor`. It
-defaults to nil, leaving executors unchanged. `Open`,
+`SetDefaultExecutorInterceptor(func(Executor) Executor)` configures the global
+interceptor. The default is nil, leaving executors unchanged. `Open`,
 `DB.SetExecutor`/`WithExecutor`, and every builder's `SetExecutor` apply it when
 attaching a non-nil executor, so transaction SQL uses the same middleware once
-the `*sql.Tx` is bound through those methods. A nil interceptor disables the
-hook. Configure it before concurrent use; changing it affects subsequently
-attached executors, not existing wrappers.
+the `*sql.Tx` is bound through those methods. `SetDefaultExecutorInterceptor(nil)`
+disables the hook. Configure it before concurrent use; changing it affects
+subsequently attached executors, not existing wrappers.
 
 `WrapExecutor(e, after)` provides a simple wrapper that calls
 `after(query string, args []any, err error)` once after each underlying method
 returns, preserving its result and error:
 
 ```go
-sqlx.DefaultExecutorInterceptor = func(e sqlx.Executor) sqlx.Executor {
+sqlx.SetDefaultExecutorInterceptor(func(e sqlx.Executor) sqlx.Executor {
     return sqlx.WrapExecutor(e, func(query string, args []any, err error) {
         slog.Info("sql audit", "query", query, "args", args, "error", err)
     })
-}
+})
 ```
 
 The wrapper implements `Unwrap() Executor`. Passing a nil executor or callback
