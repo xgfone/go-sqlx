@@ -251,7 +251,10 @@ PostgreSQL `DistinctOn`/`DistinctOnExpr` select the first row in each key group.
 Callers must ensure leading ORDER BY keys match the DISTINCT ON keys; Build does
 not validate that relationship. Reuse the same Expression value for
 helper-generated computed keys; their SQL and parameter numbers are
-reused in ORDER BY. `ClearSelect` clears both DISTINCT forms.
+reused in SELECT and ORDER BY through the same expression cache. ORDER BY output
+aliases and ordinals are emitted as supplied, without expanding them to the
+underlying DISTINCT ON expression. PostgreSQL resolves these references.
+`ClearSelect` clears both DISTINCT forms.
 With set operations, the final ORDER BY sorts the combined result and uses its
 output names or positions; it is not matched to or rewritten as the first
 operand's DISTINCT ON keys.

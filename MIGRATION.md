@@ -21,13 +21,18 @@ at build time. Other query composition methods keep their existing input types.
 ## SQL construction and validation boundary
 
 This validation simplification does not change public builder or renderer
-interfaces. Normal SQL rendering, parameter reuse, and VALUES type handling
-remain unchanged. Build retains local structural checks and named-window checks,
+interfaces. Parameter reuse and VALUES type handling remain supported.
+Build retains local structural checks and named-window checks,
 but no longer checks nested expressions for RETURNING/row-lock restrictions,
 SQLite RETURNING qualification, or the DISTINCT ON/ORDER BY semantic relationship.
 Applications must use valid SQL for their selected dialect; do not use Build as a
 complete SQL validator. No optional validation mode is introduced. See
 [SQL composition](docs/sql-syntax.md).
+
+DISTINCT ON now uses the ordinary expression writer and parameter cache. ORDER BY
+aliases and ordinals remain as supplied: for example, `ORDER BY "key"` or
+`ORDER BY 1` is no longer expanded to the matching DISTINCT ON expression.
+Valid queries retain their semantics, but SQL string snapshots may need updating.
 
 ## Go 1.27 and generic model selection
 

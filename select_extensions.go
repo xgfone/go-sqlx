@@ -6,8 +6,6 @@ package sqlx
 import (
 	"errors"
 	"reflect"
-	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -250,80 +248,6 @@ func (b *SelectBuilder) needsExpressionReuse() bool {
 	}
 
 	return false
-}
-
-// ORDER BY and DISTINCT ON may refer to a selected output name or ordinal.
-// Resolve only direct references, leaving the underlying expression untouched.
-func (b *SelectBuilder) outputExpression(e Expression) Expression {
-	column := func(col selectedColumn) Expression {
-		if col.Expr != nil {
-			return *col.Expr
-		}
-		return Ident(strings.Split(col.Column, ".")...)
-	}
-
-	if !e.isCustom() && e.function() == "" && len(e.args()) == 0 {
-		if !e.isIdentifier() {
-			n, err := strconv.Atoi(strings.TrimSpace(e.sql))
-			if err == nil && n > 0 && n <= len(b.columns) {
-				return column(b.columns[n-1])
-			}
-		} else if e.node == identifierExpression {
-			for _, col := range b.columns {
-				name := col.Alias
-				if name == "" && col.Expr == nil {
-					name = extractName(col.Column)
-				}
-				if name == e.sql {
-					return column(col)
-				}
-			}
-		}
-	}
-	return e
-}
-
-// Reuse rendered key expressions and their parameter numbers. Fresh PostgreSQL
-// parameters would make the repeated ORDER BY expression a different expression.
-func (b *SelectBuilder) renderDistinctOn(c *BuildContext) (string, []SortColumn) {
-	keys := make([]string, len(b.distinctOn))
-	for i, e := range b.distinctOn {
-		for j := range i {
-			if equivalentExpression(b.distinctOn[j], e) {
-				keys[i] = keys[j]
-				break
-			}
-		}
-		if keys[i] == "" {
-			keys[i] = e.render(c)
-		}
-	}
-
-	if len(b.unions) != 0 {
-		return strings.Join(keys, ", "), b.orderbys
-	}
-
-	// Only replace the pointers in this temporary list; existing expressions
-	// are read without mutation and do not need another copy.
-	orders := slices.Clone(b.orderbys)
-	for i, o := range orders {
-		var e Expression
-		if o.Expr != nil {
-			e = *o.Expr
-		} else {
-			e = Ident(strings.Split(o.Column, ".")...)
-		}
-
-		for j, key := range b.distinctOn {
-			if equivalentExpression(b.outputExpression(key), b.outputExpression(e)) {
-				rendered := Expr(keys[j])
-				orders[i].Expr = &rendered
-				break
-			}
-		}
-	}
-
-	return strings.Join(keys, ", "), orders
 }
 
 func (b *SelectBuilder) prepareWindows(c *BuildContext) {

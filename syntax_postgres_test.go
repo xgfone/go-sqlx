@@ -94,6 +94,49 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 			[][]any{{0}, {2}, {10}},
 		},
 		{
+			"distinct on computed key ordered by alias",
+			Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e).
+				OrderByAsc("key").SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"distinct on computed key ordered by ordinal",
+			Select().SelectExpr(e).From("t").DistinctOnExpr(e).
+				OrderByExpr(Expr("1"), Asc).SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"distinct on alias ordered by computed key",
+			Select().SelectExprAlias(e, "key").From("t").DistinctOn("key").
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"distinct on ordinal ordered by computed key",
+			Select().SelectExpr(e).From("t").DistinctOnExpr(Expr("1")).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"distinct on qualified key ordered by column",
+			Select("v").From("t").DistinctOn("t.v").
+				OrderByAsc("v").SetDialect(dialect.Postgres),
+			[][]any{{2}, {10}, {nil}},
+		},
+		{
+			"distinct on repeated computed keys",
+			Select().SelectExpr(e).From("t").DistinctOnExpr(e, e).
+				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
+			[][]any{{0}, {2}, {10}},
+		},
+		{
+			"distinct on with compound ordering",
+			Select().SelectExpr(e).From("t").DistinctOnExpr(e).
+				Union(Select().SelectExpr(Value(-1))).OrderByExpr(Expr("1"), Desc).
+				SetDialect(dialect.Postgres),
+			[][]any{{10}, {2}, {0}, {-1}},
+		},
+		{
 			"values numeric order",
 			Select("d.v").FromSource(source).OrderByAsc("d.v").SetDialect(dialect.Postgres),
 			[][]any{{2}, {10}},
@@ -174,6 +217,12 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 				Having(Gt(p, Param(1))).OrderByExpr(p, Asc).SetDialect(dialect.Postgres),
 			[]any{0, 0},
 			[][]any{{2, 2}, {10, 1}},
+		},
+		{
+			Select().SelectExprAlias(p, "key").From("t").DistinctOnExpr(p).
+				Where(Gt("v", Param(1))).OrderByAsc("key").SetDialect(dialect.Postgres),
+			[]any{0, 1},
+			[][]any{{2}, {10}},
 		},
 		{
 			Select().SelectExprAlias(Coalesce(Expr("NULL::INTEGER"), shared), "n").

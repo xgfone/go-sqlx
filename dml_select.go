@@ -346,17 +346,17 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 		_, _ = s.WriteString("DISTINCT ")
 	}
 
-	orders := b.orderbys
 	reuse := false
-	if len(b.groups) > 0 || len(orders) > 0 || len(b.distinctOn) > 0 {
+	if len(b.groups) > 0 || len(b.orderbys) > 0 || len(b.distinctOn) > 0 {
 		reuse = c.Dialect().Grammar().ReuseExpressionParameters && b.needsExpressionReuse()
 	}
 	c.recordExpressions, c.reuseExpressions = reuse, reuse
 	if len(b.distinctOn) > 0 {
 		requireFeature(c, dialect.DistinctOn, "DISTINCT ON")
-		keys, terms := b.renderDistinctOn(c)
-		orders = terms
-		_, _ = s.WriteString("DISTINCT ON (" + keys + ") ")
+		// Share the normal expression cache with SELECT and ORDER BY.
+		_, _ = s.WriteString("DISTINCT ON (")
+		writeExprs(s, c, b.distinctOn)
+		_, _ = s.WriteString(") ")
 	}
 
 	writeColumns(s, c, b.columns)
@@ -404,7 +404,7 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	// A compound query owns its final ORDER BY independently of this SELECT.
 	c.reuseExpressions = reuse && len(b.unions) == 0
 	b.renderSetOperations(s, c)
-	writeOrderBy(s, c, orders)
+	writeOrderBy(s, c, b.orderbys)
 	c.reuseExpressions = false
 	b.writePagination(s, c)
 

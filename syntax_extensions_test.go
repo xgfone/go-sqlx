@@ -395,14 +395,19 @@ func TestComputedDistinctOnReusesParameters(t *testing.T) {
 		"fallback")
 	checkSQL(t,
 		Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e).OrderByAsc("key").SetDialect(dialect.Postgres),
-		`SELECT DISTINCT ON (COALESCE("name", $1)) COALESCE("name", $1) AS "key" FROM "t" ORDER BY COALESCE("name", $1) ASC`,
+		`SELECT DISTINCT ON (COALESCE("name", $1)) COALESCE("name", $1) AS "key" FROM "t" ORDER BY "key" ASC`,
 		"fallback")
 	checkSQL(t,
 		Select("id").From("t").DistinctOn("id", "id").OrderByAsc("id").OrderByAsc("v").SetDialect(dialect.Postgres),
 		`SELECT DISTINCT ON ("id", "id") "id" FROM "t" ORDER BY "id" ASC, "v" ASC`)
 	checkSQL(t,
 		Select("id").From("t").DistinctOn("id").OrderByExpr(Expr("1"), Asc).SetDialect(dialect.Postgres),
-		`SELECT DISTINCT ON ("id") "id" FROM "t" ORDER BY "id" ASC`)
+		`SELECT DISTINCT ON ("id") "id" FROM "t" ORDER BY 1 ASC`)
+	checkSQL(t,
+		Select().SelectExprAlias(e, "key").From("t").DistinctOnExpr(e, e).
+			OrderByAsc("key").SetDialect(dialect.Postgres),
+		`SELECT DISTINCT ON (COALESCE("name", $1), COALESCE("name", $1)) COALESCE("name", $1) AS "key" FROM "t" ORDER BY "key" ASC`,
+		"fallback")
 }
 
 func TestWindowScopesAndInvalidCombinations(t *testing.T) {
