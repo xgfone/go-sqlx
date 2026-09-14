@@ -385,29 +385,23 @@ type expressionFunction struct {
 	name string
 	args []any
 
-	valid  bool
 	window bool
 }
 
 // Func calls a SQL function. name is a trusted unquoted function path; arguments
-// are values or Expressions. Use Ident for column arguments.
+// are values or Expressions. Callers supply a valid path for their dialect;
+// only an empty name is rejected. Use Ident for column arguments.
 func Func(name string, args ...any) Expression {
-	valid := true
-	for part := range strings.SplitSeq(name, ".") {
-		valid = valid && validParameterName(part)
-	}
 	return Expression{
 		node: &expressionFunction{
 			name: name,
 			args: slices.Clone(args),
-
-			valid: valid,
 		},
 	}
 }
 func (n *expressionFunction) writeTo(s *strings.Builder, c *BuildContext) {
 	reserveSQL(s, len(n.name)+2+5*len(n.args))
-	if !n.valid {
+	if n.name == "" {
 		panic("invalid SQL function name")
 	}
 

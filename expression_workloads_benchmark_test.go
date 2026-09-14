@@ -154,3 +154,20 @@ func BenchmarkDistinctOnExpressions(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkConflictExpressionTargets(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		key  Expression
+	}{
+		{"column", Ident("id")},
+		{"qualified", Ident("t", "id")},
+		{"function", Func("lower", Ident("name"))},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			q := Insert().Into("t").Columns("id", "name").Values(1, "a").
+				OnConflict(ConflictExpressions(tc.key).DoNothing()).SetDialect(dialect.Postgres)
+			benchmarkSafetySQL(b, q)
+		})
+	}
+}

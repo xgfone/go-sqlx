@@ -49,3 +49,19 @@ func TestDuplicateKeyStateRemainsIndependent(t *testing.T) {
 		`INSERT INTO "t" VALUES ($1) ON CONFLICT DO NOTHING`, 1)
 	checkSQL(t, b.ClearConflict(), "INSERT INTO `t` VALUES (?)", 1)
 }
+
+func TestConflictExpressionIdentifierParentheses(t *testing.T) {
+	for _, tc := range []struct {
+		key  Expression
+		want string
+	}{
+		{Ident("id"), `"id"`},
+		{Ident("t.id"), `"t.id"`},
+		{Ident("t", "id"), `("t"."id")`},
+		{Func("lower", Ident("name")), `(lower("name"))`},
+	} {
+		checkSQL(t, Insert().Into("t").Columns("id").Values(1).
+			OnConflict(ConflictExpressions(tc.key).DoNothing()).SetDialect(dialect.Postgres),
+			`INSERT INTO "t" ("id") VALUES ($1) ON CONFLICT (`+tc.want+`) DO NOTHING`, 1)
+	}
+}

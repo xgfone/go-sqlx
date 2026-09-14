@@ -48,7 +48,9 @@ Use `Tuple(Ident("tenant"), Ident("id"))` for a row operand and `Tuple(7, 42)`
 for row values. Tuple membership checks equal widths and uses a VALUES query on
 SQLite. `SetRow([]string{"x", "y"}, valueX, valueY)` assigns a row where supported.
 
-`Func`, `Coalesce`, `NullIf`, and `Cast` accept values or expressions. `Cast`'s
+`Func`, `Coalesce`, `NullIf`, and `Cast` accept values or expressions. `Func`'s
+function path is trusted SQL for the selected dialect, including names such as
+`_fn` and `public._fn`; Build only rejects an empty name. `Cast`'s
 type specification is trusted SQL, not a parameter. `Case().When(condition,
 value).Else(value).End()` builds a searched CASE; `CaseValue(value)` with
 `WhenValue(match, result)` builds a simple CASE. `End` snapshots its clauses.
@@ -299,7 +301,9 @@ q := sqlx.Insert().Into("users").Columns("email", "version").Values("a@example.o
 ```
 
 `ConflictColumns` targets column names; `ConflictExpressions` targets index
-expressions. `ConflictTarget.Where` specifies partial-index inference, while
+expressions. A single `Ident("id")` is emitted as a column name; qualified
+identifiers such as `Ident("t", "id")` receive expression parentheses.
+`ConflictTarget.Where` specifies partial-index inference, while
 `ConflictClause.Where` limits the rows updated. They occupy different SQL
 positions and are not interchangeable. PostgreSQL also accepts
 `ConflictConstraint(name)` for ON CONSTRAINT.

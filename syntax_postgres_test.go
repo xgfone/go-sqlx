@@ -45,6 +45,25 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 		want [][]any
 	}{
 		{
+			"function names beginning with underscore",
+			Select().SelectExpr(Func("_fn", 1), Func("public._fn", 2)).SetDialect(dialect.Postgres),
+			[][]any{{2, 3}},
+		},
+		{
+			"qualified conflict target",
+			Insert().Into("other").Columns("v").Values(1).
+				OnConflict(ConflictExpressions(Ident("other", "v")).DoNothing()).Returning("v").
+				SetDialect(dialect.Postgres),
+			[][]any{},
+		},
+		{
+			"alias-qualified conflict target",
+			Insert().IntoAlias("other", "o").Columns("v").Values(1).
+				OnConflict(ConflictExpressions(Ident("o", "v")).DoUpdate(Set("v", 3))).Returning("v").
+				SetDialect(dialect.Postgres),
+			[][]any{{3}},
+		},
+		{
 			"group",
 			Select().SelectExpr(e, Count("*")).From("t").GroupByExpr(e).
 				OrderByExpr(e, Asc).SetDialect(dialect.Postgres),
@@ -257,8 +276,9 @@ const { PGlite } = await import(pathToFileURL(process.argv[1]).href);
 const db = new PGlite();
 const stringify = value => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? Number(v) : v);
 try {
+  await db.exec('CREATE FUNCTION _fn(value INTEGER) RETURNS INTEGER LANGUAGE SQL AS $$ SELECT value + 1 $$;');
   for (const q of JSON.parse(fs.readFileSync(0, 'utf8'))) {
-    await db.exec('DROP TABLE IF EXISTS t, other; CREATE TABLE t(v INTEGER); INSERT INTO t VALUES (NULL), (2), (2), (10); CREATE TABLE other(v INTEGER); INSERT INTO other VALUES (1), (2);');
+    await db.exec('DROP TABLE IF EXISTS t, other; CREATE TABLE t(v INTEGER); INSERT INTO t VALUES (NULL), (2), (2), (10); CREATE TABLE other(v INTEGER PRIMARY KEY); INSERT INTO other VALUES (1), (2);');
     try {
       const result = await db.query(q.SQL, q.Args ?? [], {rowMode: 'array'});
       if (stringify(result.rows) !== stringify(q.Want)) throw new Error('rows '+stringify(result.rows)+' expected '+stringify(q.Want));

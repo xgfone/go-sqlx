@@ -122,6 +122,16 @@ func TestTypedSelectExpressions(t *testing.T) {
 
 var expressionResult string
 
+func TestFunctionNames(t *testing.T) {
+	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+		for _, name := range []string{"_fn", "public._fn", "函数"} {
+			checkSQL(t, Select().SelectExpr(Func(name, 1)).SetDialect(d),
+				"SELECT "+name+"("+d.Placeholder(1)+")", 1)
+		}
+		checkBuildError(t, Select().SelectExpr(Func("", 1)).SetDialect(d))
+	}
+}
+
 func BenchmarkExpressionBuild(b *testing.B) {
 	for _, test := range []struct {
 		name string

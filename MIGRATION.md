@@ -34,6 +34,12 @@ aliases and ordinals remain as supplied: for example, `ORDER BY "key"` or
 `ORDER BY 1` is no longer expanded to the matching DISTINCT ON expression.
 Valid queries retain their semantics, but SQL string snapshots may need updating.
 
+Func no longer applies named-parameter restrictions to function names. Names are
+trusted function paths for the selected dialect; an empty name still fails Build.
+This permits valid names such as `_fn` and `public._fn`. ConflictExpressions now
+wraps qualified identifiers in expression parentheses, while a single column
+name keeps its existing SQL form.
+
 ## Go 1.27 and generic model selection
 
 The minimum Go version is now 1.27. `SelectBuilder.SelectStruct[T]` and

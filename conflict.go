@@ -176,7 +176,8 @@ func (t ConflictTarget) writeTo(s *strings.Builder, c *BuildContext) {
 				_, _ = s.WriteString(", ")
 			}
 
-			if e.isIdentifier() {
+			// Only a single column name may omit expression parentheses.
+			if e.node == identifierExpression {
 				e.writeTo(s, c)
 			} else {
 				_ = s.WriteByte('(')
