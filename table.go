@@ -39,6 +39,11 @@ func (t Table) Select(columns ...string) *SelectBuilder {
 	return t.GetDB().Select(columns...).From(t.Name)
 }
 
+// SelectColumns creates a column query using this table and its database.
+func (t Table) SelectColumns(columns ...Column) *SelectBuilder {
+	return t.Select().SelectColumns(columns...)
+}
+
 func (t Table) SelectStruct[T any](s T) *SelectBuilder {
 	return t.Select().SelectStruct(s)
 }

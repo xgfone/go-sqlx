@@ -105,6 +105,12 @@ func (o Oper[T]) Select(columns ...string) *SelectBuilder {
 	return q
 }
 
+// SelectColumns creates a column query preserving the operation's database,
+// conditions, sorter, and binding configuration.
+func (o Oper[T]) SelectColumns(columns ...Column) *SelectBuilder {
+	return o.Select().SelectColumns(columns...)
+}
+
 func (o Oper[T]) SelectStruct() *SelectBuilder {
 	var v T
 	return o.Select().SelectStruct(v)

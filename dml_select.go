@@ -44,11 +44,27 @@ type SelectBuilder struct {
 
 func Select(columns ...string) *SelectBuilder { return new(SelectBuilder).Select(columns...) }
 
+// SelectColumns creates a query selecting reusable column paths.
+func SelectColumns(columns ...Column) *SelectBuilder { return Select().SelectColumns(columns...) }
+
 func (db *DB) Select(columns ...string) *SelectBuilder { return Select(columns...).SetDB(db) }
+
+// SelectColumns creates a column query bound to db.
+func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
+	return db.Select().SelectColumns(columns...)
+}
 
 func (b *SelectBuilder) Select(columns ...string) *SelectBuilder {
 	for _, s := range columns {
 		b.columns = append(b.columns, selectedColumn{Column: s})
+	}
+	return b
+}
+
+// SelectColumns appends reusable column paths to the selection.
+func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
+	for _, column := range columns {
+		b.columns = append(b.columns, selectedColumn{Column: string(column)})
 	}
 	return b
 }

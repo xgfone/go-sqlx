@@ -17,6 +17,59 @@ Go 1.27 or newer is required. Model selection uses generic methods.
 go get github.com/xgfone/go-sqlx
 ```
 
+## Reusable columns
+
+Declare `Column` constants to reuse column names with either functions or methods:
+
+```go
+const (
+    UserID   sqlx.Column = "id"
+    UserName sqlx.Column = "name"
+)
+
+q := sqlx.SelectColumns(UserID, UserName).
+    From("users").Where(UserID.Eq(123)).Sort(UserID.Desc())
+
+update := sqlx.Update().Table("users").
+    Set(UserName.Set("Alice")).Where(sqlx.Eq(UserID, 123))
+```
+
+`Column` is a defined string type with no model registration or metadata lookup.
+Its methods delegate to the existing predicate, assignment, and ordering APIs.
+`SelectColumns(...Column)` is available on the package, `DB`, `Table`, `Oper`,
+and `SelectBuilder`. Each entry preserves the same context as its `Select`
+counterpart, including the operation's conditions, sorter, and binding settings.
+`Select(...string)` is unchanged; use `Name()` for other string-taking APIs.
+Constants prevent repeated spelling mistakes at use sites, but do not validate
+the declared names against model fields or database columns.
+
+`UserID.Scope("u")` returns `u.id` without changing `UserID`. An empty scope
+leaves the path unchanged; repeated scopes prepend further path components.
+Declare the corresponding table aliases separately in the query. Use `Ref()`
+explicitly on the right to compare or assign columns:
+
+```go
+const OrderUserID sqlx.Column = "user_id"
+joinCondition := UserID.Scope("u").Eq(OrderUserID.Scope("o").Ref())
+// "u"."id" = "o"."user_id"
+
+// On always compares column paths; its argument can also be a string variable.
+joinCondition = UserID.Scope("u").On(OrderUserID.Scope("o"))
+```
+
+Without `Ref()`, a right-hand `Column` is bound as data, just like other values.
+Dots in a `Column` separate identifier components; use `Ident("a.b")` for a
+single identifier whose literal name contains a dot. `Scope` builds a qualified
+path; whether it is valid in a particular SQL clause depends on the database.
+
+Column methods also cover `InQuery`/`NotInQuery`, `Count`, `CountDistinct`, `Sum`,
+`Min`, `Max`, `Avg`, `Cast`, `Coalesce`, and `NullIf`. Aggregate and scalar methods
+return `Expression`, usable with `SelectExpr` and other expression APIs.
+`Coalesce` and `NullIf` treat the receiver as a column reference and their other
+arguments as values or explicit Expressions, following the usual binding rules.
+Use `column.As("alias")` with `SelectNamers`, and an unqualified
+`column.ColValue(value)` with `InsertBuilder.Row`.
+
 ## Build and execute
 
 ```go
