@@ -110,7 +110,7 @@ func (s *preparedRowsScanner) Scan(dst ...any) error {
 			return err
 		}
 
-		mapping, err := rowbind.Prepare(columns, s.types, s.rows.config.Scan)
+		mapping, err := rowbind.Prepare(columns, s.types, s.rows.config.ScanOptions)
 		if err != nil {
 			return err
 		}
@@ -148,7 +148,7 @@ func scanSource(scanner RowScanner) (func(...any) error, []string, ScanOptions, 
 		if err != nil {
 			return nil, nil, ScanOptions{}, err
 		}
-		return rows.rows.Scan, columns, rows.config.Scan, nil
+		return rows.rows.Scan, columns, rows.config.ScanOptions, nil
 
 	case Row, *Row:
 		return nil, nil, ScanOptions{}, errors.New("sqlx: use Row.Scan for a single-use result")
@@ -172,7 +172,7 @@ func scanSingleStruct(rows *Rows, dst []any) error {
 	if err != nil {
 		return err
 	}
-	return rowbind.ScanStruct(rows.rows.Scan, columns, dst, rows.config.Scan)
+	return rowbind.ScanStruct(rows.rows.Scan, columns, dst, rows.config.ScanOptions)
 }
 
 func nilBindingValue(v any) bool {

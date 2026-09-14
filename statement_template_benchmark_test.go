@@ -149,7 +149,8 @@ func BenchmarkStatementTemplateRows(b *testing.B) {
 				})
 			}
 			db := bindTestDB(b, f).WithBindConfig(BindConfig{
-				Binder: NewSliceRowsBinder[[]performanceRecord](), Capacity: max(n, 1),
+				RowsBinder: NewSliceRowsBinder[[]performanceRecord](),
+				Capacity:   max(n, 1),
 			})
 			builder := db.Select("*").From("records").Where(Eq("id", int64(42))).Limit(int64(max(n, 1)))
 			compiled := mustCompileTemplate(b, builder.Clone().ClearWhere().Where(Eq("id", Param(0))))

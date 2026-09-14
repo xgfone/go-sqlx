@@ -360,6 +360,19 @@ options. A local configuration replaces the entire inherited configuration.
 Configure before concurrent use; configuration setters copy layout slices and
 do not mutate the parent. `WithExecutor` retains the configuration.
 
+Binding configuration fields have been renamed. Update struct literals and field
+accesses to use the following names:
+
+| Previous field | Replacement |
+| --- | --- |
+| `BindConfig.Scan` | `BindConfig.ScanOptions` |
+| `BindConfig.Binder` | `BindConfig.RowsBinder` |
+| `BindOptions.Scan` | `BindOptions.ScanOptions` |
+
+`BindOptions.Mode` and `DuplicateKeys` retain their names. The renamed fields
+keep the same types, defaults, and behavior. `SetBinder` and `WithBinder` also
+retain their names.
+
 `DefaultMixRowsBinder`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
 or independent concurrent registry. Register the exact pointer destination type
 with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar

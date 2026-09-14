@@ -118,7 +118,7 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 			type number int64
 			config := BindConfig{}
 			if typed {
-				config.Binder = NewSliceRowsBinder[[]number]()
+				config.RowsBinder = NewSliceRowsBinder[[]number]()
 			}
 
 			original := []number{7, 8, 9, 10}
@@ -203,7 +203,7 @@ func TestMapModesAndDuplicatePolicies(t *testing.T) {
 
 		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
 			SetBindConfig(BindConfig{
-				Binder:        NewMapPairsBinder[map[string]int](),
+				RowsBinder:    NewMapPairsBinder[map[string]int](),
 				DuplicateKeys: policy,
 			})
 
@@ -241,7 +241,7 @@ func TestMapModesAndDuplicatePolicies(t *testing.T) {
 		}
 		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
 			SetBindConfig(BindConfig{
-				Binder:        NewMapPairsBinder[map[string]int](),
+				RowsBinder:    NewMapPairsBinder[map[string]int](),
 				DuplicateKeys: policy,
 			})
 

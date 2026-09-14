@@ -69,8 +69,10 @@ func TestMapScratchResetsNestedValues(t *testing.T) {
 				{int64(3), int64(9)},
 			},
 		}).WithBindConfig(BindConfig{
-			Binder: NewMapIndexBinder[map[int64]model](func(v model) int64 { return v.ID }),
-			Scan:   ScanOptions{NestedPointers: policy},
+			ScanOptions: ScanOptions{NestedPointers: policy},
+			RowsBinder: NewMapIndexBinder[map[int64]model](func(v model) int64 {
+				return v.ID
+			}),
 		})
 
 		for range 3 {

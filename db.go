@@ -78,6 +78,11 @@ func ConnMaxIdleTime(d time.Duration) Config {
 }
 
 // DB is the wrapper of the sql.DB.
+//
+// Set methods mutate the same DB; configure it before concurrent use
+// or synchronize changes with all users.
+//
+// With methods return a copy with the requested configuration.
 type DB struct {
 	Dialect
 	Executor
@@ -128,8 +133,15 @@ func getDialect(db *DB) Dialect {
 // e.g. a transaction.
 func (db *DB) WithExecutor(e Executor) *DB {
 	v := *db
-	v.Executor = e
-	return &v
+	return v.SetExecutor(e)
+}
+
+// SetExecutor replaces this DB's executor and returns db. It does not close the
+// previous executor. Existing builders without an executor override use the new
+// executor on their next execution. See DB for synchronization requirements.
+func (db *DB) SetExecutor(e Executor) *DB {
+	db.Executor = e
+	return db
 }
 
 // BeginTx starts a transaction when the executor supports it.

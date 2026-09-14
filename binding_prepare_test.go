@@ -23,7 +23,7 @@ func TestBindingPrepareOwnsMappingInputs(t *testing.T) {
 	layouts := []string{time.DateOnly}
 	options := BindOptions{
 		Columns: columns,
-		Scan: ScanOptions{
+		ScanOptions: ScanOptions{
 			TimeLayouts:  layouts,
 			DurationUnit: time.Second,
 		},
@@ -36,7 +36,7 @@ func TestBindingPrepareOwnsMappingInputs(t *testing.T) {
 	}
 
 	columns[0], layouts[0] = "changed", "invalid layout"
-	options.Scan.DurationUnit = time.Minute
+	options.ScanOptions.DurationUnit = time.Minute
 	rows := bindTestDB(t, &bindFixture{
 		// Prepared labels deliberately differ from the raw driver's names.
 		columns: []string{"raw_span", "raw_stamp"},
@@ -117,8 +117,8 @@ func (c *rawBindingCursor) Scan(dst ...any) error { return dst[0].(sql.Scanner).
 
 func TestBindingScanUsesOptionsWithMetadataFreeCursor(t *testing.T) {
 	options := BindOptions{
-		Columns: []string{"span"},
-		Scan:    ScanOptions{DurationUnit: time.Minute},
+		Columns:     []string{"span"},
+		ScanOptions: ScanOptions{DurationUnit: time.Minute},
 	}
 
 	var got []time.Duration
@@ -146,14 +146,19 @@ func TestBindingScanUsesOptionsWithMetadataFreeCursor(t *testing.T) {
 
 func TestCustomBindingReceivesRawCursorAndConfigurationSnapshot(t *testing.T) {
 	layouts := []string{time.DateOnly}
-	config := BindConfig{Scan: ScanOptions{DurationUnit: time.Second, TimeLayouts: layouts}}
-	config.Binder = RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
-		if !reflect.DeepEqual(options.Columns, []string{"span"}) || options.Scan.DurationUnit != time.Second {
+	config := BindConfig{
+		ScanOptions: ScanOptions{
+			DurationUnit: time.Second,
+			TimeLayouts:  layouts,
+		},
+	}
+	config.RowsBinder = RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
+		if !reflect.DeepEqual(options.Columns, []string{"span"}) || options.ScanOptions.DurationUnit != time.Second {
 			t.Fatal("missing binding metadata", options)
 		}
 
 		// A custom extension must not be able to corrupt the DB's snapshot.
-		options.Scan.TimeLayouts[0] = "custom mutation"
+		options.ScanOptions.TimeLayouts[0] = "custom mutation"
 		mapping, err := options.PrepareMapping(reflect.TypeFor[*time.Duration]())
 		if err != nil {
 			return nil, err
@@ -196,7 +201,7 @@ func TestCustomBindingReceivesRawCursorAndConfigurationSnapshot(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(got, []time.Duration{2 * time.Second}) ||
-		db.BindConfig().Scan.TimeLayouts[0] != time.DateOnly {
+		db.BindConfig().ScanOptions.TimeLayouts[0] != time.DateOnly {
 		t.Fatal(got, db.BindConfig())
 	}
 }

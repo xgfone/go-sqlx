@@ -68,7 +68,7 @@ func TestCollectHonorsBinderSelection(t *testing.T) {
 			registry.RegisterType[*[]value](binder)
 		}
 
-		rows.SetBindConfig(BindConfig{Capacity: 9, Binder: registry})
+		rows.SetBindConfig(BindConfig{Capacity: 9, RowsBinder: registry})
 		switch mode {
 		case "explicit":
 			rows.SetBinder(binder)
@@ -117,7 +117,7 @@ func TestCollectMappingOptionsAndOwnership(t *testing.T) {
 		SetColumns("span", "stamp", "data", "child_value", "custom", "ignored").
 		SetBindConfig(BindConfig{
 			Capacity: 1,
-			Scan: ScanOptions{
+			ScanOptions: ScanOptions{
 				DurationUnit:         time.Second,
 				Location:             zone,
 				TimeLayouts:          []string{"02/01/2006"},

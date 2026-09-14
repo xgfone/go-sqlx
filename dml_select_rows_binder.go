@@ -149,7 +149,7 @@ func (SliceRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error
 	}
 
 	types := []reflect.Type{reflect.PointerTo(v.Type().Elem().Elem())}
-	mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+	mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedS
 	}
 
 	types := []reflect.Type{reflect.TypeFor[*T]()}
-	mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+	mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +494,7 @@ func mapRowsBinder[M ~map[K]V, K comparable, V any](
 			return nil, configError
 		}
 
-		mapping, err := rowbind.Prepare(options.Columns, types, options.Scan)
+		mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
 		if err != nil {
 			return nil, err
 		}

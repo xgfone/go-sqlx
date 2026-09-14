@@ -51,7 +51,10 @@ func BenchmarkBindingLimitCapacity(b *testing.B) {
 						})
 					}
 
-					db := bindTestDB(b, f).WithBindConfig(BindConfig{Binder: binder, Capacity: tc.capacity})
+					db := bindTestDB(b, f).WithBindConfig(BindConfig{
+						RowsBinder: binder,
+						Capacity:   tc.capacity,
+					})
 					q := db.Select("*").From("records")
 					if tc.limit >= 0 {
 						q.Limit(tc.limit)

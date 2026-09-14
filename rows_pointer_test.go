@@ -55,7 +55,7 @@ func TestScansFollowInPlaceOptions(t *testing.T) {
 		}
 	}
 
-	alias.SetBindConfig(BindConfig{Scan: ScanOptions{DurationUnit: time.Second}})
+	alias.SetBindConfig(BindConfig{ScanOptions: ScanOptions{DurationUnit: time.Second}})
 	var got time.Duration
 	for _, scan := range []func(...any) error{rows.Scan, scan.Scan} {
 		if err := scan(&got); err != nil || got != 2*time.Second {

@@ -253,7 +253,7 @@ raw queries, and builders, including INSERT/UPDATE/DELETE RETURNING:
 db = db.WithBindConfig(sqlx.BindConfig{
     Capacity:      128, // Explicit allocation hint; zero enables automatic sizing.
     DuplicateKeys: sqlx.DuplicateKeyReject,
-    Scan: sqlx.ScanOptions{
+    ScanOptions: sqlx.ScanOptions{
         Nulls:          sqlx.NullToZero,
         DurationUnit:   time.Millisecond,
         NestedPointers: sqlx.NilNullNestedPointers,
@@ -266,6 +266,15 @@ Use `SetBindConfig` on a builder or Rows, `WithBindConfig` on an Oper,
 whole prior configuration and copy `TimeLayouts`. Capacity and scan policies
 remain per-configuration; the binder registry is shared. `WithExecutor` preserves
 the DB configuration. Builder `Clone` and `Reset` preserve its explicit override.
+
+`DB.SetBindConfig`, `DB.SetBinder`, and `DB.SetExecutor` mutate the same DB and
+return its pointer. Their `With...` counterparts return a copy. Configure a shared
+DB before concurrent use, or synchronize changes with all users. Existing
+builders without explicit overrides use the DB's current configuration and
+executor when executed; existing Row/Rows results retain their configuration and
+cursor. `SetBindConfig` copies `TimeLayouts`; `SetBinder` preserves other options,
+and nil restores the default registry. `SetExecutor` does not close the previous
+executor. Use `WithExecutor(tx)` for a transaction-specific DB.
 
 An explicit positive `Capacity` takes precedence and is not capped. When it is
 zero, a SELECT builder's positive LIMIT (including Pagination/Paginate) supplies
@@ -468,7 +477,7 @@ does not invoke `RowsBinder`; customize field conversion with `sql.Scanner` or
 Extensions implement `RowsBinder.Prepare(dst, BindOptions)`, returning
 an independent, non-nil `RowsBinding` with `Scan(RowCursor) error` and `Commit()`
 methods. `BindOptions.Columns` supplies ordered binding labels, including overrides;
-`BindOptions.Scan` supplies conversion policies. Direct callers of Prepare must
+`BindOptions.ScanOptions` supplies conversion policies. Direct callers of Prepare must
 supply the result columns themselves. Built-in binders prepare an immutable mapping
 without accessing a cursor, borrowing execution scratch, or changing the destination.
 Mappings snapshot mutable input slices. Shape errors occur during Prepare and do

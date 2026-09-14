@@ -258,8 +258,8 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 		columns: []string{"value"},
 		values:  [][]driver.Value{{int64(2)}},
 	}).WithBindConfig(BindConfig{
-		Capacity: 3,
-		Scan:     ScanOptions{DurationUnit: time.Hour},
+		Capacity:    3,
+		ScanOptions: ScanOptions{DurationUnit: time.Hour},
 	})
 
 	o := NewRegisteredOper[model]("t").WithDB(db)

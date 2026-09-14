@@ -28,10 +28,10 @@ func BenchmarkCollect(b *testing.B) {
 
 					config := BindConfig{Capacity: count}
 					if mode == "general" {
-						config.Binder = SliceRowsBinder{}
+						config.RowsBinder = SliceRowsBinder{}
 					}
 					if mode == "typed" {
-						config.Binder = NewSliceRowsBinder[[]performanceRecord]()
+						config.RowsBinder = NewSliceRowsBinder[[]performanceRecord]()
 					}
 
 					db := bindTestDB(b, f).WithBindConfig(config)

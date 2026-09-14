@@ -48,7 +48,7 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 			func(i int) []driver.Value {
 				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
 			},
-			BindConfig{Binder: SliceRowsBinder{}},
+			BindConfig{RowsBinder: SliceRowsBinder{}},
 			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
 		{
@@ -57,28 +57,28 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 			func(i int) []driver.Value {
 				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
 			},
-			BindConfig{Binder: NewSliceRowsBinder[[]performanceRecord]()},
+			BindConfig{RowsBinder: NewSliceRowsBinder[[]performanceRecord]()},
 			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"map_pairs",
 			[]string{"id", "value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
-			BindConfig{Binder: NewMapPairsBinder[map[int64]int64]()},
+			BindConfig{RowsBinder: NewMapPairsBinder[map[int64]int64]()},
 			func(r *Rows) error { var v map[int64]int64; return r.Bind(&v) },
 		},
 		{
 			"map_index",
 			[]string{"id", "a"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
-			BindConfig{Binder: NewMapIndexBinder[map[int64]performanceRecord](func(v performanceRecord) int64 { return v.ID })},
+			BindConfig{RowsBinder: NewMapIndexBinder[map[int64]performanceRecord](func(v performanceRecord) int64 { return v.ID })},
 			func(r *Rows) error { var v map[int64]performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"map_set",
 			[]string{"id"},
 			func(i int) []driver.Value { return []driver.Value{int64(i)} },
-			BindConfig{Binder: NewMapSetBinder[map[int64]struct{}]()},
+			BindConfig{RowsBinder: NewMapSetBinder[map[int64]struct{}]()},
 			func(r *Rows) error { var v map[int64]struct{}; return r.Bind(&v) },
 		},
 		{
@@ -90,14 +90,14 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 				}
 				return []driver.Value{int64(i), int64(i)}
 			},
-			BindConfig{Binder: SliceRowsBinder{}, Scan: ScanOptions{NestedPointers: NilNullNestedPointers}},
+			BindConfig{RowsBinder: SliceRowsBinder{}, ScanOptions: ScanOptions{NestedPointers: NilNullNestedPointers}},
 			func(r *Rows) error { var v []parent; return r.Bind(&v) },
 		},
 		{
 			"pointer_duration",
 			[]string{"value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i)} },
-			BindConfig{Binder: SliceRowsBinder{}},
+			BindConfig{RowsBinder: SliceRowsBinder{}},
 			func(r *Rows) error { var v []*time.Duration; return r.Bind(&v) }},
 		{
 			"bytes",
@@ -110,7 +110,7 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 			"custom_scanner_map",
 			[]string{"id", "value"},
 			func(i int) []driver.Value { return []driver.Value{int64(i), int64(i)} },
-			BindConfig{Binder: NewMapPairsBinder[map[int64]sql.NullInt64]()},
+			BindConfig{RowsBinder: NewMapPairsBinder[map[int64]sql.NullInt64]()},
 			func(r *Rows) error { var v map[int64]sql.NullInt64; return r.Bind(&v) },
 		},
 	}
@@ -148,7 +148,7 @@ func BenchmarkBindingCapacity(b *testing.B) {
 	for _, capacity := range []int{0, 1000} {
 		b.Run(fmt.Sprintf("capacity_%d", capacity), func(b *testing.B) {
 			db := bindTestDB(b, f).WithBindConfig(BindConfig{Capacity: capacity,
-				Binder: NewMapIndexBinder[map[int64]performanceRecord](func(v performanceRecord) int64 {
+				RowsBinder: NewMapIndexBinder[map[int64]performanceRecord](func(v performanceRecord) int64 {
 					return v.ID
 				}),
 			})
@@ -169,7 +169,7 @@ var performanceBuilder *SelectBuilder
 func BenchmarkBindingSetup(b *testing.B) {
 	b.Run("oper_select_layouts", func(b *testing.B) {
 		o := NewOper[performanceRecord]("t").WithBindConfig(BindConfig{
-			Scan: ScanOptions{TimeLayouts: []string{time.RFC3339Nano, time.DateOnly}},
+			ScanOptions: ScanOptions{TimeLayouts: []string{time.RFC3339Nano, time.DateOnly}},
 		})
 		b.ReportAllocs()
 		for b.Loop() {

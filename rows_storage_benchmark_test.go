@@ -91,8 +91,8 @@ func benchmarkChunkedStorage[T any](
 	db := bindTestDB(b, f).WithBindConfig(BindConfig{Capacity: count})
 	if size != 0 {
 		db = db.WithBindConfig(BindConfig{
-			Capacity: count,
-			Binder:   NewChunkedSliceRowsBinder[[]*T](size),
+			Capacity:   count,
+			RowsBinder: NewChunkedSliceRowsBinder[[]*T](size),
 		})
 	}
 

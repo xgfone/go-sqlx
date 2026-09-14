@@ -37,8 +37,8 @@ func (c *exampleDurationCursor) Scan(dst ...any) error {
 
 func ExampleBindOptions_PrepareMapping() {
 	options := sqlx.BindOptions{
-		Columns: []string{"duration"},
-		Scan:    sqlx.ScanOptions{DurationUnit: time.Second},
+		Columns:     []string{"duration"},
+		ScanOptions: sqlx.ScanOptions{DurationUnit: time.Second},
 	}
 
 	// This phase needs only column labels and destination types.

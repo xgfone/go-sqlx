@@ -85,7 +85,7 @@ func BenchmarkOperBindingScenarios(b *testing.B) {
 					// stateless typed model binder for the raw query comparison.
 					sharedBinder := NewSliceRowsBinder[[]operPerformanceRecord]()
 					wrappedBinder := RowsBinderFunc(sharedBinder.Prepare)
-					rawDB := db.WithBindConfig(BindConfig{Binder: sharedBinder})
+					rawDB := db.WithBindConfig(BindConfig{RowsBinder: sharedBinder})
 					oneSQL, oneArgs, err := o.SelectStruct().Where(Eq("id", int64(1))).Limit(1).Build()
 					if err != nil {
 						b.Fatal(err)

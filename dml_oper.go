@@ -64,7 +64,7 @@ func (o Oper[T]) WithBindConfig(config BindConfig) Oper[T] {
 // capacity options. A nil binder restores the default registry.
 func (o Oper[T]) WithBinder(binder RowsBinder) Oper[T] {
 	config := o.binding()
-	config.Binder = binder
+	config.RowsBinder = binder
 	o.bindConfig = &config
 	return o
 }

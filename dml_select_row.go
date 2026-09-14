@@ -36,7 +36,7 @@ func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
 		err:     err,
 		rows:    rows,
 		columns: slices.Clone(columns),
-		options: c.Scan,
+		options: c.ScanOptions,
 	}
 }
 
@@ -56,7 +56,7 @@ func (r Row) result() *Rows {
 	return &Rows{
 		err:     r.err,
 		rows:    r.rows,
-		config:  BindConfig{Scan: r.options},
+		config:  BindConfig{ScanOptions: r.options},
 		columns: r.columns,
 		labels:  r.labels,
 	}

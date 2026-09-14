@@ -19,8 +19,8 @@ func benchmarkMapPairs[M ~map[K]V, K comparable, V any](b *testing.B) {
 				f.values = append(f.values, []driver.Value{int64(i), int64(i)})
 			}
 			db := bindTestDB(b, f).WithBindConfig(BindConfig{
-				Capacity: count,
-				Binder:   NewMapPairsBinder[M](),
+				Capacity:   count,
+				RowsBinder: NewMapPairsBinder[M](),
 			})
 
 			b.ReportAllocs()

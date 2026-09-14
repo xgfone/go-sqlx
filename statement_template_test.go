@@ -360,11 +360,11 @@ func TestTemplateExecutionAndConfiguration(t *testing.T) {
 	}
 
 	// Frozen explicit policies own their mutable layouts, even after builder reuse.
-	options := BindConfig{Scan: ScanOptions{TimeLayouts: []string{"2006-01-02"}}}
+	options := BindConfig{ScanOptions: ScanOptions{TimeLayouts: []string{"2006-01-02"}}}
 	b := db.Select("id").SetBindConfig(options)
 	q := mustCompileTemplate(t, b)
-	b.bconfig.Scan.TimeLayouts[0] = "changed"
-	if q.config.Scan.TimeLayouts[0] != "2006-01-02" {
+	b.bconfig.ScanOptions.TimeLayouts[0] = "changed"
+	if q.config.ScanOptions.TimeLayouts[0] != "2006-01-02" {
 		t.Fatal("configuration snapshot aliases builder")
 	}
 

@@ -28,7 +28,7 @@ func TestChunkedBindingStableBlocksAndQueries(t *testing.T) {
 	}
 
 	var first, second records
-	db := bindTestDB(t, f).WithBindConfig(BindConfig{Binder: binder, Capacity: 1})
+	db := bindTestDB(t, f).WithBindConfig(BindConfig{RowsBinder: binder, Capacity: 1})
 	if err := db.QueryRowsContext(context.Background(), "q").Bind(&first); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestChunkedBindingRejectsInvalidConfiguration(t *testing.T) {
 	for _, options := range []BindOptions{
 		{Capacity: -1},
 		{Mode: BindMerge},
-		{Scan: ScanOptions{Nulls: 99}},
+		{ScanOptions: ScanOptions{Nulls: 99}},
 	} {
 		if _, err := binder.Prepare(new([]*chunkRecord), options); err == nil {
 			t.Fatal(options)

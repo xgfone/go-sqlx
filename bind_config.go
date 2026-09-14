@@ -71,7 +71,7 @@ const maxLimitRowsCapacity = 100
 // BindOptions is passed to RowsBinder.Prepare. Implementations must leave the
 // destination unchanged until Commit, including its shared backing storage.
 // Columns is the ordered binding-label snapshot for the current result set.
-// Scan supplies the conversion policy; it is not inferred from the raw cursor.
+// ScanOptions supplies the conversion policy; it is not inferred from the raw cursor.
 // Built-in binders prepare the mapping here, so supply Columns before Prepare.
 type BindOptions struct {
 	// Capacity hints at the number of incoming rows to reserve, not a row limit.
@@ -79,9 +79,9 @@ type BindOptions struct {
 	// from their positive LIMIT, capped at 100, before calling Prepare.
 	Capacity      int
 	Columns       []string
-	Scan          ScanOptions
-	Mode          BindMode
+	ScanOptions   ScanOptions
 	DuplicateKeys DuplicateKeyPolicy
+	Mode          BindMode
 }
 
 func (o BindOptions) validate() error {
@@ -94,7 +94,7 @@ func (o BindOptions) validate() error {
 	if o.DuplicateKeys > DuplicateKeyLast {
 		return errors.New("sqlx: invalid duplicate key policy")
 	}
-	return validateScanOptions(o.Scan)
+	return validateScanOptions(o.ScanOptions)
 }
 
 // RowMapping is immutable preparation for one ordered result shape. Copies can
@@ -105,7 +105,7 @@ type RowMapping struct{ mapping rowbind.Mapping }
 // before it receives a cursor. It snapshots mutable option slices and does not
 // allocate execution scratch or change any destination.
 func (o BindOptions) PrepareMapping(types ...reflect.Type) (RowMapping, error) {
-	mapping, err := rowbind.Prepare(o.Columns, types, o.Scan)
+	mapping, err := rowbind.Prepare(o.Columns, types, o.ScanOptions)
 	return RowMapping{mapping: mapping}, err
 }
 
@@ -136,14 +136,14 @@ func (o BindOptions) capacity() int {
 
 // BindConfig is query binding configuration.
 //
-// A nil Binder uses DefaultMixRowsBinder; map types without a default
+// A nil RowsBinder uses DefaultMixRowsBinder; map types without a default
 // registration require an explicit binder or registration. Configure a DB
-// with WithBindConfig, override a builder/Oper, or customize an individual
-// result. Configurations copy TimeLayouts; custom Binder implementations
-// must be safe to share.
+// with SetBindConfig or WithBindConfig, override a builder/Oper, or customize
+// an individual result. Configurations copy TimeLayouts; custom RowsBinder
+// implementations must be safe to share.
 type BindConfig struct {
-	Scan   ScanOptions
-	Binder RowsBinder
+	ScanOptions ScanOptions
+	RowsBinder  RowsBinder
 
 	DuplicateKeys DuplicateKeyPolicy
 
@@ -153,12 +153,12 @@ type BindConfig struct {
 }
 
 func (c BindConfig) clone() BindConfig {
-	c.Scan = cloneScanOptions(c.Scan)
+	c.ScanOptions = cloneScanOptions(c.ScanOptions)
 	return c
 }
 func (c BindConfig) options(mode BindMode) BindOptions {
 	return BindOptions{
-		Scan:          cloneScanOptions(c.Scan),
+		ScanOptions:   cloneScanOptions(c.ScanOptions),
 		Mode:          mode,
 		Capacity:      c.Capacity,
 		DuplicateKeys: c.DuplicateKeys,
@@ -168,16 +168,31 @@ func (c BindConfig) options(mode BindMode) BindOptions {
 // WithBindConfig returns an independent DB configuration with the same executor.
 func (db *DB) WithBindConfig(config BindConfig) *DB {
 	v := *db
-	v.config = config.clone()
-	return &v
+	return v.SetBindConfig(config)
+}
+
+// SetBindConfig replaces this DB's binding configuration and returns db.
+// TimeLayouts is copied; RowsBinder is shared. Existing builders without an override
+// inherit the new configuration on execution; existing results keep theirs.
+// See DB for synchronization requirements.
+func (db *DB) SetBindConfig(config BindConfig) *DB {
+	db.config = config.clone()
+	return db
 }
 
 // WithBinder returns a DB sharing the binder and executor while preserving
 // all other binding options. A nil binder restores the default registry.
 func (db *DB) WithBinder(binder RowsBinder) *DB {
 	v := *db
-	v.config.Binder = binder
-	return &v
+	return v.SetBinder(binder)
+}
+
+// SetBinder replaces this DB's binder, preserves other binding options, and
+// returns db. Nil restores the default registry. The binder is shared and must
+// support concurrent preparation. See DB for synchronization requirements.
+func (db *DB) SetBinder(binder RowsBinder) *DB {
+	db.config.RowsBinder = binder
+	return db
 }
 
 // BindConfig returns a copy of the database's binding configuration.

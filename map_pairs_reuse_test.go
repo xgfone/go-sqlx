@@ -120,8 +120,8 @@ func TestMapPairsNullableSemanticsAndDuplicates(t *testing.T) {
 		rows := bindTestDB(t, f).WithBindConfig(BindConfig{
 			DuplicateKeys: policy,
 
-			Binder: NewMapPairsBinder[map[int64]sql.NullInt64](),
-			Scan:   ScanOptions{Nulls: NullError},
+			RowsBinder:  NewMapPairsBinder[map[int64]sql.NullInt64](),
+			ScanOptions: ScanOptions{Nulls: NullError},
 		}).QueryRowsContext(context.Background(), "q")
 		got := map[int64]sql.NullInt64{99: {Int64: 99, Valid: true}}
 		err := rows.Bind(&got)

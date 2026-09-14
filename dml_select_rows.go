@@ -144,7 +144,7 @@ func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
 		return r
 	}
 
-	r.config.Scan = cloneScanOptions(options)
+	r.config.ScanOptions = cloneScanOptions(options)
 	r.revision++
 	r.scan.Reset()
 	return r
@@ -157,7 +157,7 @@ func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 		return r
 	}
 
-	r.config.Binder = binder
+	r.config.RowsBinder = binder
 	return r
 }
 
@@ -228,7 +228,7 @@ func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 		return err
 	}
 
-	binder := r.config.Binder
+	binder := r.config.RowsBinder
 	if binder == nil {
 		binder = DefaultMixRowsBinder
 	}
@@ -278,7 +278,7 @@ func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 	if err = r.Err(); err != nil {
 		return options, err
 	}
-	if err = validateScanOptions(r.config.Scan); err != nil {
+	if err = validateScanOptions(r.config.ScanOptions); err != nil {
 		return options, err
 	}
 
@@ -311,7 +311,7 @@ func (r *Rows) Scan(dst ...any) error {
 	if err != nil {
 		return err
 	}
-	return r.scan.Scan(r.rows.Scan, columns, dst, r.config.Scan)
+	return r.scan.Scan(r.rows.Scan, columns, dst, r.config.ScanOptions)
 }
 
 func (r *Rows) scanColumns() ([]string, error) {

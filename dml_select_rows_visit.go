@@ -37,7 +37,7 @@ func (r *Rows) Visit[T any](yield func(T) (continueReading bool, err error)) (er
 		return err
 	}
 
-	mapping, err := rowbind.Prepare(columns, []reflect.Type{reflect.TypeFor[*T]()}, r.config.Scan)
+	mapping, err := rowbind.Prepare(columns, []reflect.Type{reflect.TypeFor[*T]()}, r.config.ScanOptions)
 	if err != nil {
 		return err
 	}

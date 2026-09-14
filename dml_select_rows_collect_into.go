@@ -36,7 +36,7 @@ func (r *Rows) CollectInto[S ~[]T, T any](storage S) (result S, err error) {
 		return collector.values, err
 	}
 
-	mapping, err := rowbind.Prepare(options.Columns, []reflect.Type{reflect.TypeFor[*T]()}, options.Scan)
+	mapping, err := rowbind.Prepare(options.Columns, []reflect.Type{reflect.TypeFor[*T]()}, options.ScanOptions)
 	if err != nil {
 		return collector.values, err
 	}

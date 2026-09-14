@@ -277,7 +277,7 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 	}
 
 	base := bindTestDB(t, f)
-	config := BindConfig{Capacity: 73, Scan: ScanOptions{DurationUnit: time.Second}}
+	config := BindConfig{Capacity: 73, ScanOptions: ScanOptions{DurationUnit: time.Second}}
 	db := base.WithBindConfig(config)
 	queries := []func() *Rows{
 		func() *Rows { return db.QueryRowsContext(context.Background(), "q") },
@@ -318,9 +318,11 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 		t.Fatal(ordinary, err)
 	}
 
-	builder := db.Select("value").From("t").SetBindConfig(BindConfig{Scan: ScanOptions{DurationUnit: time.Minute}})
+	builder := db.Select("value").From("t").SetBindConfig(BindConfig{
+		ScanOptions: ScanOptions{DurationUnit: time.Minute},
+	})
 	clone := builder.Clone()
-	builder.SetBindConfig(BindConfig{Scan: ScanOptions{DurationUnit: time.Hour}})
+	builder.SetBindConfig(BindConfig{ScanOptions: ScanOptions{DurationUnit: time.Hour}})
 	clone.Reset().Select("value").From("t")
 
 	var overridden []time.Duration
@@ -329,7 +331,9 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 		t.Fatal(overridden, err)
 	}
 
-	o := NewOper[time.Duration]("t").WithDB(db).WithBindConfig(BindConfig{Scan: ScanOptions{DurationUnit: time.Hour}})
+	o := NewOper[time.Duration]("t").WithDB(db).WithBindConfig(BindConfig{
+		ScanOptions: ScanOptions{DurationUnit: time.Hour},
+	})
 	err = o.Select("value").QueryRowsContext(context.Background()).Bind(&overridden)
 	if err != nil || overridden[0] != time.Hour {
 		t.Fatal(overridden, err)
@@ -339,11 +343,11 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 	timeDB := bindTestDB(t, &bindFixture{
 		columns: []string{"value"},
 		values:  [][]driver.Value{{"08/09/2026"}},
-	}).WithBindConfig(BindConfig{Scan: ScanOptions{TimeLayouts: layouts}})
+	}).WithBindConfig(BindConfig{ScanOptions: ScanOptions{TimeLayouts: layouts}})
 
 	layouts[0] = "bad"
 	copy := timeDB.BindConfig()
-	copy.Scan.TimeLayouts[0] = "also bad"
+	copy.ScanOptions.TimeLayouts[0] = "also bad"
 
 	var got []time.Time
 	err = timeDB.QueryRowsContext(context.Background(), "q").Bind(&got)
@@ -406,9 +410,9 @@ func TestBindingInvalidConfigAndColumnOwnership(t *testing.T) {
 	for _, config := range []BindConfig{
 		{Capacity: -1},
 		{DuplicateKeys: 99},
-		{Scan: ScanOptions{Nulls: 99}},
-		{Scan: ScanOptions{NestedPointers: 99}},
-		{Scan: ScanOptions{DurationUnit: -1}},
+		{ScanOptions: ScanOptions{Nulls: 99}},
+		{ScanOptions: ScanOptions{NestedPointers: 99}},
+		{ScanOptions: ScanOptions{DurationUnit: -1}},
 	} {
 		var got []int
 		rows, f := bindTestRows(t, int64(1))
@@ -449,7 +453,7 @@ func TestSharedBindingConfigConcurrentQueries(t *testing.T) {
 			{int64(1)},
 			{int64(2)}},
 	}).WithBindConfig(BindConfig{
-		Binder: ComposeRowsBinders(NewSliceRowsBinder[[]model](), SliceRowsBinder{}),
+		RowsBinder: ComposeRowsBinders(NewSliceRowsBinder[[]model](), SliceRowsBinder{}),
 	})
 
 	var wg sync.WaitGroup
