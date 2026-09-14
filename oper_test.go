@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -283,6 +284,84 @@ func TestOperCountGetsEvaluatesPaginationOnce(t *testing.T) {
 	}
 }
 
+func checkOperAggregateNullToZero[R any](t *testing.T, initial R) {
+	t.Helper()
+	for _, scope := range []string{"default", "db", "oper"} {
+		t.Run(reflect.TypeFor[R]().String()+"/"+scope, func(t *testing.T) {
+			f := &bindFixture{
+				columns: []string{"total"},
+				values:  [][]driver.Value{{nil}},
+			}
+			db := bindTestDB(t, f)
+			config := BindConfig{ScanOptions: ScanOptions{Nulls: NullError}}
+			if scope == "db" {
+				db.SetBindConfig(config)
+			}
+
+			o := NewOper[struct{}]("t").WithDB(db)
+			if scope == "oper" {
+				o = o.WithBindConfig(config)
+			}
+
+			var zero R
+			got := initial
+			err := o.Aggregate(context.Background(), Sum("value"), &got)
+			if err != nil || !reflect.DeepEqual(got, zero) || f.closed.Load() != 1 {
+				t.Fatal(got, err, f.closed.Load())
+			}
+			if scope != "default" && o.binding().ScanOptions.Nulls != NullError {
+				t.Fatal("aggregate changed the operation's NULL policy")
+			}
+		})
+	}
+}
+
+func TestOperAggregateNullToZero(t *testing.T) {
+	type total int64
+	checkOperAggregateNullToZero(t, int64(42))
+	checkOperAggregateNullToZero(t, float64(12.5))
+	checkOperAggregateNullToZero(t, "old")
+	checkOperAggregateNullToZero(t, total(42))
+	checkOperAggregateNullToZero(t, []byte("old"))
+	checkOperAggregateNullToZero(t, new(int64))
+	checkOperAggregateNullToZero(t, sql.NullInt64{Int64: 42, Valid: true})
+}
+
+func TestOperAggregateRejectsNilDestinationBeforeQuery(t *testing.T) {
+	f := &scanFixture{values: []driver.Value{int64(42)}}
+	o := NewOper[struct{}]("t").WithDB(fixtureDB(t, f))
+	err := o.Aggregate[int64](context.Background(), Sum("value"), nil)
+	if err == nil || f.query != "" {
+		t.Fatal(err, f.query)
+	}
+}
+
+func TestOperAggregatePreservesOtherScanOptions(t *testing.T) {
+	f := &scanFixture{values: []driver.Value{int64(2)}}
+	config := BindConfig{ScanOptions: ScanOptions{
+		Nulls:        NullError,
+		DurationUnit: time.Second,
+	}}
+	db := fixtureDB(t, f).WithBindConfig(config)
+	for _, o := range []Oper[struct{}]{
+		NewOper[struct{}]("t").WithDB(db),
+		NewOper[struct{}]("t").WithDB(db).WithBindConfig(config),
+	} {
+		var duration time.Duration
+		err := o.Aggregate(context.Background(), Sum("value"), &duration)
+		if err != nil || duration != 2*time.Second {
+			t.Fatal(duration, err)
+		}
+
+		f.values = []driver.Value{nil}
+		err = o.Select("value").QueryRowContext(context.Background()).Scan(&duration)
+		if err == nil {
+			t.Fatal("aggregate changed the NULL policy of ordinary queries")
+		}
+		f.values = []driver.Value{int64(2)}
+	}
+}
+
 func checkOperAggregateValue[R any](t *testing.T, source driver.Value, want R) {
 	t.Helper()
 	f := &bindFixture{columns: []string{"total"}, values: [][]driver.Value{{source}}}
@@ -298,6 +377,8 @@ func TestOperAggregateValueTypes(t *testing.T) {
 	checkOperAggregateValue(t, int64(42), int64(42))
 	checkOperAggregateValue(t, []byte("12.5"), float64(12.5))
 	checkOperAggregateValue(t, []byte("9007199254740993.01"), "9007199254740993.01")
+	checkOperAggregateValue(t, nil, int64(0))
+	checkOperAggregateValue(t, nil, float64(0))
 	checkOperAggregateValue(t, nil, "")
 	checkOperAggregateValue(t, nil, (*string)(nil))
 	checkOperAggregateValue(t, nil, sql.NullString{})
@@ -327,12 +408,14 @@ func TestOperAggregateValueDistinctScopeAndErrors(t *testing.T) {
 
 	f.values = []driver.Value{nil}
 	strict := o.WithBindConfig(BindConfig{ScanOptions: ScanOptions{Nulls: NullError}})
-	if _, err := strict.AggregateValue[string](ctx, Sum("amount")); err == nil {
-		t.Fatal("operation scan options ignored")
+	got, err := strict.AggregateValue[string](ctx, Sum("amount"))
+	if err != nil || got != "" {
+		t.Fatal(got, err)
 	}
 
 	f.values = nil
-	if _, err := o.AggregateValue[int64](ctx, Sum("amount")); !errors.Is(err, sql.ErrNoRows) {
+	_, err = o.AggregateValue[int64](ctx, Sum("amount"))
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal(err)
 	}
 }

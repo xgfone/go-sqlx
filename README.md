@@ -918,25 +918,32 @@ oper.SetDB(db) // supported for initialization of predeclared operations
 users, err := oper.Active().Gets(ctx, sqlx.PageSize(1, 20))
 ```
 
-`Aggregate` scans an expression into a destination pointer;
-`AggregateValue[R]` returns the result as R. Both preserve operation conditions
-and scan options, and omit list sorting. Use `CountDistinct` for an individual
-distinct count, without changing the operation's ordinary count behavior:
+`Aggregate[R]` scans an expression into a non-nil `*R` destination, with R inferred
+from the pointer; `AggregateValue[R]` returns the result as R. Both preserve
+operation conditions and omit list sorting. They use `NullToZero` while
+preserving all other scan options. Destinations stored in `any` must be asserted
+to their concrete pointer type before calling `Aggregate`. Use `CountDistinct`
+for an individual distinct count, without changing the operation's ordinary
+count behavior:
 
 ```go
 payments := sqlx.NewOper[Payment]("payments").WithDB(db).
     Where(sqlx.Eq("status", "paid"))
 paidUsers, err := payments.AggregateValue[int64](ctx, sqlx.CountDistinct("user_id"))
 amount, err := payments.AggregateValue[string](ctx, sqlx.Sum("amount"))
+var total int64
+err = payments.Aggregate(ctx, sqlx.Sum("quantity"), &total)
 ```
 
 Supported result types include int, int64, float64, string, nullable pointers,
 and types implementing sql.Scanner. Conversions can fail, including integer
 overflow. For exact DECIMAL totals, preserve an exact database/driver result and
 scan it into string or a decimal Scanner; converting through float64 can lose
-precision. Under the default NULL policy, SUM's NULL result becomes the Go zero
-value (including an empty string). Use `Coalesce(Sum("amount"), 0)` for a numeric
-zero or a nullable result such as `AggregateValue[sql.NullString]` to retain NULL.
+precision. SUM's NULL result becomes the Go zero value for non-nullable scalars
+(including an empty string), even when the DB or Oper uses `NullError`. Nullable
+pointers and custom Scanners retain their usual NULL semantics. Use
+`Coalesce(Sum("amount"), 0)` for a numeric zero or a nullable result such as
+`AggregateValue[sql.NullString]` to retain NULL.
 
 ## Extending and testing
 

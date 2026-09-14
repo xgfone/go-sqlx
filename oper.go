@@ -174,9 +174,18 @@ func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 	return o.Select().ClearOrderBy().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
 }
 
-// Aggregate scans an aggregate expression into a caller-selected type.
-func (o Oper[T]) Aggregate(ctx context.Context, e Expression, dst any, cs ...Condition) error {
-	return o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx).Scan(dst)
+// Aggregate scans an aggregate expression into a non-nil destination pointer.
+// It uses NullToZero regardless of the configured NULL policy, preserving other
+// scan options. Nullable pointers and custom sql.Scanner values retain their
+// usual NULL semantics. R must be supported by Row.Scan.
+func (o Oper[T]) Aggregate[R any](ctx context.Context, e Expression, dst *R, cs ...Condition) error {
+	if dst == nil {
+		return errors.New("sqlx: aggregate destination must be a non-nil pointer")
+	}
+
+	row := o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx)
+	row.options.Nulls = NullToZero
+	return row.Scan(dst)
 }
 
 // AggregateValue returns an aggregate result scanned into R. It uses Aggregate's
