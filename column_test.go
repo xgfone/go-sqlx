@@ -21,10 +21,10 @@ func TestColumnScopedQuery(t *testing.T) {
 		FromAlias("users", "u").Join("orders", "o", uid.On(oid)).Where(Eq(uid, 123)).
 		Sort(uid.Asc(), oid.Desc()).SetDialect(dialect.Postgres)
 
-	columns[0] = "changed"
+	columns[0] = Column("changed")
 	checkSQL(t, q,
 		`SELECT "u"."id", "o"."user_id", "name" FROM "users" AS "u" INNER JOIN "orders" AS "o" ON "u"."id"="o"."user_id" WHERE ("u"."id" = $1) ORDER BY "u"."id" ASC, "o"."user_id" DESC`, 123)
-	checkSQL(t, Select("id").SelectColumns().SetDialect(dialect.Postgres), `SELECT "id"`)
+	checkSQL(t, Select("id").SelectColumns[Column]().SetDialect(dialect.Postgres), `SELECT "id"`)
 }
 
 func TestSelectColumnsEntrypoints(t *testing.T) {
@@ -42,8 +42,34 @@ func TestSelectColumnsEntrypoints(t *testing.T) {
 	if q.GetDB() != db || q.bconfig != oper.bindConfig {
 		t.Fatal("SelectColumns lost operation configuration")
 	}
-	checkSQL(t, oper.SelectColumns().Select("id"),
+	checkSQL(t, oper.SelectColumns[Column]().Select("id"),
 		`SELECT "id" FROM "users" WHERE ("id" = $1) ORDER BY "id" DESC`, 7)
+}
+
+func TestSelectColumnsSliceExpansion(t *testing.T) {
+	testSelectColumnsSlice(t, []Column{"id", "name"})
+	rule := ValueRuleFunc(func(any) (any, error) {
+		t.Fatal("selecting a column must not apply its rule")
+		return nil, nil
+	})
+	testSelectColumnsSlice(t, []RuleColumn{
+		Column("id").WithValueRule(rule),
+		Column("name").WithValueRule(rule),
+	})
+	testSelectColumnsSlice(t, []string{"id", "name"})
+}
+
+func testSelectColumnsSlice[C ColumnOperand](t *testing.T, columns []C) {
+	t.Helper()
+	db := &DB{Dialect: dialect.Postgres}
+	table := db.NewTable("users")
+	oper := NewOper[struct{}]("users").WithDB(db).Where(Eq("id", 7))
+	checkSQL(t, SelectColumns(columns...).SetDialect(dialect.Postgres), `SELECT "id", "name"`)
+	checkSQL(t, db.SelectColumns(columns...), `SELECT "id", "name"`)
+	checkSQL(t, table.SelectColumns(columns...), `SELECT "id", "name" FROM "users"`)
+	checkSQL(t, oper.SelectColumns(columns...), `SELECT "id", "name" FROM "users" WHERE ("id" = $1)`, 7)
+	checkSQL(t, db.Select("other").SelectColumns(columns...), `SELECT "other", "id", "name"`)
+	checkSQL(t, db.SelectColumns(columns[:0]...).Select("id"), `SELECT "id"`)
 }
 
 func TestColumnOnStringPaths(t *testing.T) {

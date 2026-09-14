@@ -84,8 +84,8 @@ func (c Column) Asc() SortColumn { return SortColumn{Column: string(c), Order: A
 func (c Column) Desc() SortColumn { return SortColumn{Column: string(c), Order: Desc} }
 
 // On compares two column paths for equality. Unlike Eq, its right operand is
-// always a column reference. Strings and defined string types are accepted.
-func (c Column) On[C ~string](right C) Condition { return On(string(c), string(right)) }
+// always a column reference. Strings, defined string types and RuleColumn are accepted.
+func (c Column) On[C ColumnOperand](right C) Condition { return On(c, right) }
 
 // InQuery compares the column to a one-column subquery, snapshotted at this call.
 func (c Column) InQuery(q *SelectBuilder) Condition { return InQuery(string(c), q) }

@@ -20,8 +20,8 @@ type ColumnValue struct {
 	Value  any
 }
 
-func ColValue(column string, value any) ColumnValue {
-	return ColumnValue{column, value}
+func ColValue[C ColumnOperand](column C, value any) ColumnValue {
+	return ColumnValue{columnName(column), columnWriteValue(column, value)}
 }
 
 type InsertBuilder struct {

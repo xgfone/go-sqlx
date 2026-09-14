@@ -24,9 +24,11 @@ type Updater interface {
 //	Set("version", Expr("? + 1", Ident("version")))
 //
 // See Expr for the dialect-independent ? and ?? template markers.
-func Set(column string, value any) Updater {
+func Set[C ColumnOperand](column C, value any) Updater {
+	value = columnWriteValue(column, value)
+	name := columnName(column)
 	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
-		writeQuotedPath(buf, c.Dialect(), column)
+		writeQuotedPath(buf, c.Dialect(), name)
 		_ = buf.WriteByte('=')
 		writeAssignment(buf, c, value)
 	})

@@ -153,6 +153,10 @@ func (b *builderBase) execStatement(ctx context.Context, s statementWriter) (sql
 		return nil, e
 	}
 
+	if e = resolveRuleArgs(c.argsView()); e != nil {
+		return nil, e
+	}
+
 	return r.ExecContext(ctx, q, c.argsView()...)
 }
 
@@ -165,6 +169,10 @@ func (b *builderBase) queryStatement(ctx context.Context, s statementWriter) (*s
 	defer releaseBuildContext(c)
 	r, e := b.runner()
 	if e != nil {
+		return nil, nil, e
+	}
+
+	if e = resolveRuleArgs(c.argsView()); e != nil {
 		return nil, nil, e
 	}
 

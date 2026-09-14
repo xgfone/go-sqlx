@@ -39,13 +39,13 @@ func NotExists(q *SelectBuilder) Condition {
 }
 
 // InQuery compares a column to a one-column subquery, snapshotted at this call.
-func InQuery(column string, q *SelectBuilder) Condition {
-	return inQuery(column, q, " IN ")
+func InQuery[C ColumnOperand](column C, q *SelectBuilder) Condition {
+	return inQuery(columnName(column), q, " IN ")
 }
 
 // NotInQuery compares a column to a one-column subquery using NOT IN.
-func NotInQuery(column string, q *SelectBuilder) Condition {
-	return inQuery(column, q, " NOT IN ")
+func NotInQuery[C ColumnOperand](column C, q *SelectBuilder) Condition {
+	return inQuery(columnName(column), q, " NOT IN ")
 }
 
 func inQuery(column string, q *SelectBuilder, operator string) Condition {

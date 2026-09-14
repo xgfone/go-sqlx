@@ -40,7 +40,7 @@ func (t Table) Select(columns ...string) *SelectBuilder {
 }
 
 // SelectColumns creates a column query using this table and its database.
-func (t Table) SelectColumns(columns ...Column) *SelectBuilder {
+func (t Table) SelectColumns[C ColumnOperand](columns ...C) *SelectBuilder {
 	return t.Select().SelectColumns(columns...)
 }
 

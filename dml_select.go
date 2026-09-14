@@ -44,13 +44,17 @@ type SelectBuilder struct {
 
 func Select(columns ...string) *SelectBuilder { return new(SelectBuilder).Select(columns...) }
 
-// SelectColumns creates a query selecting reusable column paths.
-func SelectColumns(columns ...Column) *SelectBuilder { return Select().SelectColumns(columns...) }
+// SelectColumns creates a query selecting reusable column paths. Each call
+// accepts one path type, including expanded []Column or []RuleColumn slices.
+// Use Select() for an empty initial query, or provide an explicit type argument.
+func SelectColumns[C ColumnOperand](columns ...C) *SelectBuilder {
+	return Select().SelectColumns(columns...)
+}
 
 func (db *DB) Select(columns ...string) *SelectBuilder { return Select(columns...).SetDB(db) }
 
 // SelectColumns creates a column query bound to db.
-func (db *DB) SelectColumns(columns ...Column) *SelectBuilder {
+func (db *DB) SelectColumns[C ColumnOperand](columns ...C) *SelectBuilder {
 	return db.Select().SelectColumns(columns...)
 }
 
@@ -62,9 +66,9 @@ func (b *SelectBuilder) Select(columns ...string) *SelectBuilder {
 }
 
 // SelectColumns appends reusable column paths to the selection.
-func (b *SelectBuilder) SelectColumns(columns ...Column) *SelectBuilder {
+func (b *SelectBuilder) SelectColumns[C ColumnOperand](columns ...C) *SelectBuilder {
 	for _, column := range columns {
-		b.columns = append(b.columns, selectedColumn{Column: string(column)})
+		b.columns = append(b.columns, selectedColumn{Column: columnName(column)})
 	}
 	return b
 }

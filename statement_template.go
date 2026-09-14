@@ -32,6 +32,8 @@ type templateParam int
 type templateBinding struct {
 	position int
 	param    int
+
+	prototype any // Keeps rules attached to this occurrence, not to the input slot.
 }
 
 // StatementTemplate owns a compiled SQL statement and argument-slot mapping.
@@ -43,6 +45,9 @@ type templateBinding struct {
 // dialect and custom binder remain unchanged and safe to share. Constants are
 // shallow snapshots, like Build arguments; slices, pointers and Valuers are not
 // deep-frozen. Put mutable request data in Param slots instead.
+// Value rules are retained per parameter occurrence and run before execution,
+// so a repeated Param can use different rules at different columns. Rules must
+// also be immutable and safe to share. Bind does not evaluate rules.
 //
 // Compile captures an explicit builder BindConfig, including an explicit zero
 // override. Otherwise execution uses the supplied DB's current configuration.
@@ -124,14 +129,14 @@ func (b *builderBase) compileStatement(s statementWriter, returnsRows bool, hint
 	// Param index. Even MaxInt must produce an error rather than a huge reserve.
 	seen := make([]bool, len(q.args))
 	for position, arg := range q.args {
-		if index, ok := arg.(templateParam); ok {
-			if int(index) >= len(seen) {
+		if index, ok := ruleParamIndex(arg); ok {
+			if index < 0 || index >= len(seen) {
 				return nil, fmt.Errorf("sqlx: Param(%d) leaves missing parameter slots", index)
 			}
 
 			seen[index] = true
-			q.paramCount = max(q.paramCount, int(index)+1)
-			q.bindings = append(q.bindings, templateBinding{position, int(index)})
+			q.paramCount = max(q.paramCount, index+1)
+			q.bindings = append(q.bindings, templateBinding{position, index, arg})
 			q.args[position] = nil
 		}
 	}
@@ -172,6 +177,9 @@ func (q *StatementTemplate) validateParams(params []any) error {
 		return fmt.Errorf("sqlx: statement template expects %d parameters, got %d", q.paramCount, len(params))
 	}
 	for i, value := range params {
+		if _, ok := ruleParamIndex(value); ok {
+			return fmt.Errorf("sqlx: Param(%d) requires bound data", i)
+		}
 		switch value.(type) {
 		case Expression, SQLBuilder, sql.NamedArg:
 			return fmt.Errorf("sqlx: Param(%d) requires a data value, got %T", i, value)
@@ -182,7 +190,7 @@ func (q *StatementTemplate) validateParams(params []any) error {
 
 func (q *StatementTemplate) fillArgs(args, params []any) {
 	for _, binding := range q.bindings {
-		args[binding.position] = params[binding.param]
+		args[binding.position] = bindRuleParam(binding.prototype, params[binding.param])
 	}
 }
 
@@ -247,6 +255,9 @@ func (q *StatementTemplate) QueryRowsContext(ctx context.Context, db *DB, params
 	c := q.borrowArgs(params)
 	defer releaseBuildContext(c)
 
+	if err := resolveRuleArgs(c.argsView()); err != nil {
+		return config.rows(nil, nil, err)
+	}
 	r := config.rows(db.queryRowsContext(ctx, q.sql, c.argsView()...))
 	r.capacityHint = q.capacityHint
 	return r
@@ -268,5 +279,8 @@ func (q *StatementTemplate) ExecContext(ctx context.Context, db *DB, params ...a
 
 	c := q.borrowArgs(params)
 	defer releaseBuildContext(c)
+	if err := resolveRuleArgs(c.argsView()); err != nil {
+		return nil, err
+	}
 	return db.ExecContext(ctx, q.sql, c.argsView()...)
 }
