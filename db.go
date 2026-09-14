@@ -50,7 +50,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 		c(db)
 	}
 
-	xdb := &DB{Dialect: d, Executor: db}
+	xdb := (&DB{Dialect: d}).SetExecutor(db)
 	return xdb, nil
 }
 
@@ -78,22 +78,34 @@ func (db *DB) WithExecutor(e Executor) *DB {
 // SetExecutor replaces this DB's executor and returns db. It does not close the
 // previous executor. Existing builders without an executor override use the new
 // executor on their next execution. See DB for synchronization requirements.
+// Non-nil executors are passed through DefaultExecutorInterceptor.
 func (db *DB) SetExecutor(e Executor) *DB {
-	db.Executor = e
+	db.Executor = interceptExecutor(e)
 	return db
 }
 
-// BeginTx starts a transaction when the executor supports it.
+// Unwrap returns this DB's executor, or nil for a nil DB.
+func (db *DB) Unwrap() Executor {
+	if db == nil {
+		return nil
+	}
+	return db.Executor
+}
+
+// BeginTx starts a transaction using the first TxBeginner in the executor's
+// Unwrap chain. Bind the returned *sql.Tx with WithExecutor or a builder's
+// SetExecutor to apply DefaultExecutorInterceptor to its SQL execution.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	if b, ok := db.Executor.(TxBeginner); ok {
+	if b, ok := AsExecutor[TxBeginner](db.Executor); ok {
 		return b.BeginTx(ctx, opts)
 	}
 	return nil, errors.New("sqlx: executor cannot begin transactions")
 }
 
 // Close closes an owning database/connection. Transactions must use Commit/Rollback.
+// It uses the first io.Closer in the executor's Unwrap chain.
 func (db *DB) Close() error {
-	if c, ok := db.Executor.(io.Closer); ok {
+	if c, ok := AsExecutor[io.Closer](db.Executor); ok {
 		return c.Close()
 	}
 	return errors.New("sqlx: executor cannot be closed")

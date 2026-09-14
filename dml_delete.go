@@ -139,7 +139,11 @@ func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder { b.db = db; return b }
 func (b *DeleteBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-func (b *DeleteBuilder) SetExecutor(e Executor) *DeleteBuilder { b.executor = e; return b }
+// Non-nil executors are passed through DefaultExecutorInterceptor.
+func (b *DeleteBuilder) SetExecutor(e Executor) *DeleteBuilder {
+	b.executor = interceptExecutor(e)
+	return b
+}
 
 // SetDialect overrides SQL rendering independently of the executor.
 func (b *DeleteBuilder) SetDialect(d Dialect) *DeleteBuilder { b.dialect = d; return b }

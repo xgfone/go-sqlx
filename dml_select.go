@@ -345,7 +345,11 @@ func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }
 func (b *SelectBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-func (b *SelectBuilder) SetExecutor(e Executor) *SelectBuilder { b.executor = e; return b }
+// Non-nil executors are passed through DefaultExecutorInterceptor.
+func (b *SelectBuilder) SetExecutor(e Executor) *SelectBuilder {
+	b.executor = interceptExecutor(e)
+	return b
+}
 
 // SetDialect overrides SQL rendering independently of the executor.
 func (b *SelectBuilder) SetDialect(d Dialect) *SelectBuilder { b.dialect = d; return b }

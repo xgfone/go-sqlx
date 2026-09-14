@@ -15,6 +15,9 @@ var _ Executor = (*sql.Conn)(nil)
 var _ TxBeginner = (*DB)(nil)
 
 // Executor is used to execute the sql statement.
+//
+// Wrappers may implement Unwrap() Executor to expose their inner executor to
+// AsExecutor and to DB's transaction and close operations.
 type Executor interface {
 	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -25,4 +28,53 @@ type Executor interface {
 // TxBeginner is used to open a sql transaction.
 type TxBeginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
+// DefaultExecutorInterceptor is applied by Open, DB.SetExecutor (including
+// WithExecutor), and each builder's SetExecutor. When nil, executors are left
+// unchanged. Nil executors are skipped. Direct assignment to DB.Executor
+// bypasses this hook.
+//
+// The interceptor must return a usable executor and should preserve the original
+// through Unwrap() Executor. It may receive an already wrapped executor; use
+// AsExecutor to avoid installing the same middleware more than once.
+//
+// Configure this global before concurrent use, or synchronize changes with all
+// callers. Changes only affect subsequently attached executors. The interceptor
+// and its returned executors must support the callers' concurrency requirements.
+//
+// Default: nil
+var DefaultExecutorInterceptor func(Executor) Executor
+
+func interceptExecutor(e Executor) Executor {
+	if e != nil && DefaultExecutorInterceptor != nil {
+		return DefaultExecutorInterceptor(e)
+	}
+	return e
+}
+
+// AsExecutor returns the first value in e's wrapper chain assignable to T,
+// starting with e itself and following Unwrap() Executor. T may be a concrete
+// executor type, such as *sql.DB, or a capability interface, such as TxBeginner.
+// If no value matches, it returns the zero value of T and false.
+//
+// Unwrap chains must be finite and acyclic. A matching typed nil is returned
+// with true, just as with a type assertion. An outer capability implementation
+// takes precedence over an inner one, including when its method returns an error.
+func AsExecutor[T any](e Executor) (T, bool) {
+	for e != nil {
+		if value, ok := e.(T); ok {
+			return value, true
+		}
+
+		wrapper, ok := e.(interface{ Unwrap() Executor })
+		if !ok {
+			break
+		}
+
+		e = wrapper.Unwrap()
+	}
+
+	var zero T
+	return zero, false
 }
