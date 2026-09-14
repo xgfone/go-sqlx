@@ -168,3 +168,10 @@ func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 func (o Oper[T]) Aggregate(ctx context.Context, e Expression, dst any, cs ...Condition) error {
 	return o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx).Scan(dst)
 }
+
+// AggregateValue returns an aggregate result scanned into R. It uses Aggregate's
+// scan options, including NULL handling. R must be supported by Row.Scan.
+func (o Oper[T]) AggregateValue[R any](ctx context.Context, e Expression, cs ...Condition) (value R, err error) {
+	err = o.Aggregate(ctx, e, &value, cs...)
+	return
+}

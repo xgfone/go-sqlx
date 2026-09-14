@@ -892,7 +892,7 @@ For an existing table, use `table.NewOper[T]()` or
 `table.NewRegisteredOper[T]()`; both preserve its database.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
-Get/Gets, Add/Update/Delete, Count/CountGets, Exist, and Aggregate.
+Get/Gets, Add/Update/Delete, Count/CountGets, Exist, Aggregate, and AggregateValue.
 Mutations return sql.Result; Count returns int64. CountGets queries the count
 first, then fetches a page if it is positive. It validates pagination before
 querying and does not promise a shared database snapshot without an appropriate
@@ -914,6 +914,26 @@ oper := sqlx.NewOper[User]("users").
 oper.SetDB(db) // supported for initialization of predeclared operations
 users, err := oper.Active().Gets(ctx, sqlx.PageSize(1, 20))
 ```
+
+`Aggregate` scans an expression into a destination pointer;
+`AggregateValue[R]` returns the result as R. Both preserve operation conditions
+and scan options, and omit list sorting. Use `CountDistinct` for an individual
+distinct count, without changing the operation's ordinary count behavior:
+
+```go
+payments := sqlx.NewOper[Payment]("payments").WithDB(db).
+    Where(sqlx.Eq("status", "paid"))
+paidUsers, err := payments.AggregateValue[int64](ctx, sqlx.CountDistinct("user_id"))
+amount, err := payments.AggregateValue[string](ctx, sqlx.Sum("amount"))
+```
+
+Supported result types include int, int64, float64, string, nullable pointers,
+and types implementing sql.Scanner. Conversions can fail, including integer
+overflow. For exact DECIMAL totals, preserve an exact database/driver result and
+scan it into string or a decimal Scanner; converting through float64 can lose
+precision. Under the default NULL policy, SUM's NULL result becomes the Go zero
+value (including an empty string). Use `Coalesce(Sum("amount"), 0)` for a numeric
+zero or a nullable result such as `AggregateValue[sql.NullString]` to retain NULL.
 
 ## Extending and testing
 

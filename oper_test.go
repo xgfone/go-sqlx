@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"math"
 	"reflect"
 	"testing"
@@ -220,5 +221,59 @@ func TestOperCountGetsEvaluatesPaginationOnce(t *testing.T) {
 		if !reflect.DeepEqual(queries, wantQueries) {
 			t.Fatal(queries)
 		}
+	}
+}
+
+func checkOperAggregateValue[R any](t *testing.T, source driver.Value, want R) {
+	t.Helper()
+	f := &bindFixture{columns: []string{"total"}, values: [][]driver.Value{{source}}}
+	o := NewOper[struct{}]("t").WithDB(bindTestDB(t, f))
+	got, err := o.AggregateValue[R](context.Background(), Sum("value"))
+	if err != nil || !reflect.DeepEqual(got, want) || f.closed.Load() != 1 {
+		t.Fatal(got, want, err, f.closed.Load())
+	}
+}
+
+func TestOperAggregateValueTypes(t *testing.T) {
+	checkOperAggregateValue(t, int64(42), int(42))
+	checkOperAggregateValue(t, int64(42), int64(42))
+	checkOperAggregateValue(t, []byte("12.5"), float64(12.5))
+	checkOperAggregateValue(t, []byte("9007199254740993.01"), "9007199254740993.01")
+	checkOperAggregateValue(t, nil, "")
+	checkOperAggregateValue(t, nil, (*string)(nil))
+	checkOperAggregateValue(t, nil, sql.NullString{})
+	checkOperAggregateValue(t, []byte("12.34"), sql.NullString{String: "12.34", Valid: true})
+}
+
+func TestOperAggregateValueDistinctScopeAndErrors(t *testing.T) {
+	ctx := context.Background()
+	f := &scanFixture{values: []driver.Value{int64(3)}}
+	o := NewOper[struct{}]("payments").WithDB(fixtureDB(t, f)).
+		WithSorter(SortColumn{Column: "created_at", Order: Desc}).
+		Where(Eq("tenant", 7))
+	n, err := o.AggregateValue[int64](ctx, CountDistinct("user_id"), Eq("status", "paid"))
+	if err != nil || n != 3 {
+		t.Fatal(n, err)
+	}
+
+	if f.query != `SELECT COUNT(DISTINCT "user_id") FROM "payments" WHERE (("tenant" = ?) AND ("status" = ?)) LIMIT 1` ||
+		!reflect.DeepEqual(f.received, []driver.NamedValue{{Ordinal: 1, Value: int64(7)}, {Ordinal: 2, Value: "paid"}}) {
+		t.Fatal(f.query, f.received)
+	}
+
+	f.values = []driver.Value{int64(128)}
+	if _, err := o.AggregateValue[int8](ctx, Count("*")); err == nil {
+		t.Fatal("integer overflow accepted")
+	}
+
+	f.values = []driver.Value{nil}
+	strict := o.WithBindConfig(BindConfig{ScanOptions: ScanOptions{Nulls: NullError}})
+	if _, err := strict.AggregateValue[string](ctx, Sum("amount")); err == nil {
+		t.Fatal("operation scan options ignored")
+	}
+
+	f.values = nil
+	if _, err := o.AggregateValue[int64](ctx, Sum("amount")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal(err)
 	}
 }

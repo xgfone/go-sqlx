@@ -272,8 +272,8 @@ explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
 | SoftUpdate                                               | `Active().Update`                                                |
 | Query, CountQuery                                        | Gets, CountGets with sqlx.PageSize                               |
 | GetAll                                                   | Gets with nil pagination                                         |
-| Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with Sum expression and typed destination              |
-| CountDistinct                                            | Aggregate with CountDistinct expression                          |
+| Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with a typed destination, or AggregateValue[R], using Sum |
+| CountDistinct                                            | Aggregate or AggregateValue[R] with CountDistinct expression      |
 | AddWithId                                                | Add returns sql.Result, or use an INSERT RETURNING builder       |
 | ById helpers                                             | Explicit conditions on the application's key column              |
 | Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()` |
