@@ -144,13 +144,21 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 	return
 }
 
+// CountGets counts matching rows and fetches the requested page when the count
+// is positive. Pagination is evaluated once and validated before querying.
 func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
+	q := o.SelectStruct().Where(cs...).Pagination(p)
+	if err = q.err; err != nil {
+		return
+	}
+
 	n, err = o.Count(ctx, cs...)
 	if err == nil && n > 0 {
-		vs, err = o.Gets(ctx, p, cs...)
+		err = q.QueryRowsContext(ctx).Bind(&vs)
 	}
 	return
 }
+
 func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 	var n int
 	return o.Select().ClearOrderBy().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)

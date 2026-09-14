@@ -892,9 +892,11 @@ For an existing table, use `table.NewOper[T]()` or
 `table.NewRegisteredOper[T]()`; both preserve its database.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
-Get/Gets, Add/Update/Delete, Count/CountGets, Exist, and Aggregate. Mutations
-return sql.Result; Count returns int64. CountGets performs two queries and does
-not promise a shared database snapshot without an appropriate transaction.
+Get/Gets, Add/Update/Delete, Count/CountGets, Exist, and Aggregate.
+Mutations return sql.Result; Count returns int64. CountGets queries the count
+first, then fetches a page if it is positive. It validates pagination before
+querying and does not promise a shared database snapshot without an appropriate
+transaction.
 
 `Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;

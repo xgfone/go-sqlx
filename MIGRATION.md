@@ -281,7 +281,8 @@ explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
 | IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                |
 
 Add/Update/Delete/SoftDelete now return sql.Result and error. Count/CountGets use
-int64 counts. CountGets does not modify the page size based on the count.
+int64 counts. CountGets does not modify the page size based on the count and
+validates pagination before querying, even when no rows match.
 Soft-delete defaults use NULL and current time, independently of go-op's legacy
 zero-date constants. Configure WithSoftCondition, WithDeletedCondition and
 WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers. The
