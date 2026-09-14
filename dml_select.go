@@ -520,7 +520,7 @@ func (b *SelectBuilder) SetDialect(d Dialect) *SelectBuilder { b.dialect = d; re
 func (b *SelectBuilder) Comment(s string) *SelectBuilder { b.comment = s; return b }
 
 func (b *SelectBuilder) String() string                { return stringStatement(b) }
-func (b *SelectBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
+func (b *SelectBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
 func (b *SelectBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
 
 func (b *SelectBuilder) Where(conds ...Condition) *SelectBuilder {

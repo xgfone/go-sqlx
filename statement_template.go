@@ -73,7 +73,7 @@ func (b *SelectBuilder) Compile() (*StatementTemplate, error) {
 	if b.hasLimit && b.limit > 0 {
 		hint = int(min(b.limit, maxLimitRowsCapacity))
 	}
-	return compileStatement(b, &b.builderBase, true, hint)
+	return b.compileStatement(b, true, hint)
 }
 
 // Compile freezes this INSERT, including its row count, DEFAULT cells and
@@ -82,7 +82,7 @@ func (b *InsertBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil INSERT builder")
 	}
-	return compileStatement(b, &b.builderBase, len(b.returning) > 0, 0)
+	return b.compileStatement(b, len(b.returning) > 0, 0)
 }
 
 // Compile freezes this UPDATE. Use QueryRowsContext with RETURNING and
@@ -91,7 +91,7 @@ func (b *UpdateBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil UPDATE builder")
 	}
-	return compileStatement(b, &b.builderBase, len(b.returning) > 0, 0)
+	return b.compileStatement(b, len(b.returning) > 0, 0)
 }
 
 // Compile freezes this DELETE. Use QueryRowsContext with RETURNING and
@@ -100,11 +100,11 @@ func (b *DeleteBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil DELETE builder")
 	}
-	return compileStatement(b, &b.builderBase, len(b.returning) > 0, 0)
+	return b.compileStatement(b, len(b.returning) > 0, 0)
 }
 
-func compileStatement(s statementWriter, b *builderBase, returnsRows bool, hint int) (*StatementTemplate, error) {
-	sql, c, err := renderStatement(s, b, true)
+func (b *builderBase) compileStatement(s statementWriter, returnsRows bool, hint int) (*StatementTemplate, error) {
+	sql, c, err := b.renderStatement(s, true)
 	if err != nil {
 		return nil, err
 	}

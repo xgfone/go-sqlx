@@ -41,7 +41,7 @@ func (db *DB) queryRowsContext(ctx context.Context, query string, args ...any) (
 }
 
 func (b *SelectBuilder) QueryRowsContext(ctx context.Context) *Rows {
-	r := b.binding().rows(queryStatement(ctx, b, &b.builderBase))
+	r := b.binding().rows(b.queryStatement(ctx, b))
 	if b.hasLimit && b.limit > 0 {
 		r.capacityHint = int(min(b.limit, maxLimitRowsCapacity))
 	}

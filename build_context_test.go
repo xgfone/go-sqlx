@@ -175,7 +175,7 @@ func BenchmarkSelectBuild(b *testing.B) {
 	b.Run("internal", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			_, ctx, err := buildBorrowed(builder, &builder.builderBase)
+			_, ctx, err := builder.buildBorrowed(builder)
 			if err != nil {
 				b.Fatal(err)
 			}

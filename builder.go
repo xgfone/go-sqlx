@@ -74,11 +74,11 @@ func (b *builderBase) runner() (Executor, error) {
 	return nil, errors.New("sqlx: no executor configured")
 }
 
-func buildBorrowed(s statementWriter, b *builderBase) (query string, ctx *BuildContext, err error) {
-	return renderStatement(s, b, false)
+func (b *builderBase) buildBorrowed(s statementWriter) (query string, ctx *BuildContext, err error) {
+	return b.renderStatement(s, false)
 }
 
-func renderStatement(s statementWriter, b *builderBase, compiling bool) (query string, ctx *BuildContext, err error) {
+func (b *builderBase) renderStatement(s statementWriter, compiling bool) (query string, ctx *BuildContext, err error) {
 	if b.err != nil {
 		return "", nil, b.err
 	}
@@ -112,8 +112,8 @@ func renderStatement(s statementWriter, b *builderBase, compiling bool) (query s
 	return
 }
 
-func buildStatement(s statementWriter, b *builderBase) (string, []any, error) {
-	q, c, e := buildBorrowed(s, b)
+func (b *builderBase) buildStatement(s statementWriter) (string, []any, error) {
+	q, c, e := b.buildBorrowed(s)
 	if e != nil {
 		return "", nil, e
 	}
@@ -142,8 +142,8 @@ func stringStatement(s SQLBuilder) string {
 	return q
 }
 
-func execStatement(ctx context.Context, s statementWriter, b *builderBase) (sql.Result, error) {
-	q, c, e := buildBorrowed(s, b)
+func (b *builderBase) execStatement(ctx context.Context, s statementWriter) (sql.Result, error) {
+	q, c, e := b.buildBorrowed(s)
 	if e != nil {
 		return nil, e
 	}
@@ -157,8 +157,8 @@ func execStatement(ctx context.Context, s statementWriter, b *builderBase) (sql.
 	return r.ExecContext(ctx, q, c.argsView()...)
 }
 
-func queryStatement(ctx context.Context, s statementWriter, b *builderBase) (*sql.Rows, []string, error) {
-	q, c, e := buildBorrowed(s, b)
+func (b *builderBase) queryStatement(ctx context.Context, s statementWriter) (*sql.Rows, []string, error) {
+	q, c, e := b.buildBorrowed(s)
 	if e != nil {
 		return nil, nil, e
 	}

@@ -215,7 +215,7 @@ func BenchmarkOperBindingPreparation(b *testing.B) {
 					performanceBuilder = q.Clone()
 
 				default:
-					s, ctx, err := buildBorrowed(q, &q.builderBase)
+					s, ctx, err := q.buildBorrowed(q)
 					if err != nil {
 						b.Fatal(err)
 					}

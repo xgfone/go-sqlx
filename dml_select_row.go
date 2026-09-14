@@ -28,7 +28,7 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 	if !q.hasLimit || q.limit > 1 {
 		q.Limit(1)
 	}
-	return b.binding().row(queryStatement(ctx, &q, &q.builderBase))
+	return b.binding().row(q.queryStatement(ctx, &q))
 }
 
 func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {

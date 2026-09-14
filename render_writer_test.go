@@ -83,7 +83,7 @@ func TestRenderingBufferReentrancyAndLifetime(t *testing.T) {
 	})
 
 	q := Select().SelectExpr(Case().When(custom, 2).Else(3).End()).SetDialect(dialect.Postgres)
-	first, c, err := buildBorrowed(q, &q.builderBase)
+	first, c, err := q.buildBorrowed(q)
 	if err != nil {
 		t.Fatal(err)
 	}

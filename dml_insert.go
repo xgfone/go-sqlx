@@ -374,14 +374,14 @@ func (b *InsertBuilder) SetDialect(d Dialect) *InsertBuilder { b.dialect = d; re
 func (b *InsertBuilder) Comment(s string) *InsertBuilder { b.comment = s; return b }
 
 func (b *InsertBuilder) String() string                { return stringStatement(b) }
-func (b *InsertBuilder) Build() (string, []any, error) { return buildStatement(b, &b.builderBase) }
+func (b *InsertBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
 func (b *InsertBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
 
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	if len(b.returning) > 0 {
 		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
-	return execStatement(ctx, b, &b.builderBase)
+	return b.execStatement(ctx, b)
 }
 
 // Returning appends output columns on PostgreSQL or SQLite.
@@ -402,12 +402,12 @@ func (b *InsertBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	if len(b.returning) == 0 {
 		return NewRows(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
-	return b.binding().rows(queryStatement(ctx, b, &b.builderBase))
+	return b.binding().rows(b.queryStatement(ctx, b))
 }
 
 func (b *InsertBuilder) QueryRowContext(ctx context.Context) Row {
 	if len(b.returning) == 0 {
 		return NewRow(nil, nil, errors.New("sqlx: RETURNING required"))
 	}
-	return b.binding().row(queryStatement(ctx, b, &b.builderBase))
+	return b.binding().row(b.queryStatement(ctx, b))
 }
