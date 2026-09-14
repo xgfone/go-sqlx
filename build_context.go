@@ -270,3 +270,14 @@ func (a *BuildContext) Value(value any) string { return renderValue(a, value) }
 func (a *BuildContext) WriteValue(buf *strings.Builder, value any) {
 	writeValue(buf, a, value)
 }
+
+// Rendering state belongs to one query level. Subqueries and CTEs have their
+// own named windows and expression bindings, while sharing statement arguments.
+type statementScope struct {
+	windows map[string]WindowSpec
+
+	expressionCache   *expressionCache
+	recordExpressions bool
+	reuseExpressions  bool
+	expressionDepth   int
+}

@@ -4,10 +4,30 @@
 package sqlx
 
 import (
-	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
+)
+
+type expressionKind uint8
+
+const (
+	plainExpression expressionKind = iota
+	defaultExpression
+	pathExpression
+	tupleExpression
+	windowExpression
+	windowFunctionExpression
+	aggregateExpression
+	parameterExpression
+	identifierExpression
+	countDistinctExpression
+	countExpression
+	sumExpression
+	minExpression
+	maxExpression
+	avgExpression
 )
 
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
@@ -18,64 +38,6 @@ type Expression struct {
 
 	sql  string
 	node any // nil, an inline expressionKind, or an immutable typed payload.
-}
-
-// Expr represents trusted SQL with optional arguments. With arguments, sql is
-// a template using sqlx's own markers, independent of the database's parameter
-// syntax. Build interprets the template using the statement's dialect:
-//
-//   - ? consumes the next argument. An Expression (including Ident, Value and
-//     Subquery) is rendered in the same build context. Any other value is bound
-//     through BuildContext.Add, which obtains its placeholder from the dialect
-//     (for example, ? for MySQL or $1, $2, ... for PostgreSQL).
-//   - ?? emits a literal ? without consuming an argument. This escapes SQL
-//     operators containing ?, such as PostgreSQL's JSON operators: ??, ??| and
-//     ??& emit ?, ?| and ?& respectively. It does not quote an identifier;
-//     use ? with Ident for column or table references.
-//
-// These are the only template markers. Native placeholders such as $1, :name
-// and @name are copied unchanged; they do not consume args and are not rebound.
-// To supply a named value, pass sql.Named(name, value) as an argument to ?;
-// BuildContext.Add handles the dialect's named-parameter support.
-//
-// Markers in quoted text and comments are ignored according to the dialect's
-// LexicalRules. PostgreSQL recognizes E'...' strings, nested comments, and
-// dollar quotes; MySQL recognizes # comments, whitespace-qualified -- comments,
-// and string backslash escapes. SQLite also recognizes [identifier] quoting.
-// Use dialect.WithLexicalRules for connection SQL modes that differ from the
-// defaults. Other SQL syntax and operators are not translated between dialects;
-// the caller must supply SQL valid for the target database.
-//
-// Each unescaped ? outside those regions consumes exactly one argument. An
-// identifier consumes no bound-parameter number; nested expressions share the
-// whole statement's parameter numbering. Ordinary strings are bound as data,
-// never inferred to be identifiers. For example:
-//
-//	Expr("? + 1", Ident("version"))
-//	// MySQL: `version` + 1; PostgreSQL: "version" + 1; no bound values.
-//
-//	Expr("? + ?", Ident("version"), 1)
-//	// MySQL: `version` + ?; PostgreSQL: "version" + $1; bound values: [1].
-//	// The PostgreSQL number assumes no earlier bound values in the statement.
-//
-//	Expr("? ?? ?", Ident("document"), "key")
-//	// PostgreSQL: "document" ? $1; bound values: ["key"].
-//
-// Without arguments, sql is copied verbatim: neither ? nor ?? is interpreted
-// or unescaped. For example, Expr("document ? 'key'") preserves the JSON
-// operator as written, and Expr("??") preserves both question marks.
-//
-// When arguments are present, mismatched argument counts or unterminated quoted
-// regions or block comments cause rendering to panic; statement Build returns
-// that failure as an error. Raw SQL must be trusted: supply untrusted values
-// through arguments instead of concatenating them into sql.
-func Expr(sql string, args ...any) Expression {
-	if len(args) == 0 {
-		return Expression{sql: sql}
-	}
-
-	node := &expressionArgs{args: append([]any(nil), args...)}
-	return Expression{sql: sql, node: node}
 }
 
 // Ident represents an identifier with explicit qualification boundaries.
@@ -116,8 +78,11 @@ type expressionArgs struct {
 	kind expressionKind
 	args []any
 }
+
 type expressionIdent struct{ parts []string }
+
 type expressionValue struct{ value any }
+
 type expressionWriter struct {
 	write func(*strings.Builder, *BuildContext)
 	kind  expressionKind
@@ -300,38 +265,6 @@ func (e Expression) writeTo(buf *strings.Builder, c *BuildContext) {
 	e.writeReusable(buf, c)
 }
 
-func (e Expression) writeReusable(buf *strings.Builder, c *BuildContext) {
-	cacheable := e.isCustom() || len(e.args()) > 0
-	// A bare value reused inside different expressions may require different
-	// server types (for example COALESCE(integer, p) and COALESCE(text, p)).
-	// Reuse the enclosing SQL expression, not its individual data operands.
-	_, boundValue := e.node.(*expressionValue)
-	if c.expressionDepth > 0 && (boundValue || e.kind() == parameterExpression ||
-		len(e.args()) == 1 && strings.TrimSpace(e.sql) == "?") {
-		cacheable = false
-	}
-	if !cacheable {
-		e.writeBody(buf, c)
-		return
-	}
-	if c.reuseExpressions && c.expressionCache != nil {
-		if sql := c.expressionCache.find(e); sql != "" {
-			_, _ = buf.WriteString(sql)
-			return
-		}
-	}
-	start, args := buf.Len(), len(c.args)
-	c.expressionDepth++
-	defer func() { c.expressionDepth-- }()
-	e.writeBody(buf, c)
-	if c.recordExpressions && len(c.args) > args {
-		if c.expressionCache == nil {
-			c.expressionCache = expressionCachePool.Get().(*expressionCache)
-		}
-		c.expressionCache.add(e, buf.String()[start:])
-	}
-}
-
 // OVER alone may render a bare window function. All other validation remains.
 func (e Expression) writeBody(buf *strings.Builder, c *BuildContext) {
 	switch n := e.node.(type) {
@@ -415,37 +348,6 @@ func (e Expression) Condition() Condition {
 	})
 }
 
-// Subquery renders a parenthesized query in the parent's dialect and binding context.
-func Subquery(q *SelectBuilder) Expression {
-	if q != nil {
-		q = q.Clone()
-	}
-
-	return Expression{
-		node: &expressionWriter{
-			write: func(buf *strings.Builder, c *BuildContext) {
-				if q == nil {
-					panic("nil subquery")
-				}
-
-				_ = buf.WriteByte('(')
-				q.writeTo(buf, c)
-				_ = buf.WriteByte(')')
-			},
-		},
-	}
-}
-
-// Exists builds an EXISTS predicate.
-func Exists(q *SelectBuilder) Condition {
-	return Expr("EXISTS ?", Subquery(q)).Condition()
-}
-
-// NotExists builds an "NOT EXISTS" predicate.
-func NotExists(q *SelectBuilder) Condition {
-	return Expr("NOT EXISTS ?", Subquery(q)).Condition()
-}
-
 // Default represents SQL DEFAULT, not a parameter value.
 func Default() Expression {
 	return Expression{sql: "DEFAULT", node: defaultExpression}
@@ -455,18 +357,6 @@ func Default() Expression {
 func Value(v any) Expression {
 	return Expression{node: &expressionValue{value: v}}
 }
-
-func Count(field string) Expression {
-	return Expression{sql: field, node: countExpression}
-}
-func CountDistinct(field string) Expression {
-	return Expression{sql: field, node: countDistinctExpression}
-}
-
-func Sum(field string) Expression { return Expression{sql: field, node: sumExpression} }
-func Min(field string) Expression { return Expression{sql: field, node: minExpression} }
-func Max(field string) Expression { return Expression{sql: field, node: maxExpression} }
-func Avg(field string) Expression { return Expression{sql: field, node: avgExpression} }
 
 func renderValue(c *BuildContext, v any) string {
 	if e, ok := v.(Expression); ok {
@@ -483,152 +373,30 @@ func writeValue(buf *strings.Builder, c *BuildContext, v any) {
 	}
 }
 
-// writeBoundExpression recognizes quoted literals/identifiers, comments and PostgreSQL
-// dollar quotes. ?? escapes a literal question mark (e.g. a PostgreSQL JSON operator).
-func writeBoundExpression(out *strings.Builder, c *BuildContext, s string, args []any) {
-	rules := c.Dialect().LexicalRules()
+// Tuple constructs a row value containing at least two values or Expressions.
+// Use Ident for columns; strings are bound as data.
+func Tuple(values ...any) Expression {
+	return Expression{
+		node: &expressionArgs{
+			kind: tupleExpression,
+			args: slices.Clone(values)},
+	}
+}
 
-	n := 0
-	for i := 0; i < len(s); {
-		start := i
-		switch {
-		case s[i] == '[' && rules.BracketIdentifiers:
-			end := strings.IndexByte(s[i+1:], ']')
-			if end < 0 {
-				panic("unterminated bracket identifier")
-			}
-			i += end + 2
-			_, _ = out.WriteString(s[start:i])
-
-		case s[i] == '\'' || s[i] == '"' || s[i] == '`':
-			closed := false
-			quote := s[i]
-			backslash := rules.BackslashStrings && (quote == '\'' || quote == '"' && rules.DoubleQuotedStrings)
-			if quote == '\'' && rules.EscapeStringPrefix && i > 0 &&
-				(s[i-1] == 'E' || s[i-1] == 'e') &&
-				(i < 2 || !sqlWordByte(s[i-2])) {
-				backslash = true
-			}
-
-			i++
-			for i < len(s) {
-				if s[i] == '\\' && backslash {
-					i += 2
-					continue
-				}
-
-				if s[i] == quote {
-					i++
-					if i < len(s) && s[i] == quote {
-						i++
-						continue
-					}
-
-					closed = true
-					break
-				}
-				i++
-			}
-
-			if !closed || i > len(s) {
-				panic("unterminated expression quote")
-			}
-			_, _ = out.WriteString(s[start:i])
-
-		case s[i] == '#' && rules.HashComments || strings.HasPrefix(s[i:], "--") &&
-			(!rules.DashCommentSpace || i+2 == len(s) || s[i+2] <= ' '):
-			end := strings.IndexByte(s[i:], '\n')
-			if end < 0 {
-				end = len(s) - i
-			}
-			if rules.LineCommentCR {
-				if cr := strings.IndexByte(s[i:i+end], '\r'); cr >= 0 {
-					end = cr
-				}
-			}
-			i += end
-			_, _ = out.WriteString(s[start:i])
-
-		case strings.HasPrefix(s[i:], "/*"):
-			i += 2
-			depth := 1
-			for i < len(s) && depth > 0 {
-				if rules.NestedBlockComments && strings.HasPrefix(s[i:], "/*") {
-					depth++
-					i += 2
-				} else if strings.HasPrefix(s[i:], "*/") {
-					depth--
-					i += 2
-				} else {
-					i++
-				}
-			}
-
-			if depth != 0 {
-				panic("unterminated expression comment")
-			}
-			_, _ = out.WriteString(s[start:i])
-
-		case s[i] == '$' && rules.DollarQuotes && (i == 0 || !sqlWordByte(s[i-1])):
-			j := i + 1
-			for j < len(s) && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || s[j] == '_' || s[j] >= 128 || (j > i+1 && s[j] >= '0' && s[j] <= '9')) {
-				j++
-			}
-
-			if j < len(s) && s[j] == '$' {
-				tag := s[i : j+1]
-				end := strings.Index(s[j+1:], tag)
-				if end < 0 {
-					panic("unterminated dollar quote")
-				}
-				i = j + 1 + end + len(tag)
-				_, _ = out.WriteString(s[start:i])
-			} else {
-				_ = out.WriteByte(s[i])
-				i++
-			}
-
-		case s[i] == '?':
-			i++
-			if i < len(s) && s[i] == '?' {
-				_ = out.WriteByte('?')
-				i++
-				continue
-			}
-
-			if n >= len(args) {
-				panic("too few expression arguments")
-			}
-
-			writeValue(out, c, args[n])
-			n++
-
-		default:
-			_ = out.WriteByte(s[i])
-			i++
+func writeArguments(buf *strings.Builder, c *BuildContext, args []any) {
+	for i, v := range args {
+		if i > 0 {
+			_, _ = buf.WriteString(", ")
 		}
-	}
-
-	if n != len(args) {
-		panic(fmt.Sprintf("expression used %d of %d arguments", n, len(args)))
+		writeValue(buf, c, v)
 	}
 }
 
-// InQuery compares a column to a one-column subquery, snapshotted at this call.
-func InQuery(column string, q *SelectBuilder) Condition {
-	return inQuery(column, q, " IN ")
-}
-
-// NotInQuery compares a column to a one-column subquery using NOT IN.
-func NotInQuery(column string, q *SelectBuilder) Condition {
-	return inQuery(column, q, " NOT IN ")
-}
-
-func inQuery(column string, q *SelectBuilder, operator string) Condition {
-	query := Subquery(q)
-	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
-		c.WriteQuote(buf, column)
-		_, _ = buf.WriteString(operator)
-		query.writeTo(buf, c)
-	})
+func writeExprs(buf *strings.Builder, c *BuildContext, exprs []Expression) {
+	for i, e := range exprs {
+		if i > 0 {
+			_, _ = buf.WriteString(", ")
+		}
+		e.writeTo(buf, c)
+	}
 }

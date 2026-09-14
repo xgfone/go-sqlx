@@ -10,6 +10,13 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
+type Order string
+
+const (
+	Asc  Order = "ASC"
+	Desc Order = "DESC"
+)
+
 // NullsOrder controls placement of NULL values independently of sort direction.
 type NullsOrder string
 
@@ -17,6 +24,28 @@ const (
 	NullsFirst NullsOrder = "FIRST"
 	NullsLast  NullsOrder = "LAST"
 )
+
+// Sorter supplies ordering terms. SelectBuilder copies the returned slice;
+// expression values and their arguments remain shallow copies.
+type Sorter interface {
+	SortColumns() []SortColumn
+}
+
+// SortColumn is an ordering term. Expr, when non-nil, takes precedence over
+// Column. Order may be Asc, Desc or empty (the database's default direction).
+type SortColumn struct {
+	Column string
+	Order  Order
+	Nulls  NullsOrder
+	Expr   *Expression
+}
+
+func (s SortColumn) SortColumns() []SortColumn { return []SortColumn{s} }
+
+// SortColumns is an ordered collection of ordering terms.
+type SortColumns []SortColumn
+
+func (s SortColumns) SortColumns() []SortColumn { return s }
 
 func cloneSorts(terms []SortColumn) []SortColumn {
 	out := slices.Clone(terms)
@@ -74,39 +103,5 @@ func writeOrderBy(s *strings.Builder, c *BuildContext, terms []SortColumn) {
 	if len(terms) > 0 {
 		_, _ = s.WriteString(" ORDER BY ")
 		writeOrderTerms(s, c, terms)
-	}
-}
-
-type mutationLimit struct {
-	terms    []SortColumn
-	limit    int64
-	hasLimit bool
-}
-
-func (p mutationLimit) clone() mutationLimit {
-	p.terms = cloneSorts(p.terms)
-	return p
-}
-
-func (p mutationLimit) render(s *strings.Builder, c *BuildContext, feature dialect.Feature, multi bool) {
-	if len(p.terms) == 0 && !p.hasLimit {
-		return
-	}
-
-	requireFeature(c, feature, "UPDATE/DELETE ORDER BY or LIMIT")
-	if multi {
-		panic("ORDER BY/LIMIT requires a single-table UPDATE or DELETE")
-	}
-
-	if p.limit < 0 {
-		panic("negative mutation limit")
-	}
-
-	writeOrderBy(s, c, p.terms)
-	if p.hasLimit {
-		_, _ = s.WriteString(" LIMIT ")
-		writeInt64(s, p.limit)
-	} else if c.Dialect().Grammar().MutationOrderRequiresLimit {
-		_, _ = s.WriteString(" LIMIT -1")
 	}
 }

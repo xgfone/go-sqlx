@@ -22,38 +22,6 @@ func TestExpressionLayout(t *testing.T) {
 	}
 }
 
-func TestExpressionLineCommentTerminators(t *testing.T) {
-	for _, d := range []Dialect{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
-		t.Run(d.Name(), func(t *testing.T) {
-			for _, ending := range []string{"\n", "\r\n"} {
-				e := Expr("? -- ignored ?"+ending+" + ?", 1, 2)
-				checkSQL(t, Select().SelectExpr(e).SetDialect(d),
-					"SELECT "+d.Placeholder(1)+" -- ignored ?"+ending+" + "+d.Placeholder(2), 1, 2)
-			}
-			if d == dialect.Postgres {
-				checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1, 2)).SetDialect(d),
-					"SELECT $1 -- ignored ?\r + $2", 1, 2)
-			} else {
-				checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1)).SetDialect(d),
-					"SELECT ? -- ignored ?\r + ?", 1)
-			}
-		})
-	}
-
-	// The configurable rule, rather than the dialect's name, controls scanning.
-	rules := dialect.Postgres.LexicalRules()
-	rules.LineCommentCR = false
-	checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1)).
-		SetDialect(dialect.WithLexicalRules(dialect.Postgres, rules)),
-		"SELECT $1 -- ignored ?\r + ?", 1)
-
-	rules = dialect.SQLite.LexicalRules()
-	rules.LineCommentCR = true
-	checkSQL(t, Select().SelectExpr(Expr("? -- ignored ?\r + ?", 1, 2)).
-		SetDialect(dialect.WithLexicalRules(dialect.SQLite, rules)),
-		"SELECT ? -- ignored ?\r + ?", 1, 2)
-}
-
 func TestExpressionBuild(t *testing.T) {
 	for _, test := range []struct {
 		expr Expression
@@ -118,63 +86,4 @@ func TestTypedSelectExpressions(t *testing.T) {
 			}
 		})
 	}
-}
-
-var expressionResult string
-
-func TestFunctionNames(t *testing.T) {
-	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
-		for _, name := range []string{"_fn", "public._fn", "函数"} {
-			checkSQL(t, Select().SelectExpr(Func(name, 1)).SetDialect(d),
-				"SELECT "+name+"("+d.Placeholder(1)+")", 1)
-		}
-		checkBuildError(t, Select().SelectExpr(Func("", 1)).SetDialect(d))
-	}
-}
-
-func BenchmarkExpressionBuild(b *testing.B) {
-	for _, test := range []struct {
-		name string
-		expr Expression
-	}{
-		{"raw", Expr("COALESCE(a, b)")},
-		{"identifier", Ident("id")},
-		{"qualified", Ident("schema", "users", "id")},
-		{"count", Count("id")},
-		{"count_path", Count("users.id")},
-		{"distinct", CountDistinct("users.id")},
-	} {
-		b.Run(test.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				expressionResult = test.expr.build(dialect.Postgres)
-			}
-		})
-	}
-}
-
-func TestDistinctOnNestedExpressionIdentity(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		make func() Expression
-	}{
-		{"value", func() Expression { return Value(1) }},
-		{"function", func() Expression { return Func("COALESCE", Ident("v"), 1) }},
-		{"case", func() Expression { return Case().When(Eq("id", 1), 2).Else(3).End() }},
-		{"tuple", func() Expression { return Tuple(Ident("a"), Ident("b")) }},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			// Reusing the complete description still reuses its parameters.
-			left := Expr("?", tc.make())
-			if _, _, err := Select("id").DistinctOnExpr(left).
-				OrderByExpr(left, Asc).SetDialect(dialect.Postgres).Build(); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-
-	// Simple structured templates continue to compare by content.
-	checkSQL(t, Select("id").DistinctOnExpr(Expr("? + ?", Ident("v"), 1)).
-		OrderByExpr(Expr("? + ?", Ident("v"), 1), Asc).SetDialect(dialect.Postgres),
-		`SELECT DISTINCT ON ("v" + $1) "id" ORDER BY "v" + $1 ASC`, 1)
 }

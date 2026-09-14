@@ -174,3 +174,25 @@ func TestInsertReadOnlyBuildsAndClones(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestInsertCapacityEstimationDoesNotEvaluateExpressions(t *testing.T) {
+	calls := 0
+	e := Expression{
+		node: &expressionWriter{
+			write: func(s *strings.Builder, c *BuildContext) {
+				calls++
+				c.writeArg(s, 1)
+			},
+		},
+	}
+
+	values := make([]any, 128)
+	for i := range values {
+		values[i] = e
+	}
+
+	_, args, err := Insert().Into("t").Values(values...).Build()
+	if err != nil || len(args) != len(values) || calls != len(values) {
+		t.Fatalf("expression evaluation: calls=%d args=%d err=%v", calls, len(args), err)
+	}
+}

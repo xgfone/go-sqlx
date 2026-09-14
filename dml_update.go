@@ -71,12 +71,13 @@ func (b *UpdateBuilder) SetExpr(column string, e Expression) *UpdateBuilder {
 	return b.Set(Set(column, e))
 }
 
-func (b *UpdateBuilder) ClearSet() *UpdateBuilder       { b.setters = nil; return b }
-func (b *UpdateBuilder) ClearFrom() *UpdateBuilder      { b.ftables = nil; return b }
-func (b *UpdateBuilder) ClearTable() *UpdateBuilder     { b.utables = nil; return b }
-func (b *UpdateBuilder) ClearJoins() *UpdateBuilder     { b.jtables = nil; return b }
-func (b *UpdateBuilder) ClearWhere() *UpdateBuilder     { b.wheres = nil; return b }
-func (b *UpdateBuilder) ClearReturning() *UpdateBuilder { b.returning = nil; return b }
+func (b *UpdateBuilder) ClearSet() *UpdateBuilder { b.setters = nil; return b }
+
+func (b *UpdateBuilder) ClearFrom() *UpdateBuilder { b.ftables = nil; return b }
+
+func (b *UpdateBuilder) ClearTable() *UpdateBuilder { b.utables = nil; return b }
+
+func (b *UpdateBuilder) ClearWhere() *UpdateBuilder { b.wheres = nil; return b }
 
 func (b *UpdateBuilder) Clone() *UpdateBuilder {
 	v := *b
@@ -158,7 +159,8 @@ func (b *UpdateBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 }
 
 func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder { b.db = db; return b }
-func (b *UpdateBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+func (b *UpdateBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 func (b *UpdateBuilder) SetExecutor(e Executor) *UpdateBuilder { b.executor = e; return b }
@@ -168,29 +170,17 @@ func (b *UpdateBuilder) SetDialect(d Dialect) *UpdateBuilder { b.dialect = d; re
 
 func (b *UpdateBuilder) Comment(s string) *UpdateBuilder { b.comment = s; return b }
 
-func (b *UpdateBuilder) String() string                { return stringStatement(b) }
+func (b *UpdateBuilder) String() string { return stringStatement(b) }
+
 func (b *UpdateBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
-func (b *UpdateBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *UpdateBuilder) MustBuild() (string, []any) { return mustBuild(b) }
 
 func (b *UpdateBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	if len(b.returning) > 0 {
 		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
 	return b.execStatement(ctx, b)
-}
-
-// Returning appends output columns on PostgreSQL or SQLite.
-func (b *UpdateBuilder) Returning(columns ...string) *UpdateBuilder {
-	for _, v := range columns {
-		b.returning = append(b.returning, selectedColumn{Column: v})
-	}
-	return b
-}
-
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *UpdateBuilder) ReturningExpr(e Expression, alias string) *UpdateBuilder {
-	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
-	return b
 }
 
 func (b *UpdateBuilder) QueryRowsContext(ctx context.Context) *Rows {
@@ -209,54 +199,5 @@ func (b *UpdateBuilder) QueryRowContext(ctx context.Context) Row {
 
 func (b *UpdateBuilder) Where(conds ...Condition) *UpdateBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
-	return b
-}
-
-// Join appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) Join(table, alias string, ons ...Condition) *UpdateBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "INNER",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinLeft appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) JoinLeft(table, alias string, ons ...Condition) *UpdateBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "LEFT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinRight appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) JoinRight(table, alias string, ons ...Condition) *UpdateBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "RIGHT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinFull appends a join in PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) JoinFull(table, alias string, ons ...Condition) *UpdateBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "FULL",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// CrossJoin appends a join in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) CrossJoin(table, alias string) *UpdateBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "CROSS",
-		Table: sqlTable{Table: table, Alias: alias},
-	})
 	return b
 }

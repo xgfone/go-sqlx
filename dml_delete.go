@@ -48,11 +48,11 @@ func (b *DeleteBuilder) Using(table, alias string) *DeleteBuilder {
 	return b
 }
 
-func (b *DeleteBuilder) ClearFrom() *DeleteBuilder      { b.ftables = nil; return b }
-func (b *DeleteBuilder) ClearUsing() *DeleteBuilder     { b.using = nil; return b }
-func (b *DeleteBuilder) ClearJoins() *DeleteBuilder     { b.jtables = nil; return b }
-func (b *DeleteBuilder) ClearWhere() *DeleteBuilder     { b.wheres = nil; return b }
-func (b *DeleteBuilder) ClearReturning() *DeleteBuilder { b.returning = nil; return b }
+func (b *DeleteBuilder) ClearFrom() *DeleteBuilder { b.ftables = nil; return b }
+
+func (b *DeleteBuilder) ClearUsing() *DeleteBuilder { b.using = nil; return b }
+
+func (b *DeleteBuilder) ClearWhere() *DeleteBuilder { b.wheres = nil; return b }
 
 func (b *DeleteBuilder) Clone() *DeleteBuilder {
 	v := *b
@@ -135,7 +135,8 @@ func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 }
 
 func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder { b.db = db; return b }
-func (b *DeleteBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+func (b *DeleteBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 func (b *DeleteBuilder) SetExecutor(e Executor) *DeleteBuilder { b.executor = e; return b }
@@ -145,29 +146,17 @@ func (b *DeleteBuilder) SetDialect(d Dialect) *DeleteBuilder { b.dialect = d; re
 
 func (b *DeleteBuilder) Comment(s string) *DeleteBuilder { b.comment = s; return b }
 
-func (b *DeleteBuilder) String() string                { return stringStatement(b) }
+func (b *DeleteBuilder) String() string { return stringStatement(b) }
+
 func (b *DeleteBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
-func (b *DeleteBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *DeleteBuilder) MustBuild() (string, []any) { return mustBuild(b) }
 
 func (b *DeleteBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	if len(b.returning) > 0 {
 		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
 	return b.execStatement(ctx, b)
-}
-
-// Returning appends output columns on PostgreSQL or SQLite.
-func (b *DeleteBuilder) Returning(columns ...string) *DeleteBuilder {
-	for _, v := range columns {
-		b.returning = append(b.returning, selectedColumn{Column: v})
-	}
-	return b
-}
-
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *DeleteBuilder) ReturningExpr(e Expression, alias string) *DeleteBuilder {
-	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
-	return b
 }
 
 func (b *DeleteBuilder) QueryRowsContext(ctx context.Context) *Rows {
@@ -186,54 +175,5 @@ func (b *DeleteBuilder) QueryRowContext(ctx context.Context) Row {
 
 func (b *DeleteBuilder) Where(conds ...Condition) *DeleteBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
-	return b
-}
-
-// Join appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) Join(table, alias string, ons ...Condition) *DeleteBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "INNER",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinLeft appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) JoinLeft(table, alias string, ons ...Condition) *DeleteBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "LEFT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinRight appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) JoinRight(table, alias string, ons ...Condition) *DeleteBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "RIGHT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// JoinFull appends a join in PostgreSQL DELETE USING.
-func (b *DeleteBuilder) JoinFull(table, alias string, ons ...Condition) *DeleteBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "FULL",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
-	return b
-}
-
-// CrossJoin appends a join in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) CrossJoin(table, alias string) *DeleteBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "CROSS",
-		Table: sqlTable{Table: table, Alias: alias},
-	})
 	return b
 }

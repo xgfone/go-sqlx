@@ -329,3 +329,88 @@ func TestWithScanRejectsRowsScopeChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestWithScanWithRawAndWrappedRows(t *testing.T) {
+	for _, raw := range []bool{false, true} {
+		rows, _ := bindTestRows(t, int64(1000))
+		rows = rows.SetScanOptions(ScanOptions{DurationUnit: time.Second})
+		defer rows.Close() //nolint:errcheck
+
+		var scanner RowScanner = rows
+		if raw {
+			scanner = rows.rows
+		}
+
+		err := WithScan(scanner, []reflect.Type{reflect.TypeFor[**time.Duration]()}, func(scan RowScanFunc) error {
+			if !rows.Next() {
+				t.Fatal("missing row")
+			}
+
+			var dst *time.Duration
+			want := 1000 * time.Second
+			if raw {
+				want = time.Second
+			}
+			if err := scan(&dst); err != nil || *dst != want {
+				t.Fatal(dst, err)
+			}
+
+			var wrong int
+			if err := scan(&wrong); err == nil {
+				t.Fatal("changed type accepted")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows, _ := bindTestRows(t, int64(1))
+	row := NewRow(rows.rows, nil, nil)
+	if _, ok := any(row).(RowCursor); ok {
+		t.Fatal("Row must not be an iterator")
+	}
+
+	err := WithScan(row, []reflect.Type{reflect.TypeFor[*int]()}, func(RowScanFunc) error { return nil })
+	if err == nil {
+		t.Fatal("single-use Row cannot supply a prepared current-row scan")
+	}
+
+	var value int
+	if ok, err := row.Bind(&value); err != nil || !ok || value != 1 {
+		t.Fatal(value, ok, err)
+	}
+}
+
+func TestWithScanSurvivesInterleavedBindings(t *testing.T) {
+	r, _ := bindTestRows(t, int64(1), int64(2))
+	defer r.Close() //nolint:errcheck
+
+	err := WithScan(r, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan RowScanFunc) error {
+		for _, want := range []int64{1, 2} {
+			if !r.Next() {
+				t.Fatal(r.Err())
+			}
+
+			// Use and release differently shaped internal scratch while the public
+			// scan callback remains live on its original cursor.
+			for range 4 {
+				other, _ := bindTestRows(t, "hello")
+				var words []string
+				if err := other.Bind(&words); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var got int64
+			if err := scan(&got); err != nil || got != want {
+				t.Fatalf("%d: %v", got, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

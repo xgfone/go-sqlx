@@ -80,6 +80,7 @@ func UnboundedPreceding() FrameBound { return FrameBound{position: -2} }
 
 // UnboundedFollowing selects the end of the partition.
 func UnboundedFollowing() FrameBound { return FrameBound{position: 2} }
+
 func (b FrameBound) writeTo(s *strings.Builder) {
 	if b.offset < 0 {
 		panic("negative window frame offset")
@@ -353,4 +354,47 @@ func (w WindowSpec) resolve(c *BuildContext) WindowSpec {
 
 	w.base = ""
 	return w
+}
+
+// Window appends a named window definition.
+func (b *SelectBuilder) Window(name string, spec WindowSpec) *SelectBuilder {
+	b.windows = append(b.windows, namedWindow{name, spec})
+	return b
+}
+
+// ClearWindows removes all named windows.
+func (b *SelectBuilder) ClearWindows() *SelectBuilder {
+	b.windows = nil
+	return b
+}
+
+func (b *SelectBuilder) prepareWindows(c *BuildContext) {
+	if len(b.windows) == 0 {
+		return
+	}
+
+	c.windows = make(map[string]WindowSpec, len(b.windows))
+	for _, w := range b.windows {
+		if _, ok := c.windows[w.name]; ok {
+			panic("duplicate window name")
+		}
+		c.windows[w.name] = w.spec.resolve(c)
+	}
+}
+
+func (b *SelectBuilder) writeWindows(s *strings.Builder, c *BuildContext) {
+	if len(b.windows) == 0 {
+		return
+	}
+
+	_, _ = s.WriteString(" WINDOW ")
+	for i, w := range b.windows {
+		if i > 0 {
+			_, _ = s.WriteString(", ")
+		}
+		dialect.WriteIdent(s, c.Dialect(), w.name)
+		_, _ = s.WriteString(" AS (")
+		w.spec.writeTo(s, c)
+		_ = s.WriteByte(')')
+	}
 }

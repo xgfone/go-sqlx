@@ -145,11 +145,18 @@ func grouping(name string, feature dialect.Feature, exprs []Expression) Expressi
 	}
 }
 
-func writeExprs(buf *strings.Builder, c *BuildContext, exprs []Expression) {
-	for i, e := range exprs {
-		if i > 0 {
-			_, _ = buf.WriteString(", ")
-		}
-		e.writeTo(buf, c)
-	}
+func Count(field string) Expression {
+	return Expression{sql: field, node: countExpression}
 }
+
+func CountDistinct(field string) Expression {
+	return Expression{sql: field, node: countDistinctExpression}
+}
+
+func Sum(field string) Expression { return Expression{sql: field, node: sumExpression} }
+
+func Min(field string) Expression { return Expression{sql: field, node: minExpression} }
+
+func Max(field string) Expression { return Expression{sql: field, node: maxExpression} }
+
+func Avg(field string) Expression { return Expression{sql: field, node: avgExpression} }

@@ -4,6 +4,8 @@
 package sqlx
 
 import (
+	"context"
+	"database/sql/driver"
 	"errors"
 	"testing"
 )
@@ -31,7 +33,8 @@ func TestTypedSlicePreparationErrorsReturnNilOperation(t *testing.T) {
 type nilRowsBinding struct{}
 
 func (*nilRowsBinding) Scan(RowCursor) error { panic("nil binding was scanned") }
-func (*nilRowsBinding) Commit()              { panic("nil binding was committed") }
+
+func (*nilRowsBinding) Commit() { panic("nil binding was committed") }
 
 func TestRowsBindingRejectsNilAndIncompleteOperations(t *testing.T) {
 	for _, name := range []string{"nil", "typed_nil", "nil_funcs_pointer", "no_callbacks", "no_scan", "no_commit"} {
@@ -83,5 +86,25 @@ func TestRowsBindingFuncsPreservesScanError(t *testing.T) {
 	}
 	if got := binding.Scan(nil); !errors.Is(got, want) {
 		t.Fatal(got)
+	}
+}
+
+func TestWildcardAndPointerRowsUseDriverMetadata(t *testing.T) {
+	f := &scanFixture{values: []driver.Value{"first", "second"}}
+	db := fixtureDB(t, f)
+	var rows []*struct {
+		Value string `sql:"value"`
+	}
+
+	if e := db.Select("*").From("t").QueryRowsContext(context.Background()).Bind(&rows); e != nil {
+		t.Fatal(e)
+	}
+
+	if len(rows) != 2 || rows[0].Value != "first" || rows[1].Value != "second" {
+		t.Fatalf("%+v", rows)
+	}
+
+	if e := db.Select("*").From("t").QueryRowsContext(context.Background()).Bind(nil); e == nil {
+		t.Fatal("nil bind accepted")
 	}
 }

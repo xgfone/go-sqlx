@@ -4,6 +4,7 @@
 package sqlx
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -149,4 +150,15 @@ func prefixCode(s string) sqlPrefix {
 	}
 
 	panic("sqlx: invalid internal SQL separator")
+}
+
+func writeInt64(buf *strings.Builder, value int64) {
+	var digits [20]byte
+	_, _ = buf.Write(strconv.AppendInt(digits[:0], value, 10))
+}
+
+func (w *SQLWriter) takePrefix() string {
+	prefix := w.prefix.String()
+	w.prefix = 0
+	return prefix
 }

@@ -3,7 +3,9 @@
 
 package sqlx
 
-import "strings"
+import (
+	"strings"
+)
 
 // All estimates describe a minimum capacity for the shared SQL buffer, not
 // additional free space at each expression node. A new statement adds its
@@ -103,4 +105,57 @@ func (w WindowSpec) renderSizeHint() int {
 	}
 
 	return size
+}
+
+func (b *InsertBuilder) renderSizeHint() int {
+	n := 32 + quotedPathSize(b.table) + len(b.alias)
+	for _, column := range b.columns {
+		n += len(column) + 4
+	}
+
+	// Skip any term that would overflow the optional size hint.
+	const maxInt = int(^uint(0) >> 1)
+	if b.values.rows > (maxInt-n)/4 {
+		return max(128, n)
+	}
+
+	n += 4 * b.values.rows
+	if b.values.size() > (maxInt-n)/6 {
+		return max(128, n)
+	}
+
+	n += 6 * b.values.size()
+	return max(128, n)
+}
+
+// Estimate from immutable query descriptions only; never evaluate custom
+// expressions or conditions twice just to determine a buffer size.
+func (b *SelectBuilder) renderSizeHint() int {
+	n := 32
+	for _, condition := range b.wheres {
+		n += conditionSizeHint(condition)
+	}
+	for _, condition := range b.havings {
+		n += conditionSizeHint(condition)
+	}
+	for _, col := range b.columns {
+		if col.Expr != nil {
+			n += col.Expr.renderSizeHint() + 2
+		} else {
+			n += quotedPathSize(col.Column) + 2
+		}
+		if col.Alias != "" {
+			n += len(col.Alias) + 6
+		}
+	}
+	for _, table := range b.ftables {
+		n += quotedPathSize(table.Table) + len(table.Alias) + 8
+	}
+	for _, order := range b.orderbys {
+		n += quotedPathSize(order.Column) + len(order.Order) + 12
+	}
+	if b.hasLimit || b.offset != 0 {
+		n += 24
+	}
+	return n
 }

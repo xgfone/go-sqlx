@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// Reuse reports independent temporary-destination safety for the first two
+// targets (MapPairs), or the single target of MapIndex/MapSet. Unknown raw
+// cursors never permit reuse even when destination types themselves are safe.
+type Reuse [2]bool
+
 // These exact standard-library scanners store values without retaining their
 // receiver address. This does not change their Scan/NULL/conversion semantics.
 // Named wrappers, embedded scanners and arbitrary Scanner implementations are

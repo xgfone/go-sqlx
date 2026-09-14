@@ -152,11 +152,6 @@ func (b *InsertBuilder) ClearConflict() *InsertBuilder {
 	return b
 }
 
-func (b *InsertBuilder) ClearReturning() *InsertBuilder {
-	b.returning = nil
-	return b
-}
-
 func (b *InsertBuilder) Clone() *InsertBuilder {
 	v := *b
 	v.ctes = slices.Clone(b.ctes)
@@ -168,6 +163,7 @@ func (b *InsertBuilder) Clone() *InsertBuilder {
 	v.values = b.values.clone()
 	return &v
 }
+
 func (b *InsertBuilder) Reset() *InsertBuilder {
 	base := b.builderBase
 	base.err = nil
@@ -335,29 +331,9 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 }
 
-func (b *InsertBuilder) renderSizeHint() int {
-	n := 32 + quotedPathSize(b.table) + len(b.alias)
-	for _, column := range b.columns {
-		n += len(column) + 4
-	}
-
-	// Skip any term that would overflow the optional size hint.
-	const maxInt = int(^uint(0) >> 1)
-	if b.values.rows > (maxInt-n)/4 {
-		return max(128, n)
-	}
-
-	n += 4 * b.values.rows
-	if b.values.size() > (maxInt-n)/6 {
-		return max(128, n)
-	}
-
-	n += 6 * b.values.size()
-	return max(128, n)
-}
-
 func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder { b.db = db; return b }
-func (b *InsertBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+func (b *InsertBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 func (b *InsertBuilder) SetExecutor(e Executor) *InsertBuilder { b.executor = e; return b }
@@ -367,29 +343,17 @@ func (b *InsertBuilder) SetDialect(d Dialect) *InsertBuilder { b.dialect = d; re
 
 func (b *InsertBuilder) Comment(s string) *InsertBuilder { b.comment = s; return b }
 
-func (b *InsertBuilder) String() string                { return stringStatement(b) }
+func (b *InsertBuilder) String() string { return stringStatement(b) }
+
 func (b *InsertBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
-func (b *InsertBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *InsertBuilder) MustBuild() (string, []any) { return mustBuild(b) }
 
 func (b *InsertBuilder) ExecContext(ctx context.Context) (sql.Result, error) {
 	if len(b.returning) > 0 {
 		return nil, errors.New("sqlx: use QueryRowsContext or QueryRowContext with RETURNING")
 	}
 	return b.execStatement(ctx, b)
-}
-
-// Returning appends output columns on PostgreSQL or SQLite.
-func (b *InsertBuilder) Returning(columns ...string) *InsertBuilder {
-	for _, v := range columns {
-		b.returning = append(b.returning, selectedColumn{Column: v})
-	}
-	return b
-}
-
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *InsertBuilder) ReturningExpr(e Expression, alias string) *InsertBuilder {
-	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
-	return b
 }
 
 func (b *InsertBuilder) QueryRowsContext(ctx context.Context) *Rows {

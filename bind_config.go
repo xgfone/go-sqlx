@@ -5,42 +5,7 @@ package sqlx
 
 import (
 	"errors"
-	"reflect"
-
-	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
-
-// NullPolicy controls NULL conversion for non-nullable scalar destinations.
-// Pointer destinations remain nil on NULL; custom sql.Scanner values own their
-// NULL semantics regardless of this policy.
-type NullPolicy = rowbind.NullPolicy
-
-const (
-	NullToZero = rowbind.NullToZero
-	NullError  = rowbind.NullError
-)
-
-// NestedPointerPolicy controls pointers to flattened nested structs.
-type NestedPointerPolicy = rowbind.NestedPointerPolicy
-
-const (
-	// AllocateNestedPointers allocates parents when any child column is selected.
-	AllocateNestedPointers = rowbind.AllocateNestedPointers
-
-	// NilNullNestedPointers sets a parent to nil when all its selected columns
-	// are SQL NULL. This is useful for the nullable side of an outer join.
-	NilNullNestedPointers = rowbind.NilNullNestedPointers
-)
-
-// ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns. Custom Scanners
-// receive original source types and must copy borrowed bytes they retain.
-// Their implementations must return errors instead of panicking and manage
-// their own resources. sqlx does not recover application Scanner panics.
-type ScanOptions = rowbind.ScanOptions
-
-func cloneScanOptions(o ScanOptions) ScanOptions { return rowbind.CloneOptions(o) }
-func validateScanOptions(o ScanOptions) error    { return rowbind.ValidateOptions(o) }
 
 // DuplicateKeyPolicy controls collisions in map pairs, map indexes and Merge.
 type DuplicateKeyPolicy uint8
@@ -97,39 +62,6 @@ func (o BindOptions) validate() error {
 	return validateScanOptions(o.ScanOptions)
 }
 
-// RowMapping is immutable preparation for one ordered result shape. Copies can
-// be shared concurrently; scanners created from it own independent state.
-type RowMapping struct{ mapping rowbind.Mapping }
-
-// PrepareMapping lets a custom binder prepare conversion and struct mapping
-// before it receives a cursor. It snapshots mutable option slices and does not
-// allocate execution scratch or change any destination.
-func (o BindOptions) PrepareMapping(types ...reflect.Type) (RowMapping, error) {
-	mapping, err := rowbind.Prepare(o.Columns, types, o.ScanOptions)
-	return RowMapping{mapping: mapping}, err
-}
-
-// WithScan lends a type-checked current-row scan function to run. Each call
-// borrows independent scratch, released when run returns or panics. Panics
-// propagate. The scan function is valid only synchronously within run; later
-// calls fail. Destination addresses may change, but their types must match the
-// prepared signature. The callback must keep the cursor on the same result set.
-//
-// The caller owns iteration, Err and cursor closing. The cursor must obey
-// RowCursor's raw-scan contract; *Rows is rejected to avoid a second mapping and
-// conversion layer. Use the package-level WithScan for *Rows instead.
-func (m RowMapping) WithScan(cursor RowCursor, run func(scan RowScanFunc) error) error {
-	if nilBindingValue(cursor) {
-		return errors.New("sqlx: nil row cursor")
-	}
-
-	if _, ok := cursor.(*Rows); ok {
-		return errors.New("sqlx: RowMapping.WithScan requires a raw cursor; use WithScan for *Rows")
-	}
-
-	return m.mapping.WithCheckedScan(cursor.Scan, run)
-}
-
 func (o BindOptions) capacity() int {
 	if o.Capacity == 0 {
 		return DefaultRowsCapacity
@@ -159,6 +91,7 @@ func (c BindConfig) clone() BindConfig {
 	c.ScanOptions = cloneScanOptions(c.ScanOptions)
 	return c
 }
+
 func (c BindConfig) options(mode BindMode) BindOptions {
 	return BindOptions{
 		ScanOptions:   cloneScanOptions(c.ScanOptions),

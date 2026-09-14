@@ -5,7 +5,6 @@ package sqlx
 
 import (
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -43,34 +42,6 @@ func ExpressionSource(e Expression, alias string, columns ...string) Source {
 		Alias:   alias,
 		Columns: slices.Clone(columns),
 	}}
-}
-
-// ValuesSource constructs a named VALUES table. Each nonempty row must match
-// columns; rows are copied. SQLite aliases small inputs with SELECT and projects
-// native VALUES for larger inputs. Older MySQL uses SELECT ... UNION ALL.
-// PostgreSQL casts ordinary bound Go values to preserve numeric, boolean, binary,
-// and time semantics even when the driver sends unspecified parameter types.
-// Use ColumnTypes for Params and driver.Valuers, or Cast for individual cells.
-// Other Expressions supply their own SQL type information; nil remains untyped.
-func ValuesSource(alias string, columns []string, rows ...[]any) Source {
-	values := make([][]any, len(rows))
-	for i, row := range rows {
-		values[i] = slices.Clone(row)
-	}
-	return Source{table: sqlTable{
-		Alias:   alias,
-		Columns: slices.Clone(columns),
-		Values:  values,
-	}}
-}
-
-// ColumnTypes sets explicit SQL types for every column of a VALUES source.
-// Types are trusted SQL syntax, as in Cast, and must suit the target dialect.
-// The returned source owns a copy of types; the original source is unchanged.
-// An empty list clears explicit types and restores the dialect's defaults.
-func (s Source) ColumnTypes(types ...string) Source {
-	s.table.Types = append([]string(nil), types...)
-	return s
 }
 
 // Lateral permits references to preceding FROM items from this source.
@@ -222,23 +193,6 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 
 }
 
-func writeValuesProjection(s *strings.Builder, c *BuildContext, columns []string) {
-	_, _ = s.WriteString("SELECT ")
-	var digits [20]byte
-	for i, column := range columns {
-		if i > 0 {
-			_, _ = s.WriteString(", ")
-		}
-		// SQLite's generated columnN names are safe bare identifiers. Write
-		// the ordinal directly instead of allocating a name string per column.
-		_, _ = s.WriteString("column")
-		_, _ = s.Write(strconv.AppendInt(digits[:0], int64(i+1), 10))
-		_, _ = s.WriteString(" AS ")
-		dialect.WriteIdent(s, c.Dialect(), column)
-	}
-	_, _ = s.WriteString(" FROM (")
-}
-
 func validateColumnNames(columns []string) {
 	seen := make(map[string]bool, len(columns))
 	for _, col := range columns {
@@ -249,43 +203,11 @@ func validateColumnNames(columns []string) {
 	}
 }
 
-// JoinType selects a join operator.
-type JoinType string
-
-const (
-	InnerJoin     JoinType = "INNER"
-	LeftJoin      JoinType = "LEFT"
-	RightJoin     JoinType = "RIGHT"
-	FullJoin      JoinType = "FULL"
-	CrossJoinType JoinType = "CROSS"
-)
-
-func sourceJoin(kind JoinType, source Source, ons []Condition, using []string) joinTable {
-	return joinTable{
-		Type:  string(kind),
-		Table: source.table,
-		Using: slices.Clone(using),
-		Ons:   slices.Clone(ons),
-	}
-}
-
 // FromSource appends a reusable source to FROM.
 func (b *SelectBuilder) FromSource(sources ...Source) *SelectBuilder {
 	for _, s := range sources {
 		b.ftables = append(b.ftables, s.table)
 	}
-	return b
-}
-
-// JoinSource appends a join against any reusable source.
-func (b *SelectBuilder) JoinSource(kind JoinType, source Source, ons ...Condition) *SelectBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, ons, nil))
-	return b
-}
-
-// JoinSourceUsing appends a join with a USING column list.
-func (b *SelectBuilder) JoinSourceUsing(kind JoinType, source Source, columns ...string) *SelectBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, nil, columns))
 	return b
 }
 
@@ -302,18 +224,6 @@ func (b *UpdateBuilder) FromSelect(q *SelectBuilder, alias string) *UpdateBuilde
 	return b.FromSource(QuerySource(q, alias))
 }
 
-// JoinSource joins a reusable source in MySQL UPDATE JOIN, or in PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) JoinSource(kind JoinType, source Source, ons ...Condition) *UpdateBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, ons, nil))
-	return b
-}
-
-// JoinSourceUsing joins using column names in MySQL UPDATE JOIN or PostgreSQL/SQLite UPDATE FROM.
-func (b *UpdateBuilder) JoinSourceUsing(kind JoinType, source Source, columns ...string) *UpdateBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, nil, columns))
-	return b
-}
-
 // UsingSource appends reusable sources to PostgreSQL DELETE USING.
 func (b *DeleteBuilder) UsingSource(sources ...Source) *DeleteBuilder {
 	for _, s := range sources {
@@ -327,14 +237,48 @@ func (b *DeleteBuilder) UsingSelect(q *SelectBuilder, alias string) *DeleteBuild
 	return b.UsingSource(QuerySource(q, alias))
 }
 
-// JoinSource joins a reusable source in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) JoinSource(kind JoinType, source Source, ons ...Condition) *DeleteBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, ons, nil))
-	return b
+type sqlTable struct {
+	Table string
+	Alias string
+
+	Query *SelectBuilder
+	Expr  *Expression
+
+	Values  [][]any
+	Columns []string
+	Types   []string
+
+	Lateral bool
 }
 
-// JoinSourceUsing joins using column names in MySQL DELETE JOIN or PostgreSQL DELETE USING.
-func (b *DeleteBuilder) JoinSourceUsing(kind JoinType, source Source, columns ...string) *DeleteBuilder {
-	b.jtables = append(b.jtables, sourceJoin(kind, source, nil, columns))
-	return b
+func (t sqlTable) writeTo(s *strings.Builder, c *BuildContext) {
+	if t.Values != nil || t.Expr != nil || len(t.Columns) > 0 ||
+		t.Types != nil || t.Lateral {
+		t.writeSource(s, c)
+		return
+	}
+
+	if t.Query != nil {
+		if t.Alias == "" {
+			panic("subquery requires alias")
+		}
+		_ = s.WriteByte('(')
+		t.Query.writeTo(s, c)
+		_ = s.WriteByte(')')
+	} else {
+		writeQuotedPath(s, c.Dialect(), t.Table)
+	}
+	if t.Alias != "" {
+		_, _ = s.WriteString(" AS ")
+		dialect.WriteIdent(s, c.Dialect(), t.Alias)
+	}
+}
+
+func writeTables(s *strings.Builder, c *BuildContext, ts []sqlTable) {
+	for i, t := range ts {
+		if i > 0 {
+			_, _ = s.WriteString(", ")
+		}
+		t.writeTo(s, c)
+	}
 }

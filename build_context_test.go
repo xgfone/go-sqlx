@@ -13,16 +13,6 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-func mustPanic(t *testing.T, f func()) {
-	t.Helper()
-	defer func() {
-		if recover() == nil {
-			t.Error("expected panic")
-		}
-	}()
-	f()
-}
-
 func TestBuildContextNamedBindings(t *testing.T) {
 	for _, d := range []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite} {
 		t.Run(d.Name(), func(t *testing.T) {
@@ -166,24 +156,4 @@ func TestCustomConditionSharesBuildContext(t *testing.T) {
 	if q != `"t"."id"=$1` || !reflect.DeepEqual(c.Args(), []any{7}) {
 		t.Fatalf("%q %#v", q, c.Args())
 	}
-}
-
-func BenchmarkSelectBuild(b *testing.B) {
-	builder := Select("id").From("t").Where(Eq("id", 7))
-	b.Run("internal", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			_, ctx, err := builder.buildBorrowed(builder)
-			if err != nil {
-				b.Fatal(err)
-			}
-			releaseBuildContext(ctx)
-		}
-	})
-	b.Run("public", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			builder.MustBuild()
-		}
-	})
 }

@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -204,57 +203,4 @@ func writeComment(buf *strings.Builder, s string) {
 	_, _ = buf.WriteString(" /* ")
 	_, _ = buf.WriteString(s)
 	_, _ = buf.WriteString(" */")
-}
-
-type selectedColumn struct {
-	Column string
-	Alias  string
-	Expr   *Expression
-}
-
-// Write literal identifier names, not dotted paths or SQL expressions.
-func writeIdentifiers(buf *strings.Builder, ctx *BuildContext, names []string) {
-	for i, name := range names {
-		if i > 0 {
-			_, _ = buf.WriteString(", ")
-		}
-		dialect.WriteIdent(buf, ctx.Dialect(), name)
-	}
-}
-
-func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
-	if len(cols) == 0 {
-		panic("no selected columns")
-	}
-
-	for i, c := range cols {
-		if i != 0 {
-			_, _ = buf.WriteString(", ")
-		}
-
-		if c.Expr != nil {
-			c.Expr.writeTo(buf, ctx)
-		} else {
-			ctx.WriteQuote(buf, c.Column)
-		}
-
-		if c.Alias != "" {
-			_, _ = buf.WriteString(" AS ")
-			dialect.WriteIdent(buf, ctx.Dialect(), c.Alias)
-		}
-	}
-}
-
-func cloneColumns(cols []selectedColumn) []selectedColumn {
-	return slices.Clone(cols)
-}
-
-func writeReturning(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
-	if len(cols) == 0 {
-		return
-	}
-
-	requireFeature(ctx, dialect.Returning, "RETURNING")
-	_, _ = buf.WriteString(" RETURNING ")
-	writeColumns(buf, ctx, cols)
 }

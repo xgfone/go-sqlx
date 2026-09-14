@@ -407,3 +407,71 @@ print('SQLite',sqlite3.sqlite_version,':',len(cases),'execution cases passed')
 	}
 	t.Log(string(output))
 }
+
+// TestSQLiteExecution validates generated statements and their bound arguments on
+// a real SQLite engine without adding a driver dependency to the library.
+func TestSQLiteExecution(t *testing.T) {
+	python, e := exec.LookPath("python3")
+	if e != nil {
+		t.Skip("python3 with sqlite3 unavailable")
+	}
+
+	db := &DB{Dialect: dialect.SQLite}
+	type query struct {
+		SQL  string
+		Args []any
+		Want [][]any
+	}
+
+	cases := []struct {
+		b    SQLBuilder
+		want [][]any
+	}{
+		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "one", 10).Returning("id"), [][]any{{1}}},
+		{db.Insert().Into("t").Columns("id", "v", "n").Values(1, "two", 20).
+			OnConflict(ConflictColumns("id").DoUpdate(Set("v", Ident("excluded", "v")), Set("n", Ident("excluded", "n")))).
+			Returning("v", "n"), [][]any{{"two", 20}}},
+		{db.Update().Table("t").SetExpr("n", Expr("? + ?", Ident("n"), 2)).
+			Where(Eq("id", 1)).Returning("n"), [][]any{{22}}},
+		{db.Select().SelectExpr(Sum("n")).From("t").Having(Expr("SUM(n) > ?", 20).Condition()), [][]any{{22}}},
+		{db.Select("id").With("filtered", Select("id").From("t").Where(Eq("n", 22))).
+			From("filtered").UnionAll(Select().SelectExpr(Value(9))), [][]any{{1}, {9}}},
+		{db.Insert().Into("archive").Columns("id").FromSelect(Select("id").From("t").
+			Where(Eq("id", 1))).Returning("id"), [][]any{{1}}},
+		{db.Select("a.id").FromAlias("t", "a").Join("archive", "b", On("a.id", "b.id")), [][]any{{1}}},
+		{db.Delete().From("t").Where(InQuery("id", Select("id").From("archive"))).Returning("id"), [][]any{{1}}},
+		{db.Insert().Into("t").DefaultValues().Returning("v"), [][]any{{"default"}}},
+	}
+
+	qs := make([]query, len(cases))
+	for i, c := range cases {
+		q, a, e := c.b.Build()
+		if e != nil {
+			t.Fatal(e)
+		}
+		qs[i] = query{q, a, c.want}
+	}
+	data, _ := json.Marshal(qs)
+
+	script := `import sys,json,sqlite3
+if sqlite3.sqlite_version_info < (3,39):
+    print('SKIP old SQLite'); sys.exit(0)
+c=sqlite3.connect(':memory:')
+c.executescript("CREATE TABLE t(id INTEGER PRIMARY KEY,v TEXT DEFAULT 'default',n INTEGER); CREATE TABLE archive(id INTEGER);")
+for q in json.load(sys.stdin):
+    got=[list(row) for row in c.execute(q['SQL'],q['Args'] or [])]
+    assert got==q['Want'], (q,got)
+print('SQLite',sqlite3.sqlite_version,'passed')
+`
+
+	cmd := exec.Command(python, "-c", script)
+	cmd.Stdin = strings.NewReader(string(data))
+	out, e := cmd.CombinedOutput()
+	if e != nil {
+		t.Fatalf("SQLite: %s %v", out, e)
+	}
+	if strings.HasPrefix(string(out), "SKIP") {
+		t.Skip(string(out))
+	}
+	t.Log(string(out))
+}

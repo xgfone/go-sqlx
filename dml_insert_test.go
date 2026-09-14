@@ -4,7 +4,9 @@
 package sqlx
 
 import (
+	"context"
 	"fmt"
+	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
@@ -75,4 +77,21 @@ func ExampleInsertBuilder_Row() {
 	// Output:
 	// INSERT INTO `table` (`column1`, `column2`, `column3`) VALUES (?, ?, ?)
 	// [value1 value2 value3]
+}
+
+func TestInsertAlignmentDefaultsAndErrors(t *testing.T) {
+	checkSQL(t, Insert().Into("t").Row(ColValue("a", 1), ColValue("b", 2)).Row(ColValue("b", 3), ColValue("a", 4)),
+		"INSERT INTO `t` (`a`, `b`) VALUES (?, ?), (?, ?)", 1, 2, 4, 3)
+	checkBuildError(t, Insert().Into("t").Row(ColValue("a", 1)).Row(ColValue("b", 2)))
+	checkBuildError(t, Insert().Into("t").Row(ColValue("a", 1), ColValue("a", 2)))
+	checkBuildError(t, Insert().Into("t").Columns("id"))
+
+	if r, e := Insert().Into("t").Columns("id").ExecContext(context.Background()); e == nil || r != nil {
+		t.Fatalf("empty insert: %v %v", r, e)
+	}
+
+	checkSQL(t, Insert().Into("t").DefaultValues(), "INSERT INTO `t` () VALUES ()")
+	checkSQL(t, Insert().Into("t").DefaultValues().SetDB(&DB{Dialect: dialect.Postgres}), `INSERT INTO "t" DEFAULT VALUES`)
+	checkSQL(t, Insert().Into("t").Values(nil, Default()), "INSERT INTO `t` VALUES (?, DEFAULT)", nil)
+	checkBuildError(t, Insert().Into("t").Values(Default()).SetDB(&DB{Dialect: dialect.SQLite}))
 }

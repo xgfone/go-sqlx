@@ -13,8 +13,10 @@ import (
 
 type scopeCTEBody func(*strings.Builder, *BuildContext) error
 
-func (b scopeCTEBody) Snapshot() CTEBody                                  { return b }
-func (b scopeCTEBody) Kind() CTEBodyKind                                  { return CTESelect }
+func (b scopeCTEBody) Snapshot() CTEBody { return b }
+
+func (b scopeCTEBody) Kind() CTEBodyKind { return CTESelect }
+
 func (b scopeCTEBody) WriteSQL(s *strings.Builder, c *BuildContext) error { return b(s, c) }
 
 func TestCTEBodyRestoresStatementScope(t *testing.T) {
@@ -124,7 +126,37 @@ func (b countingSnapshotCTEBody) Snapshot() CTEBody {
 	*b.calls++
 	return Select().SelectExpr(Value(7))
 }
+
 func (countingSnapshotCTEBody) Kind() CTEBodyKind { panic("only the snapshot may be inspected") }
+
 func (countingSnapshotCTEBody) WriteSQL(*strings.Builder, *BuildContext) error {
 	panic("only the snapshot may be rendered")
+}
+
+func TestCTEPlacementAndDMLScope(t *testing.T) {
+	cte := NewCTE("q", Select().SelectExpr(Value(7)), "id")
+	checkSQL(t,
+		Insert().Into("t").Columns("id").WithCTE(cte).FromSelect(Select("id").From("q")),
+		"INSERT INTO `t` (`id`) WITH `q` (`id`) AS (SELECT ?) SELECT `id` FROM `q`",
+		7)
+	checkSQL(t,
+		Insert().Into("t").Columns("id").WithCTE(cte).FromSelect(Select("id").
+			From("q")).SetDialect(dialect.Postgres),
+		`WITH "q" ("id") AS (SELECT $1) INSERT INTO "t" ("id") SELECT "id" FROM "q"`,
+		7)
+
+	deleted := Delete().From("old").Where(Eq("id", 9)).Returning("id")
+	q := Select("id").From("deleted").WithCTE(NewCTE("deleted", deleted)).SetDialect(dialect.Postgres)
+	checkSQL(t, q, `WITH "deleted" AS (DELETE FROM "old" WHERE ("id" = $1) RETURNING "id") SELECT "id" FROM "deleted"`, 9)
+
+	deleted.ClearWhere()
+	checkSQL(t, q, `WITH "deleted" AS (DELETE FROM "old" WHERE ("id" = $1) RETURNING "id") SELECT "id" FROM "deleted"`, 9)
+	checkBuildError(t, q.Clone().SetDialect(dialect.SQLite))
+	checkBuildError(t, Select("*").FromSelect(q, "nested").SetDialect(dialect.Postgres))
+	checkBuildError(t, Insert().Into("t").WithCTE(cte).Values(1))
+	checkBuildError(t, Select("*").WithCTE(cte.Materialized()))
+	checkSQL(t,
+		Select("id").From("q").WithCTE(cte.NotMaterialized()).SetDialect(dialect.SQLite),
+		`WITH "q" ("id") AS NOT MATERIALIZED (SELECT ?) SELECT "id" FROM "q"`,
+		7)
 }

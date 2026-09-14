@@ -4,35 +4,8 @@
 package dialect
 
 import (
-	"math"
-	"strings"
 	"testing"
 )
-
-func TestWritePlaceholder(t *testing.T) {
-	for _, d := range []Dialect{Postgres, MySQL, SQLite, WithVersion(Postgres, 14, 0, 0), WithFeatures(SQLite, nil, nil)} {
-		for _, i := range []int{1, 9, 10, 99, 100, 999, 1000, math.MaxInt} {
-			var buf strings.Builder
-			_, _ = buf.WriteString("prefix ")
-			WritePlaceholder(&buf, d, i)
-			if got, want := buf.String(), "prefix "+d.Placeholder(i); got != want {
-				t.Fatalf("%s parameter %d: %q != %q", d.Name(), i, got, want)
-			}
-		}
-
-		for _, i := range []int{0, -1} {
-			func() {
-				defer func() {
-					if recover() == nil {
-						t.Errorf("%s accepted parameter %d", d.Name(), i)
-					}
-				}()
-				var buf strings.Builder
-				WritePlaceholder(&buf, d, i)
-			}()
-		}
-	}
-}
 
 func TestVersionCapabilities(t *testing.T) {
 	for _, tc := range []struct {

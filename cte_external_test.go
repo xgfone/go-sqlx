@@ -149,9 +149,11 @@ type delegatedCTEBody struct{ body sqlx.CTEBody }
 func (b delegatedCTEBody) Kind() sqlx.CTEBodyKind {
 	return b.body.Kind()
 }
+
 func (b delegatedCTEBody) Snapshot() sqlx.CTEBody {
 	return delegatedCTEBody{b.body.Snapshot()}
 }
+
 func (b delegatedCTEBody) WriteSQL(buf *strings.Builder, ctx *sqlx.BuildContext) error {
 	return b.body.WriteSQL(buf, ctx)
 }
@@ -205,12 +207,14 @@ type failingCTEBody struct {
 func (b failingCTEBody) Kind() sqlx.CTEBodyKind {
 	return b.kind
 }
+
 func (b failingCTEBody) Snapshot() sqlx.CTEBody {
 	if b.snapshot != nil {
 		return b.snapshot()
 	}
 	return b
 }
+
 func (b failingCTEBody) WriteSQL(buf *strings.Builder, ctx *sqlx.BuildContext) error {
 	if b.write != nil {
 		return b.write(buf, ctx)
@@ -331,19 +335,5 @@ func TestExternalCTEBodySQLiteExecution(t *testing.T) {
 		query, string(params)).CombinedOutput()
 	if err != nil || strings.TrimSpace(string(result)) != "[[42]]" {
 		t.Fatalf("SQLite CTE execution: %s (%v)", result, err)
-	}
-}
-
-func BenchmarkExternalCTEBody(b *testing.B) {
-	ctebody := &customCTEBody{values: []any{7}}
-	query := sqlx.Select("id").From("input").
-		WithCTE(sqlx.NewCTE("input", ctebody, "id")).
-		SetDialect(dialect.Postgres)
-
-	b.ReportAllocs()
-	for b.Loop() {
-		if _, _, err := query.Build(); err != nil {
-			b.Fatal(err)
-		}
 	}
 }

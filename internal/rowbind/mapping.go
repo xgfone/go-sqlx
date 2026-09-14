@@ -162,11 +162,6 @@ func (m Mapping) init(p *scanPlan) {
 	}
 }
 
-// Reuse reports independent temporary-destination safety for the first two
-// targets (MapPairs), or the single target of MapIndex/MapSet. Unknown raw
-// cursors never permit reuse even when destination types themselves are safe.
-type Reuse [2]bool
-
 // WithScan lends a current-row scan function to one synchronous operation. The
 // callback must not retain it. Destination types must match the prepared types.
 // Scratch is cleared and returned on success, error and panic. reusable reports

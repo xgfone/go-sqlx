@@ -111,8 +111,10 @@ func TestBindingShapeErrorsArePreparationErrors(t *testing.T) {
 // No Columns method: all metadata belongs to the preparation boundary.
 type rawBindingCursor struct{ next int }
 
-func (c *rawBindingCursor) Next() bool            { c.next++; return c.next <= 2 }
-func (*rawBindingCursor) Err() error              { return nil }
+func (c *rawBindingCursor) Next() bool { c.next++; return c.next <= 2 }
+
+func (*rawBindingCursor) Err() error { return nil }
+
 func (c *rawBindingCursor) Scan(dst ...any) error { return dst[0].(sql.Scanner).Scan(int64(c.next)) }
 
 func TestBindingScanUsesOptionsWithMetadataFreeCursor(t *testing.T) {
@@ -199,5 +201,76 @@ func TestCustomBindingReceivesRawCursorAndConfigurationSnapshot(t *testing.T) {
 	if !reflect.DeepEqual(got, []time.Duration{2 * time.Second}) ||
 		db.BindConfig().ScanOptions.TimeLayouts[0] != time.DateOnly {
 		t.Fatal(got, db.BindConfig())
+	}
+}
+
+func TestMappingValidationBeforeIteration(t *testing.T) {
+	type model struct {
+		Value int `sql:"value"`
+	}
+
+	for _, columns := range [][]string{{"typo"}, {"value", "value"}} {
+		f := &bindFixture{columns: columns}
+		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q")
+		original := []model{{Value: 7}}
+		got := original
+		if err := rows.Bind(&got); err == nil || f.next.Load() != 0 ||
+			f.closed.Load() != 1 || !reflect.DeepEqual(got, []model{{Value: 7}}) ||
+			!reflect.DeepEqual(original, []model{{Value: 7}}) {
+			t.Fatal(columns, got, err)
+		}
+	}
+
+	f := &bindFixture{
+		columns: []string{"value", "ignored"},
+		values:  [][]driver.Value{{int64(1), "x"}},
+	}
+
+	var got []model
+	rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q")
+	err := rows.SetScanOptions(ScanOptions{IgnoreUnknownColumns: true}).Bind(&got)
+	if err != nil || len(got) != 1 || got[0].Value != 1 {
+		t.Fatal(got, err)
+	}
+
+	rows, f = bindTestRows(t, int64(1))
+	err = rows.SetColumns("value", "other").Bind(&got)
+	if err == nil || f.next.Load() != 0 {
+		t.Fatal(err)
+	}
+}
+
+func TestBindingPreflightAndMapShape(t *testing.T) {
+	for _, binder := range []RowsBinder{
+		NewMapIndexBinder[map[int]int](nil),
+		RowsBinderFunc(nil),
+	} {
+		var value map[int]int
+		if _, err := binder.Prepare(&value, BindOptions{}); err == nil {
+			t.Fatal("nil function accepted")
+		}
+	}
+
+	rows, f := bindTestRows(t)
+	var channels []chan int
+	if err := rows.Bind(&channels); err == nil || f.next.Load() != 0 {
+		t.Fatal(err)
+	}
+
+	rows, f = bindTestRows(t)
+	var scanners []sql.Scanner
+	if err := rows.Bind(&scanners); err == nil || f.next.Load() != 0 {
+		t.Fatal(err)
+	}
+
+	var pairs map[string]bool
+	fixture := &bindFixture{
+		columns: []string{"key", "value"},
+		values:  [][]driver.Value{{"a", false}, {"b", true}},
+	}
+	err := bindTestDB(t, fixture).QueryRowsContext(context.Background(), "q").
+		SetBinder(NewMapPairsBinder[map[string]bool]()).Bind(&pairs)
+	if err != nil || pairs["a"] || !pairs["b"] || len(pairs) != 2 {
+		t.Fatal(pairs, err)
 	}
 }

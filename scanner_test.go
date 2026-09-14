@@ -220,14 +220,3 @@ func TestGeneralScannerTimeAndDuration(t *testing.T) {
 		}
 	}
 }
-
-func BenchmarkGeneralScanner(b *testing.B) {
-	var value int64
-	s := GeneralScanner{Value: &value}
-	b.ReportAllocs()
-	for b.Loop() {
-		if err := s.Scan(int64(123)); err != nil {
-			b.Fatal(err)
-		}
-	}
-}

@@ -11,19 +11,6 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-type Order string
-
-const (
-	Asc  Order = "ASC"
-	Desc Order = "DESC"
-)
-
-type unionQuery struct {
-	Query *SelectBuilder
-	All   bool
-	Op    string
-}
-
 // SelectBuilder is mutable. Clone before deriving an independent query; builders
 // are not safe for concurrent mutation. Build itself does not mutate the builder.
 type SelectBuilder struct {
@@ -99,19 +86,17 @@ func (b *SelectBuilder) ClearSelect() *SelectBuilder {
 	b.distinctOn = nil
 	return b
 }
-func (b *SelectBuilder) ClearFrom() *SelectBuilder    { b.ftables = nil; return b }
+
+func (b *SelectBuilder) ClearFrom() *SelectBuilder { b.ftables = nil; return b }
+
 func (b *SelectBuilder) ClearGroupBy() *SelectBuilder { b.groups = nil; b.rollup = false; return b }
-func (b *SelectBuilder) ClearHaving() *SelectBuilder  { b.havings = nil; return b }
+
+func (b *SelectBuilder) ClearHaving() *SelectBuilder { b.havings = nil; return b }
+
 func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return b }
-func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b }
-func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
-func (b *SelectBuilder) ClearPagination() *SelectBuilder {
-	b.withTies = false
-	b.hasLimit = false
-	b.limit = 0
-	b.offset = 0
-	return b
-}
+
+func (b *SelectBuilder) ClearWhere() *SelectBuilder { b.wheres = nil; return b }
+
 func (b *SelectBuilder) ClearLock() *SelectBuilder {
 	b.lock = ""
 	b.lockTables = nil
@@ -140,28 +125,6 @@ func (b *SelectBuilder) FromSelect(q *SelectBuilder, alias string) *SelectBuilde
 	return b
 }
 
-func (b *SelectBuilder) JoinSelect(q *SelectBuilder, alias string, ons ...Condition) *SelectBuilder {
-	if q == nil {
-		b.fail(errors.New("sqlx: nil JOIN query"))
-	} else {
-		b.jtables = append(b.jtables, joinTable{
-			Type:  "INNER",
-			Table: sqlTable{Query: q.Clone(), Alias: alias},
-			Ons:   slices.Clone(ons),
-		})
-	}
-	return b
-}
-
-func (b *SelectBuilder) JoinUsing(table, alias string, columns ...string) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "INNER",
-		Table: sqlTable{Table: table, Alias: alias},
-		Using: slices.Clone(columns),
-	})
-	return b
-}
-
 func (b *SelectBuilder) GroupBy(columns ...string) *SelectBuilder {
 	for _, s := range columns {
 		b.groups = append(b.groups, operand(s))
@@ -183,8 +146,11 @@ func (b *SelectBuilder) OrderBy(column string, order Order) *SelectBuilder {
 	b.orderbys = append(b.orderbys, SortColumn{Column: column, Order: order})
 	return b
 }
-func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder  { return b.OrderBy(column, Asc) }
+
+func (b *SelectBuilder) OrderByAsc(column string) *SelectBuilder { return b.OrderBy(column, Asc) }
+
 func (b *SelectBuilder) OrderByDesc(column string) *SelectBuilder { return b.OrderBy(column, Desc) }
+
 func (b *SelectBuilder) OrderByExpr(e Expression, order Order) *SelectBuilder {
 	b.orderbys = append(b.orderbys, SortColumn{Expr: &e, Order: order})
 	return b
@@ -192,40 +158,6 @@ func (b *SelectBuilder) OrderByExpr(e Expression, order Order) *SelectBuilder {
 
 func (b *SelectBuilder) Sort(sorters ...Sorter) *SelectBuilder {
 	b.mutate(func() { b.orderbys = appendSorts(b.orderbys, sorters...) })
-	return b
-}
-
-func (b *SelectBuilder) Limit(n int64) *SelectBuilder {
-	if n < 0 {
-		b.fail(errors.New("sqlx: negative limit"))
-	}
-
-	b.limit = n
-	b.hasLimit = true
-	b.withTies = false
-	return b
-}
-
-func (b *SelectBuilder) Offset(n int64) *SelectBuilder {
-	if n < 0 {
-		b.fail(errors.New("sqlx: negative offset"))
-	}
-
-	b.offset = n
-	return b
-}
-
-func (b *SelectBuilder) Paginate(page, size int64) *SelectBuilder {
-	return b.Pagination(PageSize(page, size))
-}
-
-func (b *SelectBuilder) Pagination(p Pagination) *SelectBuilder {
-	if p != nil {
-		b.mutate(func() {
-			limit, offset := p.LimitOffset()
-			b.Limit(limit).Offset(offset)
-		})
-	}
 	return b
 }
 
@@ -242,29 +174,9 @@ func (b *SelectBuilder) ForShare(tables ...string) *SelectBuilder {
 	return b
 }
 
-func (b *SelectBuilder) NoWait() *SelectBuilder     { b.lockWait = "NOWAIT"; return b }
+func (b *SelectBuilder) NoWait() *SelectBuilder { b.lockWait = "NOWAIT"; return b }
+
 func (b *SelectBuilder) SkipLocked() *SelectBuilder { b.lockWait = "SKIP LOCKED"; return b }
-
-// Union appends a snapshotted operand. Mixed set operations associate left-to-right;
-// nest a compound operand to request a different grouping. Operand pagination and
-// WITH clauses are grouped automatically; this builder's ordering/limit apply to
-// the complete result. Row locking is not supported in compound queries.
-func (b *SelectBuilder) Union(q *SelectBuilder) *SelectBuilder { return b.union(q, false) }
-
-// UnionAll appends an operand without eliminating duplicates; see Union.
-func (b *SelectBuilder) UnionAll(q *SelectBuilder) *SelectBuilder { return b.union(q, true) }
-func (b *SelectBuilder) union(q *SelectBuilder, all bool) *SelectBuilder {
-	if q == nil {
-		b.fail(errors.New("sqlx: nil UNION"))
-	} else {
-		b.unions = append(b.unions, unionQuery{
-			Query: q.Clone(),
-			All:   all,
-			Op:    "UNION",
-		})
-	}
-	return b
-}
 
 func (b *SelectBuilder) Clone() *SelectBuilder {
 	v := *b
@@ -428,40 +340,9 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	writeComment(s, b.comment)
 }
 
-// Estimate from immutable query descriptions only; never evaluate custom
-// expressions or conditions twice just to determine a buffer size.
-func (b *SelectBuilder) renderSizeHint() int {
-	n := 32
-	for _, condition := range b.wheres {
-		n += conditionSizeHint(condition)
-	}
-	for _, condition := range b.havings {
-		n += conditionSizeHint(condition)
-	}
-	for _, col := range b.columns {
-		if col.Expr != nil {
-			n += col.Expr.renderSizeHint() + 2
-		} else {
-			n += quotedPathSize(col.Column) + 2
-		}
-		if col.Alias != "" {
-			n += len(col.Alias) + 6
-		}
-	}
-	for _, table := range b.ftables {
-		n += quotedPathSize(table.Table) + len(table.Alias) + 8
-	}
-	for _, order := range b.orderbys {
-		n += quotedPathSize(order.Column) + len(order.Order) + 12
-	}
-	if b.hasLimit || b.offset != 0 {
-		n += 24
-	}
-	return n
-}
-
 func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }
-func (b *SelectBuilder) GetDB() *DB                  { return getDB(b.db) }
+
+func (b *SelectBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 func (b *SelectBuilder) SetExecutor(e Executor) *SelectBuilder { b.executor = e; return b }
@@ -471,55 +352,64 @@ func (b *SelectBuilder) SetDialect(d Dialect) *SelectBuilder { b.dialect = d; re
 
 func (b *SelectBuilder) Comment(s string) *SelectBuilder { b.comment = s; return b }
 
-func (b *SelectBuilder) String() string                { return stringStatement(b) }
+func (b *SelectBuilder) String() string { return stringStatement(b) }
+
 func (b *SelectBuilder) Build() (string, []any, error) { return b.buildStatement(b) }
-func (b *SelectBuilder) MustBuild() (string, []any)    { return mustBuild(b) }
+
+func (b *SelectBuilder) MustBuild() (string, []any) { return mustBuild(b) }
 
 func (b *SelectBuilder) Where(conds ...Condition) *SelectBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b
 }
 
-func (b *SelectBuilder) Join(table, alias string, ons ...Condition) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "INNER",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
+// DistinctOn selects the first row of each key group using PostgreSQL DISTINCT ON.
+// When ORDER BY is supplied, its leading expressions must match these keys;
+// order within the key prefix may differ. Callers own this semantic relationship.
+// Combine neither with Distinct nor locks.
+func (b *SelectBuilder) DistinctOn(columns ...string) *SelectBuilder {
+	for _, col := range columns {
+		b.distinctOn = append(b.distinctOn, Ident(strings.Split(col, ".")...))
+	}
 	return b
 }
 
-func (b *SelectBuilder) JoinLeft(table, alias string, ons ...Condition) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "LEFT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
+// DistinctOnExpr uses expression keys for PostgreSQL DISTINCT ON.
+func (b *SelectBuilder) DistinctOnExpr(exprs ...Expression) *SelectBuilder {
+	b.distinctOn = append(b.distinctOn, exprs...)
 	return b
 }
 
-func (b *SelectBuilder) JoinRight(table, alias string, ons ...Condition) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "RIGHT",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
+// GroupByRollup sets a hierarchical rollup of these identifier paths.
+func (b *SelectBuilder) GroupByRollup(columns ...string) *SelectBuilder {
+	exprs := make([]Expression, len(columns))
+	for i, col := range columns {
+		exprs[i] = operand(col)
+	}
+	return b.GroupByRollupExpr(exprs...)
+}
+
+// GroupByRollupExpr replaces the grouping clause with a hierarchical rollup.
+// MySQL uses GROUP BY ... WITH ROLLUP; other supporting dialects use ROLLUP(...).
+func (b *SelectBuilder) GroupByRollupExpr(exprs ...Expression) *SelectBuilder {
+	if len(exprs) == 0 {
+		b.fail(errors.New("sqlx: ROLLUP requires grouping expressions"))
+	}
+	b.groups = append([]Expression(nil), exprs...)
+	b.rollup = true
 	return b
 }
 
-func (b *SelectBuilder) JoinFull(table, alias string, ons ...Condition) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "FULL",
-		Table: sqlTable{Table: table, Alias: alias},
-		Ons:   append([]Condition(nil), ons...),
-	})
+// ForNoKeyUpdate selects PostgreSQL FOR NO KEY UPDATE locking.
+func (b *SelectBuilder) ForNoKeyUpdate(tables ...string) *SelectBuilder {
+	b.lock = "NO KEY UPDATE"
+	b.lockTables = append([]string(nil), tables...)
 	return b
 }
 
-func (b *SelectBuilder) CrossJoin(table, alias string) *SelectBuilder {
-	b.jtables = append(b.jtables, joinTable{
-		Type:  "CROSS",
-		Table: sqlTable{Table: table, Alias: alias},
-	})
+// ForKeyShare selects PostgreSQL FOR KEY SHARE locking.
+func (b *SelectBuilder) ForKeyShare(tables ...string) *SelectBuilder {
+	b.lock = "KEY SHARE"
+	b.lockTables = append([]string(nil), tables...)
 	return b
 }

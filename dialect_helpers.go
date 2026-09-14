@@ -62,3 +62,13 @@ func writeQuotedPath(buf *strings.Builder, d Dialect, name string) {
 		name = rest
 	}
 }
+
+// Write literal identifier names, not dotted paths or SQL expressions.
+func writeIdentifiers(buf *strings.Builder, ctx *BuildContext, names []string) {
+	for i, name := range names {
+		if i > 0 {
+			_, _ = buf.WriteString(", ")
+		}
+		dialect.WriteIdent(buf, ctx.Dialect(), name)
+	}
+}
