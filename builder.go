@@ -212,6 +212,16 @@ type selectedColumn struct {
 	Expr   *Expression
 }
 
+// Write literal identifier names, not dotted paths or SQL expressions.
+func writeIdentifiers(buf *strings.Builder, ctx *BuildContext, names []string) {
+	for i, name := range names {
+		if i > 0 {
+			_, _ = buf.WriteString(", ")
+		}
+		dialect.WriteIdent(buf, ctx.Dialect(), name)
+	}
+}
+
 func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn) {
 	if len(cols) == 0 {
 		panic("no selected columns")

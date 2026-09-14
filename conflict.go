@@ -165,12 +165,7 @@ func (t ConflictTarget) writeTo(s *strings.Builder, c *BuildContext) {
 	if len(t.columns) > 0 || len(t.expressions) > 0 {
 		_, _ = s.WriteString(" (")
 		validateColumnNames(t.columns)
-		for i, col := range t.columns {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			dialect.WriteIdent(s, c.Dialect(), col)
-		}
+		writeIdentifiers(s, c, t.columns)
 
 		if len(t.expressions) > 0 {
 			requireFeature(c, dialect.ConflictTargetExpressions, "expression conflict targets")
@@ -284,12 +279,7 @@ func (b *InsertBuilder) renderRowsAlias(s *strings.Builder, c *BuildContext) {
 		}
 
 		_, _ = s.WriteString(" (")
-		for i, col := range b.rowsAliasColumns {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			dialect.WriteIdent(s, c.Dialect(), col)
-		}
+		writeIdentifiers(s, c, b.rowsAliasColumns)
 		_ = s.WriteByte(')')
 	}
 }

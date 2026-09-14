@@ -149,12 +149,7 @@ func writeCTEs(s *strings.Builder, c *BuildContext, tables []commonTable) {
 		if len(t.columns) > 0 {
 			validateColumnNames(t.columns)
 			_, _ = s.WriteString(" (")
-			for j, col := range t.columns {
-				if j > 0 {
-					_, _ = s.WriteString(", ")
-				}
-				dialect.WriteIdent(s, c.Dialect(), col)
-			}
+			writeIdentifiers(s, c, t.columns)
 			_ = s.WriteByte(')')
 		}
 

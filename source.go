@@ -211,14 +211,12 @@ func (t sqlTable) writeSource(s *strings.Builder, c *BuildContext) {
 			panic("column alias lists on query/expression sources are unsupported by this dialect; alias the SELECT columns")
 		}
 
-		validateColumnNames(t.Columns)
-		_, _ = s.WriteString(" (")
-		for i, col := range t.Columns {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			dialect.WriteIdent(s, c.Dialect(), col)
+		// VALUES columns were checked before rendering the rows.
+		if t.Values == nil {
+			validateColumnNames(t.Columns)
 		}
+		_, _ = s.WriteString(" (")
+		writeIdentifiers(s, c, t.Columns)
 		_ = s.WriteByte(')')
 	}
 

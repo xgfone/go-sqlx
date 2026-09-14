@@ -91,12 +91,7 @@ func (j joinTable) writeTo(s *strings.Builder, c *BuildContext) {
 		}
 
 		_, _ = s.WriteString(" USING (")
-		for i, v := range j.Using {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-			dialect.WriteIdent(s, c.Dialect(), v)
-		}
+		writeIdentifiers(s, c, j.Using)
 		_ = s.WriteByte(')')
 		return
 	}

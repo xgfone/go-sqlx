@@ -244,13 +244,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	if len(b.columns) > 0 {
 		validateColumnNames(b.columns)
 		_, _ = s.WriteString(" (")
-		for i, col := range b.columns {
-			if i > 0 {
-				_, _ = s.WriteString(", ")
-			}
-
-			dialect.WriteIdent(s, c.Dialect(), col)
-		}
+		writeIdentifiers(s, c, b.columns)
 		_ = s.WriteByte(')')
 	}
 
