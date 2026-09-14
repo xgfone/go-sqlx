@@ -693,6 +693,10 @@ DISTINCT and DISTINCT ON. `ClearSetOperations` clears UNION, INTERSECT and EXCEP
 additions. `ClearValues` clears all insert source modes. `Reset` starts a fresh
 statement while preserving its execution configuration.
 
+All builders' `With` and `WithRecursive` helpers use `NewCTE` snapshots. Invalid
+CTE bodies, including nil, fail during Build; `ClearWith` removes those CTEs and
+their validation failures, while unrelated builder errors remain.
+
 Builders are mutable and must not be concurrently mutated. `Clone()` copies
 builder-owned slices; argument objects and custom clause implementations remain shallow.
 Build does not mutate the builder. QueryRow preserves offset and an explicit

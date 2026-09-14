@@ -190,6 +190,19 @@ func (b *SelectBuilder) WithCTE(ctes ...CTE) *SelectBuilder {
 	return b
 }
 
+// With appends a snapshotted SELECT CTE with optional output column names.
+func (b *SelectBuilder) With(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...))
+}
+
+// WithRecursive appends a recursive SELECT CTE with optional output column names.
+func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
+	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
+}
+
+// ClearWith removes SELECT common table expressions.
+func (b *SelectBuilder) ClearWith() *SelectBuilder { b.ctes = nil; return b }
+
 // WithCTE appends CTEs to an INSERT. MySQL permits these only with a SELECT source
 // and renders them after the INSERT target. PostgreSQL also permits DML CTE bodies.
 func (b *InsertBuilder) WithCTE(ctes ...CTE) *InsertBuilder {

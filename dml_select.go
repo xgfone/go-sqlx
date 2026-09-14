@@ -105,7 +105,6 @@ func (b *SelectBuilder) ClearHaving() *SelectBuilder  { b.havings = nil; return 
 func (b *SelectBuilder) ClearOrderBy() *SelectBuilder { b.orderbys = nil; return b }
 func (b *SelectBuilder) ClearWhere() *SelectBuilder   { b.wheres = nil; return b }
 func (b *SelectBuilder) ClearJoins() *SelectBuilder   { b.jtables = nil; return b }
-func (b *SelectBuilder) ClearWith() *SelectBuilder    { b.ctes = nil; return b }
 func (b *SelectBuilder) ClearPagination() *SelectBuilder {
 	b.withTies = false
 	b.hasLimit = false
@@ -245,31 +244,6 @@ func (b *SelectBuilder) ForShare(tables ...string) *SelectBuilder {
 
 func (b *SelectBuilder) NoWait() *SelectBuilder     { b.lockWait = "NOWAIT"; return b }
 func (b *SelectBuilder) SkipLocked() *SelectBuilder { b.lockWait = "SKIP LOCKED"; return b }
-
-// With appends a snapshotted SELECT CTE with optional output column names.
-func (b *SelectBuilder) With(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.with(name, q, false, columns)
-}
-
-// WithRecursive appends a recursive SELECT CTE with optional output column names.
-func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
-	return b.with(name, q, true, columns)
-}
-
-func (b *SelectBuilder) with(name string, q *SelectBuilder, recursive bool, columns []string) *SelectBuilder {
-	if q == nil {
-		b.fail(errors.New("sqlx: nil CTE"))
-	} else {
-		b.ctes = append(b.ctes, commonTable{
-			name:    name,
-			body:    q.Clone(),
-			columns: slices.Clone(columns),
-
-			recursive: recursive,
-		})
-	}
-	return b
-}
 
 // Union appends a snapshotted operand. Mixed set operations associate left-to-right;
 // nest a compound operand to request a different grouping. Operand pagination and

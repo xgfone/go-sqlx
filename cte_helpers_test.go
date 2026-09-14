@@ -85,9 +85,25 @@ func TestCTEHelpersSnapshotOptionalColumns(t *testing.T) {
 					checkSQL(t, builder, prefix+` AS (SELECT $1 AS "id") `+tc.sql, 7)
 				}
 
-				checkBuildError(t, tc.make(nil, []string{"id"}, recursive))
+				invalid := tc.make(nil, []string{"id"}, recursive)
+				checkBuildError(t, invalid)
+				switch b := invalid.(type) {
+				case *SelectBuilder:
+					b.ClearWith()
+				case *InsertBuilder:
+					b.ClearWith()
+				case *UpdateBuilder:
+					b.ClearWith()
+				case *DeleteBuilder:
+					b.ClearWith()
+				}
+				checkSQL(t, invalid, tc.sql)
 				checkBuildError(t, tc.make(Select("id"), []string{"id", "id"}, recursive))
 			}
 		})
 	}
+}
+
+func TestClearWithPreservesUnrelatedBuilderErrors(t *testing.T) {
+	checkBuildError(t, Select("id").Limit(-1).With("q", nil).ClearWith())
 }
