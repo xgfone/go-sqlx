@@ -15,6 +15,10 @@ import (
 func BenchmarkRawByteVisit(b *testing.B) {
 	for _, size := range []int{256, 4096, 65536} {
 		for _, count := range []int{0, 1, 20, 100, 1000} {
+			// Empty results never scan the payload, so measure each API once.
+			if count == 0 && size != 256 {
+				continue
+			}
 			for _, raw := range []bool{false, true} {
 				b.Run(fmt.Sprintf("bytes%d/rows%d/raw%t", size, count, raw), func(b *testing.B) {
 					f := &bindFixture{columns: []string{"value"}}

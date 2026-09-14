@@ -14,19 +14,6 @@ import (
 func BenchmarkSyntaxSafety(b *testing.B) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
 		b.Run(d.Name(), func(b *testing.B) {
-			for _, n := range []int{1, 128, 1000} {
-				b.Run(fmt.Sprintf("values_%d", n), func(b *testing.B) {
-					rows := make([][]any, n)
-					for i := range rows {
-						rows[i] = []any{i, "label"}
-					}
-
-					q := Select("v.id").
-						FromSource(ValuesSource("v", []string{"id", "label"}, rows...)).
-						SetDialect(d)
-					benchmarkSafetySQL(b, q)
-				})
-			}
 			for _, n := range []int{0, 64, 4096} {
 				b.Run(fmt.Sprintf("comment_%d", n), func(b *testing.B) {
 					q := Select().

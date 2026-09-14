@@ -101,30 +101,3 @@ func runInsertBatchWorkloads(b *testing.B, argCount int, makeBuilder func() *Ins
 		})
 	}
 }
-
-// Measure incremental Values calls separately: their final row count is not
-// available to the builder up front, unlike a Structs or AppendTo batch.
-func BenchmarkInsertValuesBatch(b *testing.B) {
-	for _, width := range []int{3, 12} {
-		for _, n := range []int{1, 20, 100, 1000} {
-			b.Run(fmt.Sprintf("cols%d/rows%d", width, n), func(b *testing.B) {
-				values := make([]any, width)
-				for i := range values {
-					values[i] = int64(i + 1000)
-				}
-
-				b.ReportAllocs()
-				for b.Loop() {
-					q := Insert().Into("records")
-					for range n {
-						q.Values(values...)
-					}
-					if q.err != nil {
-						b.Fatal(q.err)
-					}
-					insertBatchResult = q
-				}
-			})
-		}
-	}
-}

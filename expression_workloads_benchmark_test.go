@@ -4,7 +4,6 @@
 package sqlx
 
 import (
-	"strconv"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -48,84 +47,10 @@ func BenchmarkExpressionWorkloads(b *testing.B) {
 		values[i] = i
 	}
 
-	for _, n := range []int{0, 1, 20, 100, 1000} {
-		b.Run("conditions"+strconv.Itoa(n), func(b *testing.B) {
-			makeQuery := func() *SelectBuilder {
-				q := Select("id").From("t").SetDialect(dialect.Postgres)
-				for i := range n {
-					q.Where(Eq("id", i))
-				}
-				return q
-			}
-
-			b.Run("construct_build", func(b *testing.B) {
-				b.ReportAllocs()
-				for b.Loop() {
-					q, a, e := makeQuery().Build()
-					if e != nil {
-						b.Fatal(e)
-					}
-					expressionHelperSQL = q
-					expressionWorkloadArgs = a
-				}
-			})
-
-			q := makeQuery()
-			b.Run("build", func(b *testing.B) {
-				b.ReportAllocs()
-				for b.Loop() {
-					s, a, e := q.Build()
-					if e != nil {
-						b.Fatal(e)
-					}
-					expressionHelperSQL = s
-					expressionWorkloadArgs = a
-				}
-			})
-		})
-	}
-
-	for _, tc := range []struct {
-		name string
-		make func() *SelectBuilder
-	}{
-		{"in128", func() *SelectBuilder {
-			return Select("id").From("t").Where(In("id", values...))
-		}},
-		{"custom", func() *SelectBuilder {
-			return Select("id").From("t").Where(ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
-				w.Path("id")
-				w.Raw("=")
-				w.Arg(7)
-				return true, nil
-			}))
-		}},
-		{"custom_group", func() *SelectBuilder {
-			return Select("id").From("t").Where(Or(
-				ConditionWriterFunc(func(*SQLWriter) (bool, error) { return false, nil }),
-				ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
-					w.Path("id")
-					w.Raw("=")
-					w.Arg(7)
-					return true, nil
-				}),
-				Eq("v", 8),
-			))
-		}},
-	} {
-		b.Run(tc.name, func(b *testing.B) {
-			q := tc.make().SetDialect(dialect.Postgres)
-			b.ReportAllocs()
-			for b.Loop() {
-				s, a, e := q.Build()
-				if e != nil {
-					b.Fatal(e)
-				}
-				expressionHelperSQL = s
-				expressionWorkloadArgs = a
-			}
-		})
-	}
+	b.Run("in128", func(b *testing.B) {
+		q := Select("id").From("t").Where(In("id", values...)).SetDialect(dialect.Postgres)
+		benchmarkSafetySQL(b, q)
+	})
 }
 
 func BenchmarkDistinctOnExpressions(b *testing.B) {

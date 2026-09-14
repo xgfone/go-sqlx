@@ -9,51 +9,20 @@ import (
 	"testing"
 )
 
-// Keep the original closure implementation as a comparison. All variants use
-// the same immutable mapping, checked scan path, source, and destination vector.
-// Factories stay opaque to prevent devirtualization of the interface comparison.
-//
-//go:noinline
-func benchmarkScanClosure(m Mapping, source RowScanFunc) RowScanFunc {
-	p := &scanPlan{}
-	m.init(p)
-	return func(dst ...any) error { return p.Scan(source, dst) }
-}
-
 type benchmarkScanCloser interface {
 	Scan(...any) error
 	Close() error
 }
 
-type benchmarkOwnedScanner struct {
-	plan   *scanPlan
-	source RowScanFunc
-}
-
-func (s *benchmarkOwnedScanner) Scan(dst ...any) error {
-	if s.plan == nil {
-		panic("closed benchmark scanner")
-	}
-	return s.plan.Scan(s.source, dst)
-}
-
-func (s *benchmarkOwnedScanner) Close() error {
-	s.plan, s.source = nil, nil
-	return nil
-}
-
+// Keep the production Scanner factory opaque to measure interface dispatch.
+//
 //go:noinline
-func benchmarkScanInterface(m Mapping, source RowScanFunc, pooled bool) benchmarkScanCloser {
-	if pooled {
-		s, err := m.Scanner(source)
-		if err != nil {
-			panic(err)
-		}
-		return s
+func benchmarkScanInterface(m Mapping, source RowScanFunc) benchmarkScanCloser {
+	s, err := m.Scanner(source)
+	if err != nil {
+		panic(err)
 	}
-	p := &scanPlan{}
-	m.init(p)
-	return &benchmarkOwnedScanner{plan: p, source: source}
+	return s
 }
 
 func BenchmarkScannerLifetime(b *testing.B) {
@@ -72,34 +41,20 @@ func BenchmarkScannerLifetime(b *testing.B) {
 			args := []any{dst}
 			for _, count := range []int{0, 1, 1000} {
 				b.Run(fmt.Sprintf("rows_%d", count), func(b *testing.B) {
-					b.Run("closure", func(b *testing.B) {
+					b.Run("interface_pooled_true", func(b *testing.B) {
 						b.ReportAllocs()
 						for b.Loop() {
-							scan := benchmarkScanClosure(m, source)
+							scan := benchmarkScanInterface(m, source)
 							for range count {
-								if err := scan(args...); err != nil {
+								if err := scan.Scan(args...); err != nil {
 									b.Fatal(err)
 								}
+							}
+							if err := scan.Close(); err != nil {
+								b.Fatal(err)
 							}
 						}
 					})
-
-					for _, pooled := range []bool{false, true} {
-						b.Run(fmt.Sprintf("interface_pooled_%t", pooled), func(b *testing.B) {
-							b.ReportAllocs()
-							for b.Loop() {
-								scan := benchmarkScanInterface(m, source, pooled)
-								for range count {
-									if err := scan.Scan(args...); err != nil {
-										b.Fatal(err)
-									}
-								}
-								if err := scan.Close(); err != nil {
-									b.Fatal(err)
-								}
-							}
-						})
-					}
 				})
 			}
 		})

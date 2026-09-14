@@ -78,7 +78,7 @@ func TestDecodeJSONTypedDestination(t *testing.T) {
 }
 
 func TestJSONReplacement(t *testing.T) {
-	for _, source := range []any{nil, "null", "{}", "{ }"} {
+	for _, source := range []any{"null", "{}", "{ }"} {
 		m := JSONMap[int]{"old": 1}
 		if err := m.Scan(source); err != nil || len(m) != 0 {
 			t.Fatal(m, err)

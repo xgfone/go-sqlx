@@ -160,12 +160,8 @@ func (v *safetyTextFloat) Scan(src any) error {
 	return err
 }
 
-// Compare numeric/text decoders and Scanners that copy bytes for retention.
-// Include the full query lifecycle to expose preliminary input-copy overhead.
+// Decode driver bytes through custom Scanners, including the full query lifecycle.
 func BenchmarkScannerSnapshots(b *testing.B) {
-	b.Run("native_number", func(b *testing.B) {
-		benchmarkScannerSafety[safetyNumber](b, int64(42), 1000)
-	})
 	b.Run("text_number", func(b *testing.B) {
 		benchmarkScannerSafety[safetyTextNumber](b, []byte("123456789"), 1000)
 	})
@@ -177,18 +173,6 @@ func BenchmarkScannerSnapshots(b *testing.B) {
 	})
 	b.Run("json_strings", func(b *testing.B) {
 		benchmarkScannerSafety[sqltype.JSON[[]string]](b, []byte(`["first","second","third"]`), 1000)
-	})
-	b.Run("copy_256", func(b *testing.B) {
-		benchmarkScannerSafety[consumeOwnedBytes](b, make([]byte, 256), 1000)
-	})
-	b.Run("retain_256", func(b *testing.B) {
-		benchmarkScannerSafety[snapshotRetainedBytes](b, make([]byte, 256), 1000)
-	})
-	b.Run("copy_large", func(b *testing.B) {
-		benchmarkScannerSafety[consumeOwnedBytes](b, make([]byte, 1<<20), 20)
-	})
-	b.Run("retain_large", func(b *testing.B) {
-		benchmarkScannerSafety[snapshotRetainedBytes](b, make([]byte, 1<<20), 20)
 	})
 }
 

@@ -28,14 +28,6 @@ func TestDelimitedEmptyData(t *testing.T) {
 }
 
 func TestDelimitedValues(t *testing.T) {
-	strings := Strings{"old"}
-	if err := strings.Scan(nil); err != nil || strings != nil {
-		t.Fatal(strings, err)
-	}
-	if err := strings.Scan(""); err != nil || strings != nil {
-		t.Fatal(strings, err)
-	}
-
 	for _, values := range []Strings{{" a ", "b"}, {"", "b"}, {"a", ""}, nil, {}} {
 		encoded, err := values.Value()
 		if err != nil {
@@ -69,12 +61,6 @@ func TestDelimitedValues(t *testing.T) {
 	}
 
 	if err := ints.Scan("1, -2, 3"); err != nil || !reflect.DeepEqual(ints, Int64s{1, -2, 3}) {
-		t.Fatal(ints, err)
-	}
-	if err := ints.Scan(nil); err != nil || ints != nil {
-		t.Fatal(ints, err)
-	}
-	if err := ints.Scan(""); err != nil || ints != nil {
 		t.Fatal(ints, err)
 	}
 

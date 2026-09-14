@@ -10,43 +10,6 @@ import (
 
 var insertBatchResult *InsertBuilder
 
-func BenchmarkInsertStructBatch(b *testing.B) {
-	type model struct {
-		ID     int64
-		Name   string
-		Active bool
-	}
-
-	values := make([]model, 100)
-	pointers := make([]*model, len(values))
-	for i := range values {
-		values[i] = model{int64(i + 1000), "alice", true}
-		pointers[i] = &values[i]
-	}
-
-	b.Run("values", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			q := Insert().Into("models").Structs(values)
-			if q.err != nil {
-				b.Fatal(q.err)
-			}
-			insertBatchResult = q
-		}
-	})
-
-	b.Run("pointers", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			q := Insert().Into("models").Structs(pointers)
-			if q.err != nil {
-				b.Fatal(q.err)
-			}
-			insertBatchResult = q
-		}
-	})
-}
-
 func BenchmarkInsertStructProjection(b *testing.B) {
 	type first struct {
 		ID int64 `sql:"id"`

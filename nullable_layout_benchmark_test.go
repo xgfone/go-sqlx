@@ -59,6 +59,10 @@ func benchmarkNullableLayout[T any](b *testing.B, nulls, count int, visit bool) 
 func BenchmarkNullableLayouts(b *testing.B) {
 	for _, count := range []int{0, 1, 20, 100, 1000} {
 		for _, nulls := range []int{0, 50, 100} {
+			// Empty results have no NULL distribution; one row cannot be mixed.
+			if count == 0 && nulls != 0 || count == 1 && nulls == 50 {
+				continue
+			}
 			for _, visit := range []bool{false, true} {
 				name := fmt.Sprintf("rows%d/null%d/visit%t", count, nulls, visit)
 

@@ -111,6 +111,10 @@ func BenchmarkConditionBuilders(b *testing.B) {
 				b.Run(fmt.Sprintf("%s/%s/conditions%d", kind, mode, count), func(b *testing.B) {
 					query := makeQuery()
 					for _, phase := range []string{"construct", "build", "construct_build"} {
+						// Both construction modes produce the same rendering workload.
+						if phase == "build" && mode == "bulk" {
+							continue
+						}
 						b.Run(phase, func(b *testing.B) {
 							b.ReportAllocs()
 							for b.Loop() {
