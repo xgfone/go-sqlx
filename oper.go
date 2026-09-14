@@ -21,10 +21,14 @@ type Oper[T any] struct {
 	Sorter            Sorter
 	SoftCondition     Condition
 	DeletedCondition  Condition
-	SoftDeleteUpdater func(context.Context) Updater
+	SoftDeleteUpdater func() Updater
 
 	conditions []Condition
 	bindConfig *BindConfig
+}
+
+func softDeleteUpdater() Updater {
+	return Set("deleted_at", time.Now())
 }
 
 // NewOper creates an operation without registering a model binder.
@@ -34,7 +38,7 @@ func NewOper[T any](name string) Oper[T] {
 
 		SoftCondition:     Eq("deleted_at", nil),
 		DeletedCondition:  IsNotNull("deleted_at"),
-		SoftDeleteUpdater: func(context.Context) Updater { return Set("deleted_at", time.Now()) },
+		SoftDeleteUpdater: softDeleteUpdater,
 	}
 }
 
@@ -78,7 +82,7 @@ func (o Oper[T]) binding() BindConfig {
 
 func (o Oper[T]) WithSoftCondition(c Condition) Oper[T]    { o.SoftCondition = c; return o }
 func (o Oper[T]) WithDeletedCondition(c Condition) Oper[T] { o.DeletedCondition = c; return o }
-func (o Oper[T]) WithSoftDeleteUpdater(f func(context.Context) Updater) Oper[T] {
+func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 	o.SoftDeleteUpdater = f
 	return o
 }
@@ -122,7 +126,7 @@ func (o Oper[T]) SoftDelete(ctx context.Context, cs ...Condition) (sql.Result, e
 	if o.SoftDeleteUpdater == nil {
 		return nil, errors.New("sqlx: no soft-delete updater")
 	}
-	return o.Active().Update(ctx, o.SoftDeleteUpdater(ctx), cs...)
+	return o.Active().Update(ctx, o.SoftDeleteUpdater(), cs...)
 }
 
 func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err error) {

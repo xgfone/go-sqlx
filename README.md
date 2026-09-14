@@ -898,14 +898,15 @@ not promise a shared database snapshot without an appropriate transaction.
 
 `Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;
-`SoftDelete` uses a configurable updater, defaulting to the current time.
+`SoftDelete` uses a configurable `func() Updater`, defaulting to the current time.
+For request-specific update fields, use `Active().Update(ctx, updater, ...)`.
 These defaults no longer depend on go-op's zero-date constants.
 
 ```go
 oper := sqlx.NewOper[User]("users").
     WithSoftCondition(sqlx.Eq("deleted", false)).
     WithDeletedCondition(sqlx.Eq("deleted", true)).
-    WithSoftDeleteUpdater(func(context.Context) sqlx.Updater {
+    WithSoftDeleteUpdater(func() sqlx.Updater {
         return sqlx.Set("deleted", true)
     })
 oper.SetDB(db) // supported for initialization of predeclared operations

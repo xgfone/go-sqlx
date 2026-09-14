@@ -284,7 +284,9 @@ Add/Update/Delete/SoftDelete now return sql.Result and error. Count/CountGets us
 int64 counts. CountGets does not modify the page size based on the count.
 Soft-delete defaults use NULL and current time, independently of go-op's legacy
 zero-date constants. Configure WithSoftCondition, WithDeletedCondition and
-WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers.
+WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers. The
+updater callback has signature `func() Updater`; use `Active().Update` for
+request-specific fields previously derived from the callback's context.
 Active/Deleted/Where scopes return independent Oper values.
 
 ## New SQL capabilities
