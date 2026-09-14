@@ -616,6 +616,61 @@ Custom dialects explicitly advertise optional capabilities; unsupported features
 fail instead of being silently omitted. See [SQL composition](docs/sql-syntax.md)
 for the complete syntax guide, dialect constraints, and configuration examples.
 
+## Executor middleware
+
+`DefaultExecutorInterceptor` is a replaceable `func(Executor) Executor`. It
+defaults to nil, leaving executors unchanged. `Open`,
+`DB.SetExecutor`/`WithExecutor`, and every builder's `SetExecutor` apply it when
+attaching a non-nil executor, so transaction SQL uses the same middleware once
+the `*sql.Tx` is bound through those methods. A nil interceptor disables the
+hook. Configure it before concurrent use; changing it affects subsequently
+attached executors, not existing wrappers.
+
+For example, given an `auditExecutor` that implements the four `Executor`
+methods and `Unwrap() Executor`:
+
+```go
+sqlx.DefaultExecutorInterceptor = func(e sqlx.Executor) sqlx.Executor {
+    // Rebinding an already audited executor need not duplicate logging.
+    if _, ok := sqlx.AsExecutor[*auditExecutor](e); ok {
+        return e
+    }
+    return &auditExecutor{Executor: e}
+}
+```
+
+See the [complete slog middleware example](executor_example_test.go) for all
+four method implementations. Middleware receives the rendered SQL and bound
+arguments. Arguments may be borrowed until the call returns; copy any slice
+you retain for later processing.
+
+`AsExecutor[T](e)` searches from the outermost executor inward through
+`Unwrap() Executor`, returning the first matching value and a boolean. `DB`
+also implements `Unwrap`, so an opened database can be retrieved with:
+
+```go
+std, ok := sqlx.AsExecutor[*sql.DB](db)
+```
+
+`DB.BeginTx` and `DB.Close` use the same lookup for `TxBeginner` and `io.Closer`.
+A middleware wrapper can expose `Unwrap` without writing forwarding methods
+for these capabilities. If it implements a capability itself, that outer
+implementation takes precedence, including its errors. For capability checks
+outside `DB`, use `AsExecutor[sqlx.TxBeginner](e)`; Go type assertions on the
+wrapper itself still see only that wrapper's method set.
+
+`BeginTx` continues to return the original `*sql.Tx`. Use
+`db.WithExecutor(tx)` or `builder.SetExecutor(tx)` to capture transaction SQL.
+The resulting chain ends at `*sql.Tx`; it does not expose the owning `*sql.DB`
+or support nested transactions. A wrapper must preserve its input in its
+`Unwrap` chain to allow access to the original executor.
+
+Direct assignment to the public `DB.Executor` field (including struct literals)
+bypasses the hook; use `SetExecutor` to apply it. Calls made directly on the
+original `*sql.DB`/`*sql.Tx` also bypass middleware. `PrepareContext` can be
+intercepted, but later calls on its returned `*sql.Stmt` do not pass through
+`Executor` again.
+
 ## Composition
 
 String columns and table names are identifier paths. `Ident("literal.dot")`
