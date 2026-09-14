@@ -10,6 +10,37 @@ import (
 
 type metadataPathEmbedded struct{ ID int64 }
 
+func TestMetadataSkipsPrivateFieldsBeforeResolvingTypes(t *testing.T) {
+	type cycle *cycle
+	type child struct {
+		Value string
+		cache cycle //nolint:unused
+	}
+	type model struct {
+		metadataPathEmbedded
+		Child child `sql:"child"`
+		cache cycle `sql:"cache"` //nolint:unused
+	}
+
+	m, err := Describe(reflect.TypeFor[model]())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var columns []string
+	for _, field := range m.Fields() {
+		columns = append(columns, field.Column)
+	}
+	if !reflect.DeepEqual(columns, []string{"ID", "child_Value"}) {
+		t.Fatal("private fields must be skipped, exported embedded fields retained", columns)
+	}
+
+	type exported struct{ Cache cycle }
+	if _, err := Describe(reflect.TypeFor[exported]()); err == nil {
+		t.Fatal("exported recursive pointer accepted")
+	}
+}
+
 func TestMetadataPointerParents(t *testing.T) {
 	type leaf struct {
 		V int64

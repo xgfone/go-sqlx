@@ -4,6 +4,7 @@
 package sqlx
 
 import (
+	"context"
 	"database/sql/driver"
 	"reflect"
 	"sync"
@@ -11,6 +12,60 @@ import (
 
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
+
+func TestPrivateRecursiveFieldsAcrossModelAPIs(t *testing.T) {
+	type privatePointer *privatePointer
+	type model struct {
+		ID    int64 `sql:"id"`
+		cache privatePointer
+	}
+
+	var cache privatePointer
+	cache = &cache
+	value := model{ID: 7, cache: cache}
+
+	checkSQL(t, Select().SelectType[model]().From("t"), "SELECT `id` FROM `t`")
+	checkSQL(t, Select().SelectStruct(value).From("t"), "SELECT `id` FROM `t`")
+	checkSQL(t, Insert().Into("t").Struct(value), "INSERT INTO `t` (`id`) VALUES (?)", int64(7))
+	checkSQL(t, Insert().Into("t").Structs([]model{value}), "INSERT INTO `t` (`id`) VALUES (?)", int64(7))
+
+	plan, err := CompileInsert[model]()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := Insert().Into("t")
+	if err := plan.AppendTo(b, []model{value}); err != nil {
+		t.Fatal(err)
+	}
+	checkSQL(t, b, "INSERT INTO `t` (`id`) VALUES (?)", int64(7))
+
+	db := bindTestDB(t, &bindFixture{
+		columns: []string{"id"},
+		values:  [][]driver.Value{{int64(9)}},
+	})
+	err = db.QueryRowOneContext(context.Background(), "q").Scan(&value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.ID != 9 || value.cache != cache {
+		t.Fatal("row scan changed a private field", value)
+	}
+
+	var values []model
+	err = db.QueryRowsContext(context.Background(), "q").Bind(&values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(values, []model{{ID: 9}}) {
+		t.Fatal(values)
+	}
+
+	values, err = db.QueryRowsContext(context.Background(), "q").Collect[model]()
+	if err != nil || !reflect.DeepEqual(values, []model{{ID: 9}}) {
+		t.Fatal(values, err)
+	}
+}
 
 func TestProjectionSharesBindingMetadata(t *testing.T) {
 	type child struct {

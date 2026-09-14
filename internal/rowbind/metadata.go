@@ -163,6 +163,13 @@ func collectFields(
 	var fields []Field
 	for i := range t.NumField() {
 		f := t.Field(i)
+
+		// Private named fields have no mapping, regardless of their type.
+		// Embedded structs still contribute their exported fields below.
+		if f.PkgPath != "" && !f.Anonymous {
+			continue
+		}
+
 		name, options, _ := strings.Cut(f.Tag.Get("sql"), ",")
 		name = strings.TrimSpace(name)
 		if name == "-" {
@@ -174,7 +181,7 @@ func collectFields(
 			return nil, err
 		}
 
-		if f.PkgPath != "" && (!f.Anonymous || ft.Kind() != reflect.Struct) {
+		if f.PkgPath != "" && ft.Kind() != reflect.Struct {
 			continue
 		}
 
