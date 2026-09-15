@@ -54,6 +54,11 @@ func BenchmarkInsertGrowth(b *testing.B) {
 							continue
 						}
 
+						// With no appended rows, prefix has the same batch as bulk/rows1000.
+						if count == 0 && mode == "prefix" && (phase == "build" || phase == "clone") {
+							continue
+						}
+
 						b.Run(phase, func(b *testing.B) {
 							b.ReportAllocs()
 							for b.Loop() {
