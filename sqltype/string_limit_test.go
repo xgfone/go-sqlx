@@ -40,6 +40,17 @@ func TestStringLimit(t *testing.T) {
 			if (err != nil) != tc.fail || got != tc.want {
 				t.Fatalf("got %#v, %v; want %#v, failure=%v", got, err, tc.want, tc.fail)
 			}
+
+			if input, ok := tc.input.(string); ok {
+				text, textErr := tc.rule.ApplyString(input)
+				if tc.fail {
+					if text != "" || textErr == nil || textErr.Error() != err.Error() {
+						t.Fatalf("ApplyString: got %q, %v; want empty text and %v", text, textErr, err)
+					}
+				} else if textErr != nil || text != tc.want {
+					t.Fatalf("ApplyString: got %q, %v; want %#v", text, textErr, tc.want)
+				}
+			}
 		})
 	}
 

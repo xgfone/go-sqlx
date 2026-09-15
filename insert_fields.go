@@ -23,11 +23,12 @@ const (
 	insertPointer insertFieldFlags = 1 << iota
 	insertCopyValuer
 	insertZeroMethod
+	insertStringLimit
 )
 
 var insertZeroType = reflect.TypeFor[interface{ IsZero() bool }]()
 
-func insertField(v reflect.Value) any {
+func insertField(v reflect.Value, field *rowbind.Field) any {
 	if !v.IsValid() {
 		return nil
 	}
@@ -38,6 +39,9 @@ func insertField(v reflect.Value) any {
 
 	if !v.CanInterface() {
 		panic("cannot read unexported field")
+	}
+	if field.StringLimit != nil {
+		return insertLimitedString(v, field)
 	}
 
 	if v.Type().Implements(_valuertype) {
@@ -51,6 +55,28 @@ func insertField(v reflect.Value) any {
 	}
 
 	return v.Interface()
+}
+
+func insertLimitedString(v reflect.Value, field *rowbind.Field) any {
+	for v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+
+	s, err := field.StringLimit.ApplyString(v.String())
+	if err != nil {
+		panic(fmt.Errorf("sqlx: insert column %q: %w", field.Column, err))
+	}
+
+	if len(s) == v.Len() {
+		// An unchanged field can reuse its existing interface storage. Changed
+		// values and pointer fields are snapshots, never writes to the model.
+		return v.Interface()
+	}
+
+	return s
 }
 
 // Reuse projection storage across model changes. Column indexes are initialized
@@ -123,6 +149,9 @@ func (b *InsertBuilder) structInsertFields(t reflect.Type, projection []structIn
 func newStructInsertField(field *rowbind.Field, column int) structInsertField {
 	t := field.Type
 	var flags insertFieldFlags
+	if field.StringLimit != nil {
+		flags |= insertStringLimit
+	}
 	if t.Kind() == reflect.Pointer {
 		flags |= insertPointer
 	}
@@ -163,6 +192,9 @@ func (f structInsertField) read(model reflect.Value, explicit bool) any {
 	}
 	if !v.CanInterface() {
 		panic("cannot read unexported field")
+	}
+	if f.flags&insertStringLimit != 0 {
+		return insertLimitedString(v, f.field)
 	}
 
 	if f.flags&insertCopyValuer != 0 {

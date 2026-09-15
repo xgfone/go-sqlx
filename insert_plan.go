@@ -39,6 +39,7 @@ const (
 // fields and include zero values. Columns are copied and must be unique.
 // T must be a struct (except time.Time) or a pointer chain to one, not an interface.
 // Compilation does not read values or call IsZero or driver.Valuer.Value.
+// It validates and caches string limit options in SQL tags.
 func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -82,7 +83,8 @@ func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
 func (p *InsertPlan[T]) prepareDirectFields() {
 	p.directMode = insertDirectAlways
 	for _, f := range p.fields {
-		if f.flags&(insertPointer|insertCopyValuer) != 0 || f.field.PointerParent {
+		if f.flags&(insertPointer|insertCopyValuer|insertStringLimit) != 0 ||
+			f.field.PointerParent {
 			p.directMode = insertDirectNone
 			break
 		}
@@ -108,6 +110,8 @@ func (p *InsertPlan[T]) prepareDirectFields() {
 //
 // Values are read during AppendTo, not Build/Exec. Copies are shallow, just as
 // with Structs: pointer/slice members may still share objects with the caller.
+// String limits in SQL tags apply here without changing rows; tagged string
+// pointers bind snapshots of their values, including when already within limits.
 // A value field whose pointer implements driver.Valuer gets an independent
 // addressable copy; an existing pointer Valuer remains shared. Value is called
 // later by the driver. AppendTo does not validate dialect-specific SQL features.

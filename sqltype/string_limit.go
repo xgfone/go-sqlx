@@ -54,8 +54,8 @@ func (e *StringLengthError) Error() string {
 // Apply validates or truncates a value. It implements sqlx.ValueRule without
 // depending on the SQL builder package. Successful text results are strings.
 func (r StringLimit) Apply(value any) (any, error) {
-	if r.Max < 0 || r.Unit > UTF8Bytes || r.Overflow > Truncate {
-		return nil, errors.New("sqltype: invalid string limit configuration")
+	if err := r.validate(); err != nil {
+		return nil, err
 	}
 
 	if value == nil {
@@ -70,8 +70,34 @@ func (r StringLimit) Apply(value any) (any, error) {
 		}
 		s = v.String()
 	}
+
+	s, err := r.applyString(s)
+	if err != nil {
+		return nil, err
+	}
+
+	return s, nil
+}
+
+// ApplyString validates or truncates UTF-8 text without boxing its input or
+// result in an interface. It has the same string semantics as Apply.
+func (r StringLimit) ApplyString(s string) (string, error) {
+	if err := r.validate(); err != nil {
+		return "", err
+	}
+	return r.applyString(s)
+}
+
+func (r StringLimit) validate() error {
+	if r.Max < 0 || r.Unit > UTF8Bytes || r.Overflow > Truncate {
+		return errors.New("sqltype: invalid string limit configuration")
+	}
+	return nil
+}
+
+func (r StringLimit) applyString(s string) (string, error) {
 	if !utf8.ValidString(s) {
-		return nil, errors.New("sqltype: string limit requires valid UTF-8")
+		return "", errors.New("sqltype: string limit requires valid UTF-8")
 	}
 
 	actual := len(s)
@@ -82,7 +108,7 @@ func (r StringLimit) Apply(value any) (any, error) {
 		return s, nil
 	}
 	if r.Overflow == Reject {
-		return nil, &StringLengthError{Max: r.Max, Actual: actual, Unit: r.Unit}
+		return "", &StringLengthError{Max: r.Max, Actual: actual, Unit: r.Unit}
 	}
 
 	end := r.Max

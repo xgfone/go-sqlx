@@ -1,0 +1,4 @@
+ok  	github.com/xgfone/go-sqlx	7.663s	coverage: 90.6% of statements
+ok  	github.com/xgfone/go-sqlx/dialect	2.987s	coverage: 84.1% of statements
+ok  	github.com/xgfone/go-sqlx/internal/rowbind	1.778s	coverage: 90.6% of statements
+ok  	github.com/xgfone/go-sqlx/sqltype	2.587s	coverage: 91.6% of statements

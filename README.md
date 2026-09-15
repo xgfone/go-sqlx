@@ -184,6 +184,8 @@ unknown policies/units, invalid UTF-8 and non-string input return errors. Text
 is not trimmed, padded or normalized. Choose the unit to match the intended
 column constraint; no schema is inspected. `StringLimit.Apply(value)` also
 validates or transforms a value directly without a rule column.
+`StringLimit.ApplyString(string)` provides the same checks with a typed string
+result.
 
 ## Build and execute
 
@@ -1072,6 +1074,57 @@ tag omits them (`Struct`) or replaces them with DEFAULT (`Structs`); non-nil
 pointers to zero retain their values. Nil top-level rows fail. Every appended row
 must match the builder's column set; mixing inferred `Struct` and `Structs` rows
 can still fail if the single-row call omitted columns.
+
+### String limits on struct fields
+
+Declare fixed INSERT length rules in the existing `sql` tag:
+
+```go
+type User struct {
+    ID   int64  `sql:"id,omitempty"`
+    Name string `sql:"name,maxlen=64,overflow=truncate"`
+    Bio  string `sql:"bio,maxlen=1024"`
+    Code string `sql:"code,maxlen=32,lenunit=utf8bytes,overflow=truncate"`
+}
+
+user := User{Name: input}
+_, err := db.Insert().Into("users").Struct(&user).ExecContext(ctx)
+```
+
+`maxlen` is a nonnegative integer; zero allows only empty text. `overflow`
+accepts `reject` (the default) or `truncate`. `lenunit` accepts `runes` (the
+default, counting Unicode code points) or `utf8bytes`. Byte truncation preserves
+whole UTF-8 code points. Both units reject invalid UTF-8. The rules reuse
+`sqltype.StringLimit`, including `*sqltype.StringLengthError` on overflow.
+
+Tags are parsed and cached with model metadata, not per row. Invalid values,
+duplicate length options, `overflow`/`lenunit` without `maxlen`, and unsupported
+field types fail model preparation. This also reports malformed tags when the
+model is first used for selection or scanning; valid tags never transform
+selected or scanned values. Tags on private or `sql:"-"` fields are ignored.
+
+Length tags support strings, defined string types and pointer chains to them.
+Nil pointers, including nil nested parents, retain their NULL/omission behavior.
+Fields implementing `driver.Valuer`, including `sql.NullString` and string
+Valuers, cannot use these tags; handle their actual data explicitly or with a
+custom `ValueRule` before insertion. No Valuer is called by tag processing.
+
+`Struct`, `Structs` and `InsertPlan.AppendTo` apply limits while extracting
+values. They do not mutate the model or its pointed-to strings. Tagged string
+pointers are snapshotted even when their values are within the limit, so later
+changes cannot bypass validation. Build, template binding and execution do not
+reapply rules. Querying, positional `Values`, named `Row`, and standalone column
+assignments do not discover model tags.
+
+Omission/default decisions use the original value; skipped fields and SQL
+DEFAULT are not processed. A nonempty value truncated to empty text is still
+inserted. Explicit `Columns` includes zero values and still applies limits.
+Rule failures include the column name and preserve `errors.As`; Struct/Structs
+save errors on the builder, while AppendTo returns the error without publishing
+any rows or columns from that call. Failed statements do not reach the executor.
+
+See the [performance comparison](docs/struct-string-limit-performance.md) for
+existing-path regressions and the additional cost of enabled limits.
 
 For repeated batches of the same model, compile the field projection once:
 

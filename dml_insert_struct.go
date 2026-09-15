@@ -12,6 +12,8 @@ import (
 
 // Struct appends one row. Explicit Columns select fields and include zero values.
 // Otherwise omission tags are honored and every row must have the same column set.
+// SQL tag options maxlen, overflow and lenunit apply string limits immediately
+// without changing s. Errors are retained for Build/Compile/Exec.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	b.mutate(func() { b.appendStruct(s) })
 	return b
@@ -41,7 +43,7 @@ func (b *InsertBuilder) appendStruct(s any) {
 				panic(e)
 			}
 
-			row = append(row, ColValue(col, insertField(fv)))
+			row = append(row, ColValue(col, insertField(fv, f)))
 		}
 	} else {
 		for _, f := range meta.Fields() {
@@ -54,7 +56,7 @@ func (b *InsertBuilder) appendStruct(s any) {
 				continue
 			}
 
-			row = append(row, ColValue(f.Column, insertField(fv)))
+			row = append(row, ColValue(f.Column, insertField(fv, &f)))
 		}
 	}
 	b.appendNamedRow(row)
@@ -65,6 +67,7 @@ func (b *InsertBuilder) appendStruct(s any) {
 // instead of being omitted. The dialect must support DEFAULT in VALUES when needed.
 // Explicit Columns select fields in that order and include their actual zero values.
 // Empty slices append no rows; an otherwise empty insert still fails Build.
+// String limits in SQL tags apply during extraction, as with Struct.
 func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 	b.mutate(func() { b.appendStructs(slice) })
 	return b

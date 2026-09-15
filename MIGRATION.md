@@ -3,6 +3,22 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## String limits in SQL struct tags
+
+`Struct`, `Structs` and `InsertPlan.AppendTo` recognize `maxlen=N`,
+`overflow=reject|truncate`, and `lenunit=runes|utf8bytes` options in `sql` tags.
+Defaults are rejection and Unicode code-point counting. These options were
+previously ignored; existing models using them now validate or truncate on
+insertion. Invalid configurations fail cached model preparation, including
+selection/scanning preparation, but valid tags do not modify read results.
+
+Rules run during field extraction and preserve the source model. Tagged string
+pointers now bind snapshots of their string values; changing the pointee after
+Struct/Structs/AppendTo no longer changes the pending INSERT argument. Untagged
+fields retain their existing ownership and driver.Valuer behavior. Length tags
+on Valuer or non-string fields fail preparation. See the README for NULL,
+omission/default, explicit-column and error behavior.
+
 ## Eager column value rules
 
 `Column.WithValueRule` returns a `RuleColumn` that applies value rules

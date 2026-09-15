@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/xgfone/go-sqlx/sqltype"
 )
 
 // Sep is the fixed separator for nested SQL field names.
@@ -28,6 +30,9 @@ type Field struct {
 
 	scanMode uint8
 	setter   fieldSetter
+
+	// StringLimit is compiled from SQL tags and applied only when inserting.
+	StringLimit *sqltype.StringLimit
 }
 
 type structParent struct {
@@ -185,6 +190,11 @@ func collectFields(
 			continue
 		}
 
+		omit, limit, err := parseInsertOptions(options, f.Type)
+		if err != nil {
+			return nil, fmt.Errorf("sqlx: field %v.%s: %w", t, f.Name, err)
+		}
+
 		indexes := make([]int, len(path)+1)
 		copy(indexes, path)
 		indexes[len(path)] = i
@@ -217,21 +227,13 @@ func collectFields(
 			name = f.Name
 		}
 
-		omit := false
-		for options != "" {
-			var arg string
-			arg, options, _ = strings.Cut(options, ",")
-			if a := strings.TrimSpace(arg); a == "omitempty" || a == "omitzero" {
-				omit = true
-			}
-		}
-
 		fields = append(fields, Field{
 			Type:       f.Type,
 			Column:     formatFieldName(prefix, name),
 			Indexes:    indexes,
 			IgnoreZero: omit,
 
+			StringLimit:   limit,
 			PointerParent: pointerParent,
 
 			scanMode: fieldScanMode(f.Type),

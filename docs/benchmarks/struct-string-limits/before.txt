@@ -1,0 +1,295 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx
+cpu: Apple M3 Pro
+BenchmarkInsertStructProjection/same/1         	 1285194	       184.7 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/same/1         	 1338978	       180.9 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/same/1         	 1339482	       178.9 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/same/1         	 1359198	       175.6 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/same/1         	 1346964	       178.5 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/same/1         	 1342396	       178.5 ns/op	     424 B/op	       4 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1417203	       168.4 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1450954	       164.9 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1463192	       164.8 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1446339	       166.1 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1438723	       166.6 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/1  	 1431604	       167.0 ns/op	     416 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/same/100       	   71623	      3360 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/same/100       	   70875	      3395 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/same/100       	   71901	      3401 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/same/100       	   71322	      3363 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/same/100       	   71424	      3352 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/same/100       	   69411	      3406 ns/op	    2992 B/op	     103 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   36892	      6489 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   38103	      6366 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   37878	      6389 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   38161	      6416 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   37489	      6417 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkInsertStructProjection/alternating/100         	   37488	      6435 ns/op	    2192 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1259664	       191.4 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1232802	       194.8 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1236846	       194.6 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1229704	       196.1 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1246656	       191.9 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols3                            	 1239926	       193.9 ns/op	     208 B/op	       3 allocs/op
+BenchmarkCompileInsert/cols12                           	  369405	       666.5 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkCompileInsert/cols12                           	  352228	       669.0 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkCompileInsert/cols12                           	  366060	       658.1 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkCompileInsert/cols12                           	  382408	       664.3 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkCompileInsert/cols12                           	  351258	       673.8 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkCompileInsert/cols12                           	  358309	       679.4 ns/op	    1016 B/op	       6 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   39876	      5995 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   40659	      5992 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   39510	      6064 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   39094	      6085 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   39842	      6031 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/structs                	   40642	      5973 ns/op	    8520 B/op	     104 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   60276	      3963 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   60760	      4415 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   52653	      4114 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   61842	      3924 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   59971	      4017 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/values/plan                   	   60571	      3980 ns/op	    8496 B/op	     103 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   27392	      8815 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   27558	      8759 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   26929	      8939 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   27148	      8887 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   26887	      8916 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/structs              	   27528	      8744 ns/op	    8520 B/op	     304 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37939	      6358 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37627	      6412 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37731	      6412 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37248	      6375 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37704	      6428 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointers/plan                 	   37489	      6379 ns/op	    8496 B/op	     303 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   35311	      6819 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   35043	      6742 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   35431	      6819 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   34636	      6894 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   34856	      6857 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/structs        	   35110	      6825 ns/op	    6296 B/op	     204 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   48843	      5002 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   47283	      5079 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   47430	      5065 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   47630	      5036 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   48484	      5012 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanInputs/pointer_valuer/plan           	   48210	      5035 ns/op	    6272 B/op	     203 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       229.0 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       229.3 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       225.6 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       232.8 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       230.7 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/structs         	 1000000	       228.9 ns/op	     496 B/op	       6 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1342246	       177.9 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1340751	       179.4 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1321881	       181.4 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1332301	       180.3 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1337672	       179.7 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/pointer_parent/plan            	 1324813	       182.3 ns/op	     472 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       215.2 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       214.9 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       215.5 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       216.0 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       229.0 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/structs              	 1000000	       221.4 ns/op	     488 B/op	       5 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1515793	       255.0 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1451937	       166.2 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1509800	       158.0 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1529436	       157.1 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1499804	       164.1 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1/omit_zero/plan                 	 1000000	       240.2 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    3819	     63150 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    4098	     59362 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    4452	     60474 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    4350	     59605 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    3931	     60170 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/structs      	    4332	     59437 ns/op	   53208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5742	     44446 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5769	     44331 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5826	     44255 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5790	     44432 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5822	     43966 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/pointer_parent/plan         	    5905	     44771 ns/op	   53184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    4212	     57127 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    4209	     60741 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    4166	     59420 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    3999	     57573 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    4078	     57578 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/structs           	    4242	     57752 ns/op	   65208 B/op	    1504 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5920	     41480 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5844	     40730 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5923	     42983 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5812	     44736 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5331	     43389 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanFallbacks/rows1000/omit_zero/plan              	    5622	     41754 ns/op	   65184 B/op	    1503 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1000000	       229.8 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1000000	       214.1 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1295199	       183.8 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1361371	       176.4 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1319743	       181.5 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/implicit                       	 1325504	       181.4 ns/op	     496 B/op	       5 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1518322	       159.7 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1510867	       158.3 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1523196	       158.8 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1497752	       159.7 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1490611	       160.5 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1/explicit                       	 1490094	       160.5 ns/op	     464 B/op	       4 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5130	     50969 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5208	     50715 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5212	     51064 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5217	     50248 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5211	     51143 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/implicit                    	    5047	     50863 ns/op	   81184 B/op	    2003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	   10000	     24931 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	   10000	     24361 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	    9871	     24988 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	   10000	     25262 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	   10000	     25074 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertPlanOmitModes/rows1000/explicit                    	    9670	     24959 ns/op	   49184 B/op	    1003 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  538554	       465.3 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  517952	       472.3 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  525129	       476.6 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  523840	       466.5 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  527839	       466.5 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/implicit                        	  519091	       469.3 ns/op	     880 B/op	       8 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  550116	       436.5 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  562813	       433.3 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  585507	       441.0 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  553813	       442.5 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  544232	       446.1 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/value/explicit                        	  583503	       435.9 ns/op	     816 B/op	       6 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  488288	       508.6 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  487671	       513.6 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  471138	       512.2 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  502849	       509.4 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  473797	       604.1 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/implicit                      	  460478	       530.1 ns/op	     912 B/op	      11 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  518894	       499.4 ns/op	     848 B/op	       9 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  470972	       489.1 ns/op	     848 B/op	       9 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  535908	       497.9 ns/op	     848 B/op	       9 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  483614	       495.4 ns/op	     848 B/op	       9 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  554250	       495.5 ns/op	     848 B/op	       9 allocs/op
+BenchmarkInsertStructSingle/pointer/explicit                      	  524394	       488.2 ns/op	     848 B/op	       9 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2466556	       129.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	  624030	       438.3 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 2937895	        99.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   45718	      7787 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	23900017	        12.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   55666	      5172 ns/op	    1616 B/op	      16 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2459799	       123.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	 1000000	       312.7 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 3237088	        91.88 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   52053	      5719 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	25041823	        11.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   58033	      5246 ns/op	    1616 B/op	      16 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2474433	       123.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	 1000000	       305.9 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 3256076	        91.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   51790	      5764 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	25873593	        11.78 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   55885	      5188 ns/op	    1616 B/op	      16 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2517643	       119.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	 1000000	       306.0 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 3287190	        90.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   51571	      5765 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	25585899	        12.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   59570	      5030 ns/op	    1616 B/op	      16 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2478338	       121.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	 1000000	       296.0 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 3260170	        91.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   53150	      5605 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	24955201	        11.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   59438	      5062 ns/op	    1616 B/op	      16 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/internal/rowbind
+cpu: Apple M3 Pro
+BenchmarkStructScanPreparation/reused         	 2371918	       122.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/fresh          	 1000000	       308.4 ns/op	     704 B/op	       3 allocs/op
+BenchmarkStructScanPreparation/alternating    	 3204066	        91.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkStructScanPreparation/cold           	   49839	      5866 ns/op	    2616 B/op	      23 allocs/op
+BenchmarkMetadata/warm                        	25896856	        11.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMetadata/cold                        	   48226	      6905 ns/op	    1616 B/op	      16 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	11284849	        26.20 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2793344	       107.0 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3526862	        84.88 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4743069	        63.73 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	13400109	        25.09 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2739516	       107.7 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3644449	        82.27 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4818925	        62.79 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	15155214	        24.22 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2712944	       110.0 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3466322	        86.78 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4638583	        65.54 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	14986356	        24.63 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2770808	       107.6 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3512378	        85.75 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4664420	        65.17 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	14600877	        24.75 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2532345	       127.3 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3414997	        87.04 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4664683	        65.49 ns/op	      24 B/op	       1 allocs/op
+PASS
+goos: darwin
+goarch: arm64
+pkg: github.com/xgfone/go-sqlx/sqltype
+cpu: Apple M3 Pro
+BenchmarkStringLimitApply/valid         	14381992	        24.60 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/truncate      	 2723468	       110.6 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/bytes         	 3444260	        87.02 ns/op	      16 B/op	       1 allocs/op
+BenchmarkStringLimitApply/reject        	 4518184	        65.99 ns/op	      24 B/op	       1 allocs/op
+PASS
