@@ -13,7 +13,7 @@ func TestColumnScopedQuery(t *testing.T) {
 	const id Column = "id"
 	const userID Column = "user_id"
 	uid, oid := id.Scope("u"), userID.Scope("o")
-	if id.Name() != "id" || id.Scope("") != id || id.Scope("users").Scope("app") != "app.users.id" {
+	if id.Column() != id || id.Name() != "id" || id.Scope("") != id || id.Scope("users").Scope("app") != "app.users.id" {
 		t.Fatal("Scope must prepend without changing the original column")
 	}
 	columns := []Column{uid, oid}
@@ -24,7 +24,7 @@ func TestColumnScopedQuery(t *testing.T) {
 	columns[0] = Column("changed")
 	checkSQL(t, q,
 		`SELECT "u"."id", "o"."user_id", "name" FROM "users" AS "u" INNER JOIN "orders" AS "o" ON "u"."id"="o"."user_id" WHERE ("u"."id" = $1) ORDER BY "u"."id" ASC, "o"."user_id" DESC`, 123)
-	checkSQL(t, Select("id").SelectColumns[Column]().SetDialect(dialect.Postgres), `SELECT "id"`)
+	checkSQL(t, Select("id").SelectColumns().SetDialect(dialect.Postgres), `SELECT "id"`)
 }
 
 func TestSelectColumnsEntrypoints(t *testing.T) {
@@ -42,7 +42,7 @@ func TestSelectColumnsEntrypoints(t *testing.T) {
 	if q.GetDB() != db || q.bconfig != oper.bindConfig {
 		t.Fatal("SelectColumns lost operation configuration")
 	}
-	checkSQL(t, oper.SelectColumns[Column]().Select("id"),
+	checkSQL(t, oper.SelectColumns().Select("id"),
 		`SELECT "id" FROM "users" WHERE ("id" = $1) ORDER BY "id" DESC`, 7)
 }
 
@@ -52,14 +52,15 @@ func TestSelectColumnsSliceExpansion(t *testing.T) {
 		t.Fatal("selecting a column must not apply its rule")
 		return nil, nil
 	})
-	testSelectColumnsSlice(t, []RuleColumn{
-		Column("id").WithValueRule(rule),
-		Column("name").WithValueRule(rule),
-	})
-	testSelectColumnsSlice(t, []string{"id", "name"})
+	name := Column("name").WithValueRule(rule)
+	testSelectColumnsSlice(t, []Column{Column("id").Column(), name.Column()})
+	checkSQL(t,
+		Select("id", name.Name()).Where(Eq(name.Column(), "unchanged")).
+			SetDialect(dialect.Postgres),
+		`SELECT "id", "name" WHERE ("name" = $1)`, "unchanged")
 }
 
-func testSelectColumnsSlice[C ColumnOperand](t *testing.T, columns []C) {
+func testSelectColumnsSlice(t *testing.T, columns []Column) {
 	t.Helper()
 	db := &DB{Dialect: dialect.Postgres}
 	table := db.NewTable("users")

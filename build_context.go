@@ -178,16 +178,6 @@ func (a *BuildContext) writeArg(buf *strings.Builder, arg any) {
 
 func (a *BuildContext) namedArg(d Dialect, arg any) (value any, placeholder string, named bool) {
 	switch na := arg.(type) {
-	case ruledValue:
-		if index, ok := ruleParamIndex(na); ok {
-			if !a.compiling {
-				panic("sqlx.Param requires Compile")
-			}
-			if index < 0 {
-				panic("sqlx.Param index must be nonnegative")
-			}
-		}
-
 	case templateParam:
 		if !a.compiling {
 			panic("sqlx.Param requires Compile")
@@ -202,7 +192,10 @@ func (a *BuildContext) namedArg(d Dialect, arg any) (value any, placeholder stri
 		}
 
 	case sql.NamedArg:
-		if _, ok := ruleParamIndex(na.Value); ok {
+		if e, ok := na.Value.(Expression); ok && e.kind() == parameterExpression {
+			panic("sqlx.Param inside sql.Named is not supported; use a positional Param")
+		}
+		if _, ok := na.Value.(templateParam); ok {
 			panic("sqlx.Param inside sql.Named is not supported; use a positional Param")
 		}
 

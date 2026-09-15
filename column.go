@@ -15,6 +15,9 @@ type Column string
 // Name returns the unquoted column path.
 func (c Column) Name() string { return string(c) }
 
+// Column returns c itself, matching RuleColumn.Column.
+func (c Column) Column() Column { return c }
+
 // Scope prefixes the path with a table, alias, or other qualifying path.
 // An empty scope leaves c unchanged. Repeated calls prepend further scopes;
 // they do not replace existing ones or declare aliases in FROM or JOIN.
@@ -84,8 +87,8 @@ func (c Column) Asc() SortColumn { return SortColumn{Column: string(c), Order: A
 func (c Column) Desc() SortColumn { return SortColumn{Column: string(c), Order: Desc} }
 
 // On compares two column paths for equality. Unlike Eq, its right operand is
-// always a column reference. Strings, defined string types and RuleColumn are accepted.
-func (c Column) On[C ColumnOperand](right C) Condition { return On(c, right) }
+// always a column reference. Strings and defined string types are accepted.
+func (c Column) On[C ~string](right C) Condition { return On(string(c), string(right)) }
 
 // InQuery compares the column to a one-column subquery, snapshotted at this call.
 func (c Column) InQuery(q *SelectBuilder) Condition { return InQuery(string(c), q) }

@@ -3,6 +3,47 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## Eager column value rules
+
+`Column.WithValueRule` returns a `RuleColumn` that applies value rules
+immediately at assignment. `RuleColumn` keeps its base column private instead
+of embedding it. `Column` remains a defined string type and can still be
+constant. Both `Column` and `RuleColumn` expose `Name() string` and
+`Column() Column`; the latter returns the base column without a rule. Use these
+accessors to reuse one field definition for both reads and writes.
+
+```go
+var name = sqlx.Column("name").WithValueRule(rule)
+query := sqlx.SelectColumns(id.Column(), name.Column())
+update := sqlx.Update().Table("users").Set(name.Set(input))
+insert := sqlx.Insert().Into("users").Row(name.ColValue(input))
+```
+
+`SelectColumns` now takes `...Column` and accepts empty calls without type
+arguments. Replace expanded string slices with `Select(strings...)`, and map
+collections of `RuleColumn` to `[]Column` using their `Column()` methods.
+Function forms such as `Set` and `ColValue` accept string paths/defined string
+types; use `RuleColumn.Set`/`ColValue` to apply the rule. `On`, `InQuery` and
+`NotInQuery` function forms take string paths; use `Name()` or base-column methods.
+
+Rules run immediately in `Set`, `ColValue` or `Apply`, never in Build, Bind or
+execution. Failed assignments preserve the rule error for Build/Compile/Exec;
+use `Apply` to handle it immediately. Built arguments and compiled constants
+contain processed values, not deferred Valuers. `ColumnValue` now has an
+internal error field; use `ColValue`, `RuleColumn.ColValue`, or keyed literals
+instead of positional struct literals.
+
+`WithComparisons` and all automatic comparison rules are removed. Query
+predicates use `name.Column()` without processing their right operands.
+`name.Set(Param(...))` and other SQL expressions now fail; use
+`name.Column().Set(Param(...))` in templates and process input with
+`name.Apply` before binding. Database-computed assignments also use the base
+column explicitly. `Value(data)` is unwrapped; `sql.Named` retains its name.
+Driver Valuers are no longer converted automatically before a rule: extract
+actual data in the caller or a custom rule. The standalone deferred
+`WithValueRule(value, rule)` helper is removed; use `name.Apply(value)` or
+`rule.Apply(value)` and handle the returned error.
+
 ## CTE bodies and independent SQL builders
 
 `CommonTable` is now named `NewCTE`. The constructor accepts the open `CTEBody`

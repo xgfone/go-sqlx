@@ -3,109 +3,109 @@
 
 package sqlx
 
-import "reflect"
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+)
 
-// ColumnOperand accepts string paths and built-in column references.
-type ColumnOperand interface{ ~string | RuleColumn }
-
-func columnName[C ColumnOperand](c C) string {
-	switch v := any(c).(type) {
-	case RuleColumn:
-		return v.Name()
-
-	case string:
-		return v
-
-	default:
-		return reflect.ValueOf(c).String()
-	}
-}
-
-// RuleColumn is a column reference with a deferred value rule. It processes
-// writes by default; WithComparisons opts comparisons in. SQL expressions,
-// LIKE patterns, joins and subquery results are not transformed. Methods copy
-// configuration; the rule object must remain immutable and concurrency-safe.
-// Unchanged operations are promoted from the embedded Column. Only operations
-// that preserve or apply rules are overridden. Raw string paths and struct
-// inserts do not discover RuleColumn rules.
+// RuleColumn pairs a column with a reusable value rule. Set and ColValue
+// apply the rule immediately and retain only its result or error. Build,
+// Compile, Bind and execution never reapply it. Use Name or Column to reuse
+// this definition in queries; reading the column does not apply the rule.
+// Raw paths, ordinary Column assignments and struct inserts do not use it.
+// A zero RuleColumn has no rule and rejects non-nil data.
 type RuleColumn struct {
-	Column
-
-	rule ValueRule
-
-	comparisons bool
+	column Column
+	rule   ValueRule
 }
 
-// WithValueRule returns a column whose Set and ColValue operations apply rule.
+// WithValueRule returns a rule column for c without changing c. The rule is not
+// copied; it must remain immutable and safe for concurrent calls.
 func (c Column) WithValueRule(rule ValueRule) RuleColumn {
-	return RuleColumn{Column: c, rule: rule}
+	return RuleColumn{column: c, rule: rule}
 }
 
-// WithValueRule replaces the rule, preserving the column and comparison mode.
-func (c RuleColumn) WithValueRule(rule ValueRule) RuleColumn {
-	c.rule = rule
-	return c
-}
+// Name returns the unquoted column path for string-taking APIs such as Select.
+func (c RuleColumn) Name() string { return c.column.Name() }
 
-// WithComparisons enables or disables rules for comparisons, ranges and IN
-// lists. Nil retains existing NULL semantics; LIKE patterns remain unchanged.
-func (c RuleColumn) WithComparisons(enabled bool) RuleColumn {
-	c.comparisons = enabled
-	return c
-}
+// Column returns the underlying column for selection, comparisons and sorting.
+// The returned value has no value rule; c is unchanged.
+func (c RuleColumn) Column() Column { return c.column }
 
-// Scope returns a qualified column retaining its rule and comparison mode.
-func (c RuleColumn) Scope(scope string) RuleColumn {
-	c.Column = c.Column.Scope(scope)
-	return c
-}
-
-func (c RuleColumn) comparisonValue(v any) any {
-	if c.comparisons {
-		return withValueRule(v, c.rule, c.Name())
+// Apply processes data immediately and returns any error with column context.
+// Nil passes through, Value(data) is unwrapped, and sql.Named retains its name.
+// Param and database-computed expressions are rejected: process template inputs
+// before binding, and use Column().Set for SQL expressions. Driver Valuers are
+// passed to the rule as-is; no driver conversion or deep copy is performed.
+func (c RuleColumn) Apply(value any) (any, error) {
+	value, err := c.apply(value)
+	if err != nil {
+		return nil, fmt.Errorf("sqlx: write rule for column %q: %w", c.Name(), err)
 	}
-	return v
+	return value, nil
 }
 
-func columnWriteValue[C ColumnOperand](c C, value any) any {
-	if v, ok := any(c).(RuleColumn); ok {
-		return withValueRule(value, v.rule, v.Name())
+func (c RuleColumn) apply(value any) (any, error) {
+	if isNil(value) {
+		return nil, nil
 	}
-	return value
+
+	switch v := value.(type) {
+	case Expression:
+		if n, ok := v.node.(*expressionValue); ok {
+			return c.apply(n.value)
+		}
+		return nil, errors.New("requires data available at assignment; Param and SQL expressions are not supported")
+
+	case SQLBuilder, templateParam:
+		return nil, fmt.Errorf("requires data available at assignment, got %T", value)
+
+	case sql.NamedArg:
+		var err error
+		v.Value, err = c.apply(v.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, nested := v.Value.(sql.NamedArg); nested {
+			return nil, errors.New("nested sql.Named arguments are not supported")
+		}
+
+		return v, nil
+	}
+
+	if nilBindingValue(c.rule) {
+		return nil, errors.New("nil value rule")
+	}
+
+	value, err := c.rule.Apply(value)
+	if err != nil {
+		return nil, err
+	}
+
+	switch value.(type) {
+	case Expression, SQLBuilder, sql.NamedArg, templateParam:
+		return nil, fmt.Errorf("returned non-data value %T", value)
+	}
+
+	return value, nil
 }
 
-// Eq is the rule-column counterpart of Column.Eq.
-func (c RuleColumn) Eq(v any) Condition { return Eq(c, v) }
+// Set processes value now and returns an assignment. A rule error is retained
+// in the Updater and reported by Build, Compile or execution. Use Apply when
+// the caller needs to handle the error immediately.
+func (c RuleColumn) Set(value any) Updater {
+	value, err := c.Apply(value)
+	if err != nil {
+		return UpdaterWriterFunc(func(*SQLWriter) (bool, error) { return false, err })
+	}
+	return c.column.Set(value)
+}
 
-// Ne is the rule-column counterpart of Column.Ne.
-func (c RuleColumn) Ne(v any) Condition { return Ne(c, v) }
-
-// Gt is the rule-column counterpart of Column.Gt.
-func (c RuleColumn) Gt(v any) Condition { return Gt(c, v) }
-
-// Ge is the rule-column counterpart of Column.Ge.
-func (c RuleColumn) Ge(v any) Condition { return Ge(c, v) }
-
-// Lt is the rule-column counterpart of Column.Lt.
-func (c RuleColumn) Lt(v any) Condition { return Lt(c, v) }
-
-// Le is the rule-column counterpart of Column.Le.
-func (c RuleColumn) Le(v any) Condition { return Le(c, v) }
-
-// Between is the rule-column counterpart of Column.Between.
-func (c RuleColumn) Between(low, high any) Condition { return Between(c, low, high) }
-
-// NotBetween is the rule-column counterpart of Column.NotBetween.
-func (c RuleColumn) NotBetween(low, high any) Condition { return NotBetween(c, low, high) }
-
-// In is the rule-column counterpart of Column.In.
-func (c RuleColumn) In(values ...any) Condition { return In(c, values...) }
-
-// NotIn is the rule-column counterpart of Column.NotIn.
-func (c RuleColumn) NotIn(values ...any) Condition { return NotIn(c, values...) }
-
-// Set is the rule-column counterpart of Column.Set.
-func (c RuleColumn) Set(v any) Updater { return Set(c, v) }
-
-// ColValue is the rule-column counterpart of Column.ColValue.
-func (c RuleColumn) ColValue(v any) ColumnValue { return ColValue(c, v) }
+// ColValue processes value now and pairs it with an unqualified INSERT column.
+// Row saves any rule error on the builder for Build, Compile or execution.
+func (c RuleColumn) ColValue(value any) ColumnValue {
+	value, err := c.Apply(value)
+	return ColumnValue{Column: c.Name(), Value: value, err: err}
+}

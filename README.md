@@ -36,21 +36,20 @@ update := sqlx.Update().Table("users").
 
 `Column` is a defined string type with no model registration or metadata lookup.
 Its methods delegate to the existing predicate, assignment, and ordering APIs.
-`SelectColumns[C ColumnOperand](...C)` is available on the package, `DB`, `Table`, `Oper`,
+`SelectColumns(...Column)` is available on the package, `DB`, `Table`, `Oper`,
 and `SelectBuilder`. Each entry preserves the same context as its `Select`
 counterpart, including the operation's conditions, sorter, and binding settings.
-It accepts strings, `Column` and `RuleColumn`, including direct expansion of
-`[]string`, `[]Column` and `[]RuleColumn`. Each call uses one argument type;
-append different types through separate chained calls. For a query without
-initial columns, use `Select()`; an empty generic call requires an explicit
-type, such as `SelectColumns[sqlx.Column]()`.
+It accepts individual columns or an expanded `[]Column`; an empty call is valid.
 
 ```go
 columns := []sqlx.Column{UserID, UserName}
 q := sqlx.SelectColumns(columns...)
-// A []sqlx.RuleColumn works the same way.
 ```
-`Select(...string)` is unchanged; use `Name()` for other string-taking APIs.
+
+`Select(...string)` accepts string paths; use `Name()` for string-taking APIs.
+`Column.Column()` returns itself. `RuleColumn` provides the same `Name()` and
+`Column()` accessors, so a field can be defined once and reused for reads and
+writes without declaring a second column variable.
 Constants prevent repeated spelling mistakes at use sites, but do not validate
 the declared names against model fields or database columns.
 
@@ -81,82 +80,110 @@ arguments as values or explicit Expressions, following the usual binding rules.
 Use `column.As("alias")` with `SelectNamers`, and an unqualified
 `column.ColValue(value)` with `InsertBuilder.Row`.
 
-## Deferred column value rules
+## Column value rules
 
-Attach a reusable rule once; callers continue to supply ordinary values:
+Attach a reusable value rule once; callers continue to supply ordinary values:
 
 ```go
+const UserID sqlx.Column = "id"
 var UserName = sqlx.Column("name").WithValueRule(sqltype.StringLimit{
     Max:      64,
     Unit:     sqltype.Runes,
     Overflow: sqltype.Truncate,
 })
 
+// Each assignment processes input immediately.
 update := sqlx.Update().Table("users").Set(UserName.Set(input))
-// Equivalent function form: sqlx.Set(UserName, input).
 insert := sqlx.Insert().Into("users").Row(UserName.ColValue(input))
+
+// The same definition supplies the name for reads, without applying the rule.
+query := sqlx.Select("id", UserName.Name()).From("users")
+query = sqlx.SelectColumns(UserID.Column(), UserName.Column()).
+    From("users").Where(UserName.Column().Eq(input))
 ```
 
-`WithValueRule` returns `RuleColumn`, which embeds `Column` and inherits its
-read-only operations. Only rule-sensitive operations and configuration methods
-are overridden; ordinary `Column` remains a string type.
-The rule is used automatically by `Set` and `ColValue`, including their function
-forms. `Scope` preserves the rule. `WithValueRule` on a `RuleColumn` replaces its
-rule, and all configuration methods return copies. Rule objects must remain
-immutable and safe for concurrent use; pointer-based rules are not deep-copied.
-Raw string paths and `Struct` inserts do not discover rules from column objects.
-
-Rules run on bound arguments immediately before a builder or template calls its
-executor, including custom executors and RETURNING queries. An error prevents
-that statement from reaching the executor. `Build`, `Compile` and template
-`Bind` retain deferred arguments; they do not execute rules. Deferred values
-also implement `driver.Valuer` for passing built arguments directly to
-`database/sql`. Raw DB/executor calls do not provide the builder's pre-execution
-normalization and depend on the executor/driver's Valuer handling instead.
-
-Comparisons are unchanged by default. Opt in once when appropriate:
+`WithValueRule` returns `RuleColumn`, which keeps a column and one value rule.
+It provides `Name`, `Column`, `Apply`, `Set` and `ColValue`; column operations such
+as comparison, sorting, scoping and expression construction use `Column()`.
+`Column()` returns the underlying column without a rule and leaves the
+`RuleColumn` unchanged. Derive another rule column for a different scenario,
+or qualify a column before attaching its rule:
 
 ```go
-var SearchName = UserName.WithComparisons(true)
-condition := SearchName.Scope("u").Eq(input)
-// Equivalent: sqlx.Eq(SearchName.Scope("u"), input).
+strictName := UserName.Column().WithValueRule(sqltype.StringLimit{Max: 64})
+scopedName := UserName.Column().Scope("u").WithValueRule(rule)
 ```
 
-This applies to equality, inequality, ordered comparisons, ranges and individual
-IN-list arguments. LIKE patterns, ON column comparisons, subquery results and
-SQL expressions are not transformed. Nil preserves existing NULL semantics and
-bypasses rules. `Value(data)` explicitly opts its data into processing; `Ref()`,
-`DEFAULT` and other database-computed expressions bypass processing. A rule
-turning a non-nil comparison argument into nil does not rewrite the SQL operator.
+`Set` and `ColValue` execute the rule at the call, retaining only the processed
+value or error. A failed `Set` returns an updater that reports the saved error
+through `Build`, `Compile` or execution. `InsertBuilder.Row` saves a failed
+`ColValue`'s error on the builder without appending that row. Rule errors include
+the column path and preserve `errors.Is`/`errors.As`, including
+`*sqltype.StringLengthError`. They prevent the statement from reaching either an
+Exec or Query executor, including upserts and RETURNING queries.
 
-Template slots keep the column rule at each occurrence:
+`Build` returns processed arguments; `Compile` saves processed constant values.
+Repeated builds, clones, template binds and executions do not rerun rules.
+Changing input data requires creating a new assignment. Rules must not mutate
+inputs, and shared rules must be immutable and safe for concurrent use. Inputs,
+outputs and rule objects are not deep-copied. No global column registry or
+schema lookup is performed: ordinary column assignments, raw paths and `Struct`
+inserts do not discover rules from column objects. Comparisons never apply them.
+
+To obtain an error immediately, call `Apply` directly:
+
+```go
+value, err := UserName.Apply(input)
+if err != nil {
+    return err
+}
+update := sqlx.Update().Table("users").Set(UserName.Column().Set(value))
+```
+
+Nil, including typed nil pointers, passes through without calling the rule.
+`Value(data)` is unwrapped and processed; `sql.Named` retains its name with the
+processed data. `Param`, other SQL expressions and SQL builders are rejected
+because their results are unavailable at assignment time. Use the underlying
+column explicitly for database-computed assignments:
+
+```go
+update := sqlx.Update().Table("users").
+    Set(UserName.Column().Set(sqlx.Expr("UPPER(?)", input)))
+```
+
+Runtime template data is processed before binding. Templates themselves do not
+retain or apply rules:
 
 ```go
 tmpl, err := sqlx.Update().Table("users").
-    Set(UserName.Set(sqlx.Param(0))).Compile()
-// After checking err:
-_, err = tmpl.ExecContext(ctx, db, input)
+    Set(UserName.Column().Set(sqlx.Param(0))).Compile()
+if err != nil {
+    return err
+}
+value, err := UserName.Apply(input)
+if err != nil {
+    return err
+}
+_, err = tmpl.ExecContext(ctx, db, value)
 ```
 
-The same Param used for two columns can have different rules; neither input
-values nor template-owned arguments are changed. Explicitly wrapped Valuers
-(such as `sql.NullString`) are converted before applying their rule; unrelated
-Valuers retain their normal driver conversion behavior.
+`RuleColumn` does not call `driver.Valuer.Value` automatically. A rule receives
+such objects as-is; the caller or a custom rule must extract data when needed.
+Ordinary driver conversion remains the executor/driver's responsibility.
+A nil rule rejects non-nil data. Custom rules implement `Apply(any) (any, error)`
+or use `sqlx.ValueRuleFunc`; they must not panic, mutate inputs or return SQL
+expressions, builders, named arguments or parameter slots. Compose rules inside
+a custom `Apply` when necessary.
 
 `sqltype.StringLimit` accepts strings and defined string types. `Runes` counts
 Unicode code points, not grapheme clusters; `UTF8Bytes` counts bytes in UTF-8,
 not in an arbitrary database encoding. `Truncate` keeps the longest prefix
 within the limit without splitting a code point. `Reject` (the default) returns
-`*sqltype.StringLengthError`, discoverable through `errors.As`. Max zero allows
-only empty text. Negative limits, unknown policies/units, invalid UTF-8 and
-non-string input return errors. Text is not trimmed, padded or normalized.
-Choose the unit to match the intended column constraint; no schema is inspected.
-
-For exceptional call sites, `sqlx.WithValueRule(value, rule)` attaches a deferred
-rule explicitly. `StringLimit.Apply(value)` validates/transforms immediately.
-Custom rules implement `Apply(any) (any, error)` or use `sqlx.ValueRuleFunc`;
-they must not panic, mutate input data or return SQL expressions. These APIs
-also allow rule composition without a global registry or a schema definition.
+`*sqltype.StringLengthError`. Max zero allows only empty text. Negative limits,
+unknown policies/units, invalid UTF-8 and non-string input return errors. Text
+is not trimmed, padded or normalized. Choose the unit to match the intended
+column constraint; no schema is inspected. `StringLimit.Apply(value)` also
+validates or transforms a value directly without a rule column.
 
 ## Build and execute
 

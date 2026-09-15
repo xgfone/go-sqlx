@@ -11,18 +11,14 @@ import (
 )
 
 // Operand restricts predicate left operands to identifier paths or explicit
-// expressions. Defined string types are accepted as paths; RuleColumn also
-// supplies optional comparison rules. To compare a literal on the left, wrap
-// it with Value; ordinary right operands remain bound data.
+// expressions. Defined string types are accepted as paths. To compare a literal
+// on the left, wrap it with Value; ordinary right operands remain bound data.
 type Operand interface {
-	~string | Expression | RuleColumn
+	~string | Expression
 }
 
 func operand[T Operand](v T) Expression {
 	switch value := any(v).(type) {
-	case RuleColumn:
-		return operand(value.Name())
-
 	case Expression:
 		return value
 
@@ -132,9 +128,6 @@ func writeComparisonRight(buf *strings.Builder, c *BuildContext, right any, op c
 
 func compare[T Operand](left T, right any, op comparisonOp) Condition {
 	switch value := any(left).(type) {
-	case RuleColumn:
-		return compare(value.Name(), value.comparisonValue(right), op)
-
 	case Expression:
 		return expressionComparison{
 			left:  value,
@@ -199,10 +192,6 @@ func IsNotNull[T Operand](left T) Condition { return Ne(left, nil) }
 
 // Between tests an inclusive range. Bounds are values or Expressions.
 func Between[T Operand](left T, low, high any) Condition {
-	if col, ok := any(left).(RuleColumn); ok {
-		low, high = col.comparisonValue(low), col.comparisonValue(high)
-	}
-
 	l := operand(left)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
 		reserveSQL(s, 32)
@@ -319,24 +308,18 @@ func (n inCondition) writeCondition(s *strings.Builder, c *BuildContext) {
 }
 
 func inList[T Operand](left T, not bool, values []any) Condition {
-	values = slices.Clone(values)
-	if col, ok := any(left).(RuleColumn); ok && col.comparisons {
-		for i, v := range values {
-			values[i] = col.comparisonValue(v)
-		}
-	}
 	return inCondition{
-		values: values,
+		values: slices.Clone(values),
 		left:   operand(left),
 		not:    not,
 	}
 }
 
 // On compares identifier paths. Other comparisons can use Eq, Gt, or Expr.
-func On[L, R ColumnOperand](left L, right R) Condition {
+func On(left, right string) Condition {
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		c.WriteQuote(s, columnName(left))
+		c.WriteQuote(s, left)
 		_ = s.WriteByte('=')
-		c.WriteQuote(s, columnName(right))
+		c.WriteQuote(s, right)
 	})
 }

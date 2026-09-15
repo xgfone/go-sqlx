@@ -15,13 +15,16 @@ import (
 )
 
 // ColumnValue names an inserted column. It is distinct from sql.NamedArg bindings.
+// Construct values with ColValue or RuleColumn.ColValue; Row also checks any
+// write-rule error saved with the value before appending the row.
 type ColumnValue struct {
 	Column string
 	Value  any
+	err    error
 }
 
-func ColValue[C ColumnOperand](column C, value any) ColumnValue {
-	return ColumnValue{columnName(column), columnWriteValue(column, value)}
+func ColValue[C ~string](column C, value any) ColumnValue {
+	return ColumnValue{Column: string(column), Value: value}
 }
 
 type InsertBuilder struct {
@@ -82,6 +85,10 @@ func (b *InsertBuilder) appendNamedRow(values []ColumnValue) {
 
 	m := make(map[string]any, len(values))
 	for _, v := range values {
+		if v.err != nil {
+			b.fail(v.err)
+			return
+		}
 		if _, ok := m[v.Column]; ok {
 			b.fail(fmt.Errorf("sqlx: duplicate column %q", v.Column))
 			return
