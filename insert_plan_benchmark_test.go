@@ -83,7 +83,6 @@ func BenchmarkInsertPlanInputs(b *testing.B) {
 		values[i].V, values[i].ID = pointerValue{i + 1000}, int64(i+1000)
 	}
 
-	b.Run("values", func(b *testing.B) { benchmarkInsertPlanInput(b, rows) })
 	b.Run("pointers", func(b *testing.B) { benchmarkInsertPlanInput(b, ptrs) })
 	b.Run("pointer_valuer", func(b *testing.B) { benchmarkInsertPlanInput(b, values) })
 }

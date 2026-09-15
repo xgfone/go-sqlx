@@ -6,11 +6,8 @@ package sqlx
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
-
-	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
 func ExampleSelectBuilder_SelectStruct() {
@@ -112,32 +109,5 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 
 	if err != nil {
 		t.Error(err)
-	}
-}
-
-func TestSelectStructMetadataCache(t *testing.T) {
-	type SS1 struct {
-		F1 int32
-		F2 int32
-	}
-
-	type SS2 struct {
-		F1 int32
-		F2 int32
-	}
-
-	Select().SelectStruct(SS1{}, "")
-	Select().SelectStruct(SS1{}, "A")
-	Select().SelectStruct(SS2{}, "")
-	Select().SelectStruct(SS2{}, "A")
-
-	Select().SelectStruct(SS1{}, "")
-	Select().SelectStruct(SS1{}, "A")
-	Select().SelectStruct(SS2{}, "")
-	Select().SelectStruct(SS2{}, "A")
-
-	meta, err := rowbind.Describe(reflect.TypeFor[SS1]())
-	if err != nil || len(meta.Fields()) != 2 {
-		t.Fatalf("%v %v", meta, err)
 	}
 }

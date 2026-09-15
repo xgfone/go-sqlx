@@ -18,6 +18,10 @@ var conditionBuilderSink SQLBuilder
 func BenchmarkConditionStorage(b *testing.B) {
 	for _, shape := range []string{"flat", "nils", "groups"} {
 		for _, count := range []int{0, 1, 2, 3, 20, 100, 1000} {
+			// With no conditions, all shapes have the same empty input.
+			if count == 0 && shape != "flat" {
+				continue
+			}
 			conditions := make([]Condition, count)
 			for i := range conditions {
 				conditions[i] = Eq("id", i)

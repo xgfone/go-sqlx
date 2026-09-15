@@ -14,6 +14,10 @@ func BenchmarkInsertGrowth(b *testing.B) {
 	for _, width := range []int{3, 12, 64, 256} {
 		for _, count := range []int{0, 1, 20, 100, 1000} {
 			for _, mode := range []string{"incremental", "bulk", "prefix"} {
+				// Empty builders have no column width or growth strategy. Keep one baseline.
+				if count == 0 && mode != "prefix" && (width != 3 || mode != "incremental") {
+					continue
+				}
 				b.Run(fmt.Sprintf("cols%d/rows%d/%s", width, count, mode), func(b *testing.B) {
 					values := make([]any, width)
 					for i := range values {
