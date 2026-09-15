@@ -56,7 +56,7 @@ func BenchmarkInsertBatchWorkloads(b *testing.B) {
 	}
 }
 
-func runInsertBatchWorkloads(b *testing.B, argCount int, makeBuilder func() *InsertBuilder) {
+func runInsertBatchWorkloads(b *testing.B, argCount int, makeBuilder func() *InsertBuilder, modes ...string) {
 	b.Helper()
 	builder := makeBuilder()
 	if _, _, err := builder.Build(); err != nil {
@@ -73,7 +73,10 @@ func runInsertBatchWorkloads(b *testing.B, argCount int, makeBuilder func() *Ins
 	})
 
 	ctx := context.Background()
-	for _, mode := range []string{"construct", "build", "construct_build", "exec"} {
+	if len(modes) == 0 {
+		modes = []string{"construct", "build", "construct_build", "exec"}
+	}
+	for _, mode := range modes {
 		b.Run(mode, func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {

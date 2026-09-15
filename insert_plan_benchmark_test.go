@@ -40,13 +40,14 @@ func runInsertPlanWorkloads[T any](b *testing.B, rows []T, width int) {
 		b.Fatal(err)
 	}
 
+	// Pure Build/Exec reuse the same batch layout measured by Structs.
 	runInsertBatchWorkloads(b, len(rows)*width, func() *InsertBuilder {
 		q := Insert().Into("records")
 		if err := p.AppendTo(q, rows); err != nil {
 			b.Fatal(err)
 		}
 		return q
-	})
+	}, "construct", "construct_build")
 }
 
 var insertPlanResult any
