@@ -4,6 +4,7 @@
 package sqlx_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/xgfone/go-sqlx"
@@ -58,5 +59,12 @@ func ExampleConditionWriterFunc() {
 		w.Raw(")")
 		return true, nil
 	})
-	_ = sqlx.Select("id").From("items").Where(predicate)
+	query, args := sqlx.Select("id").From("items").Where(predicate).
+		SetDialect(dialect.Postgres).MustBuild()
+	fmt.Println(query)
+	fmt.Println(args)
+
+	// Output:
+	// SELECT "id" FROM "items" WHERE ("score">$1)
+	// [10]
 }

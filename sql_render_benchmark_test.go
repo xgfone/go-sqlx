@@ -18,22 +18,53 @@ func BenchmarkSyntaxBuild(b *testing.B) {
 		values[i] = i
 		columns[i] = "column_" + strconv.Itoa(i)
 	}
-	for _, d := range []Dialect{dialect.Postgres, dialect.WithVersion(dialect.Postgres, 14, 0, 0), dialect.SQLite} {
-		b.Run(d.Name(), func(b *testing.B) {
+
+	for _, variant := range []struct {
+		name    string
+		dialect Dialect
+	}{
+		{"postgres/builtin", dialect.Postgres},
+		{"postgres/configured", dialect.WithVersion(dialect.Postgres, 14, 0, 0)},
+		{"sqlite3", dialect.SQLite},
+	} {
+		b.Run(variant.name, func(b *testing.B) {
+			d := variant.dialect
 			for _, tc := range []struct {
 				name string
 				q    SQLBuilder
 			}{
-				{"Function128", Select().SelectExpr(Func("COALESCE", values...)).SetDialect(d)},
-				{"Window", Select().SelectExpr(SumExpr(Expr("? * ?", Ident("v"), 2)).
-					Filter(Gt("v", 0)).Over(Window().PartitionBy("team").OrderBy("id", Asc))).From("t").SetDialect(d)},
-				{"Values128", Insert().Into("t").Columns(columns...).Values(values...).SetDialect(d)},
-				{"Conflict", Insert().Into("t").Columns("id", "v").Values(1, 2).
-					OnConflict(ConflictColumns("id").DoUpdate(Set("v", Excluded("v"))).Where(Gt("t.v", 0))).SetDialect(d)},
-				{"SourceJoin", Select("a.id").FromSource(ValuesSource("a", []string{"id"}, []any{1}, []any{2})).
-					JoinSourceUsing(LeftJoin, TableSource("t", "b"), "id").SetDialect(d)},
-				{"CTE", Select("id").With("q", Select("id").From("t").Where(Gt("v", 1))).From("q").SetDialect(d)},
+				{
+					"Function128",
+					Select().SelectExpr(Func("COALESCE", values...)).SetDialect(d),
+				},
+				{
+					"Window",
+					Select().SelectExpr(SumExpr(Expr("? * ?", Ident("v"), 2)).Filter(Gt("v", 0)).
+						Over(Window().PartitionBy("team").OrderBy("id", Asc))).From("t").SetDialect(d)},
+				{
+					"Values128",
+					Insert().Into("t").Columns(columns...).Values(values...).SetDialect(d),
+				},
+				{
+					"Conflict",
+					Insert().Into("t").Columns("id", "v").Values(1, 2).
+						OnConflict(ConflictColumns("id").DoUpdate(Set("v", Excluded("v"))).Where(Gt("t.v", 0))).
+						SetDialect(d),
+				},
+				{
+					"SourceJoin",
+					Select("a.id").FromSource(ValuesSource("a", []string{"id"}, []any{1}, []any{2})).
+						JoinSourceUsing(LeftJoin, TableSource("t", "b"), "id").SetDialect(d)},
+				{
+					"CTE",
+					Select("id").With("q", Select("id").From("t").Where(Gt("v", 1))).From("q").SetDialect(d),
+				},
 			} {
+				// Compare wrapper overhead for many arguments and nested statement scope.
+				if variant.name == "postgres/configured" && tc.name != "Function128" && tc.name != "CTE" {
+					continue
+				}
+
 				b.Run(tc.name, func(b *testing.B) {
 					b.ReportAllocs()
 					for b.Loop() {
