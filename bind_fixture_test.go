@@ -15,7 +15,7 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// A real database/sql driver with controllable iteration/finalization failures.
+// A real [database/sql] driver with controllable iteration/finalization failures.
 // Each cursor owns its reusable byte buffers; the fixture is safe to share.
 type bindFixture struct {
 	columns []string

@@ -19,8 +19,9 @@ type consumeScanFunc func(any) error
 
 func (f consumeScanFunc) Scan(src any) error { return f(src) }
 
-// This source owns no database/sql lock. Test sqlx's own cleanup without
-// promising that a foreign cursor can recover from a Scanner contract violation.
+// This source owns no [database/sql] lock. Test [github.com/xgfone/go-sqlx]'s own cleanup
+// without
+// promising that a foreign cursor can recover from a [sql.Scanner] contract violation.
 func TestScannerPanicPropagatesThroughSourceAndClearsOwnedState(t *testing.T) {
 	for _, value := range []any{"failure", &struct{ N int }{7}, nil} {
 		returned, unwound, calledLater := false, false, false
@@ -441,7 +442,7 @@ func TestScanFailureOrderAndCleanup(t *testing.T) {
 	}
 }
 
-// The source here owns no database/sql lock. Even when that source fails,
+// The source here owns no [database/sql] lock. Even when that source fails,
 // retained execution adapters must not keep row input or caller fields alive.
 func TestNullablePlanClearsRowsAcrossFailures(t *testing.T) {
 	type child struct {

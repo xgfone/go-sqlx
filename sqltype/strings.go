@@ -14,8 +14,8 @@ const SliceSep = ","
 
 // Strings stores strings separated by commas, without trimming whitespace.
 // Elements containing commas and a singleton empty string cannot be encoded;
-// use JSON[[]string] for arbitrary strings. Nil is SQL NULL, while an empty
-// non-nil slice is empty text. Scan replaces the previous value.
+// use [JSON] with []string for arbitrary strings. Nil is SQL NULL, while an empty
+// non-nil slice is empty text. [Strings.Scan] replaces the previous value.
 type Strings []string
 
 func (s Strings) IsZero() bool { return len(s) == 0 }

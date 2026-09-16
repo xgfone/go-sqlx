@@ -14,8 +14,9 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// ColumnValue names an inserted column. It is distinct from sql.NamedArg bindings.
-// Construct values with ColValue or RuleColumn.ColValue; Row also checks any
+// ColumnValue names an inserted column. It is distinct from [sql.NamedArg] bindings.
+// Construct values with [ColValue] or [RuleColumn.ColValue]; [InsertBuilder.Row] also checks
+// any
 // write-rule error saved with the value before appending the row.
 type ColumnValue struct {
 	Column string
@@ -343,7 +344,7 @@ func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder { b.db = db; return b }
 func (b *InsertBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-// Non-nil executors use the interceptor set by SetDefaultExecutorInterceptor.
+// Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].
 func (b *InsertBuilder) SetExecutor(e Executor) *InsertBuilder {
 	b.executor = interceptExecutor(e)
 	return b

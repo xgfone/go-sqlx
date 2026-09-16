@@ -10,14 +10,16 @@ import (
 )
 
 // Reuse reports independent temporary-destination safety for the first two
-// targets (MapPairs), or the single target of MapIndex/MapSet. Unknown raw
+// targets ([github.com/xgfone/go-sqlx.NewMapPairsBinder]), or the single target
+// of [github.com/xgfone/go-sqlx.NewMapIndexBinder]/[github.com/xgfone/go-sqlx.NewMapSetBinder].
+// Unknown raw
 // cursors never permit reuse even when destination types themselves are safe.
 type Reuse [2]bool
 
 // These exact standard-library scanners store values without retaining their
-// receiver address. This does not change their Scan/NULL/conversion semantics.
-// Named wrappers, embedded scanners and arbitrary Scanner implementations are
-// deliberately excluded. In particular, sql.Null[T] for arbitrary T is not an
+// receiver address. This does not change their [sql.Scanner.Scan]/NULL/conversion semantics.
+// Named wrappers, embedded scanners and arbitrary [sql.Scanner] implementations are
+// deliberately excluded. In particular, [sql.Null] with arbitrary T is not an
 // ownership guarantee: only the listed scalar instantiations are recognized.
 func reusableScannerType(t reflect.Type) bool {
 	switch t {

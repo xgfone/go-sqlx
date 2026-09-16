@@ -14,7 +14,7 @@ var conditionStorageSink []Condition
 var conditionBuilderSink SQLBuilder
 
 // Inputs are prepared outside the timer to isolate container growth from the
-// allocations made by Eq and other condition constructors.
+// allocations made by [Eq] and other condition constructors.
 func BenchmarkConditionStorage(b *testing.B) {
 	for _, shape := range []string{"flat", "nils", "groups"} {
 		for _, count := range []int{0, 1, 2, 3, 20, 100, 1000} {
@@ -67,7 +67,8 @@ func BenchmarkConditionStorage(b *testing.B) {
 	}
 }
 
-// Construction includes new Eq nodes and builder storage. Build reuses a fully
+// Construction includes new [Eq] nodes and builder storage. [SelectBuilder.Build] reuses a
+// fully
 // constructed builder; construct_build includes both phases.
 func BenchmarkConditionBuilders(b *testing.B) {
 	for _, kind := range []string{"select", "having", "update", "delete"} {

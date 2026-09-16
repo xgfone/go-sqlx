@@ -14,7 +14,7 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// These fixture transactions exercise database/sql's actual transaction dispatch.
+// These fixture transactions exercise [database/sql]'s actual transaction dispatch.
 type txConnector struct{ f *txFixture }
 
 type txDriver struct{}

@@ -12,7 +12,7 @@ import (
 
 // Operand restricts predicate left operands to identifier paths or explicit
 // expressions. Defined string types are accepted as paths. To compare a literal
-// on the left, wrap it with Value; ordinary right operands remain bound data.
+// on the left, wrap it with [Value]; ordinary right operands remain bound data.
 type Operand interface {
 	~string | Expression
 }
@@ -165,32 +165,32 @@ func compare[T Operand](left T, right any, op comparisonOp) Condition {
 	}
 }
 
-// Eq compares a column path or Expression to a bound value or Expression.
-// A nil right operand means IS NULL. Use Ident on the right to compare columns.
+// Eq compares a column path or [Expression] to a bound value or [Expression].
+// A nil right operand means IS NULL. Use [Ident] on the right to compare columns.
 func Eq[T Operand](left T, right any) Condition { return compare(left, right, compareEqual) }
 
 // Ne is the unequal comparison; a nil right operand means IS NOT NULL.
 func Ne[T Operand](left T, right any) Condition { return compare(left, right, compareNotEqual) }
 
-// Gt compares a column path or Expression to a value using >.
+// Gt compares a column path or [Expression] to a value using >.
 func Gt[T Operand](left T, right any) Condition { return compare(left, right, compareGreater) }
 
-// Ge compares a column path or Expression to a value using >=.
+// Ge compares a column path or [Expression] to a value using >=.
 func Ge[T Operand](left T, right any) Condition { return compare(left, right, compareGreaterEqual) }
 
-// Lt compares a column path or Expression to a value using <.
+// Lt compares a column path or [Expression] to a value using <.
 func Lt[T Operand](left T, right any) Condition { return compare(left, right, compareLess) }
 
-// Le compares a column path or Expression to a value using <=.
+// Le compares a column path or [Expression] to a value using <=.
 func Le[T Operand](left T, right any) Condition { return compare(left, right, compareLessEqual) }
 
-// IsNull tests a column path or Expression for NULL.
+// IsNull tests a column path or [Expression] for NULL.
 func IsNull[T Operand](left T) Condition { return Eq(left, nil) }
 
-// IsNotNull tests a column path or Expression for a non-NULL value.
+// IsNotNull tests a column path or [Expression] for a non-NULL value.
 func IsNotNull[T Operand](left T) Condition { return Ne(left, nil) }
 
-// Between tests an inclusive range. Bounds are values or Expressions.
+// Between tests an inclusive range. Bounds are values or [Expression] values.
 func Between[T Operand](left T, low, high any) Condition {
 	l := operand(left)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
@@ -245,7 +245,7 @@ func like[T Operand](left T, pattern any, op string, escape []string) Condition 
 }
 
 // In tests membership in a value list. Empty lists are false; nil elements keep
-// SQL's three-valued semantics. A Tuple left operand requires equal-width Tuples.
+// SQL's three-valued semantics. A [Tuple] left operand requires equal-width [Tuple] values.
 func In[T Operand](left T, values ...any) Condition {
 	return inList(left, false, values)
 }
@@ -315,7 +315,7 @@ func inList[T Operand](left T, not bool, values []any) Condition {
 	}
 }
 
-// On compares identifier paths. Other comparisons can use Eq, Gt, or Expr.
+// On compares identifier paths. Other comparisons can use [Eq], [Gt], or [Expr].
 func On(left, right string) Condition {
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
 		c.WriteQuote(s, left)

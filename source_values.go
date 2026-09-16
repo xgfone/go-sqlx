@@ -21,8 +21,9 @@ import (
 // native VALUES for larger inputs. Older MySQL uses SELECT ... UNION ALL.
 // PostgreSQL casts ordinary bound Go values to preserve numeric, boolean, binary,
 // and time semantics even when the driver sends unspecified parameter types.
-// Use ColumnTypes for Params and driver.Valuers, or Cast for individual cells.
-// Other Expressions supply their own SQL type information; nil remains untyped.
+// Use [Source.ColumnTypes] for [Param] slots and [driver.Valuer] values, or [Cast] for
+// individual cells.
+// Other [Expression] values supply their own SQL type information; nil remains untyped.
 func ValuesSource(alias string, columns []string, rows ...[]any) Source {
 	values := make([][]any, len(rows))
 	for i, row := range rows {
@@ -36,7 +37,7 @@ func ValuesSource(alias string, columns []string, rows ...[]any) Source {
 }
 
 // ColumnTypes sets explicit SQL types for every column of a VALUES source.
-// Types are trusted SQL syntax, as in Cast, and must suit the target dialect.
+// Types are trusted SQL syntax, as in [Cast], and must suit the target dialect.
 // The returned source owns a copy of types; the original source is unchanged.
 // An empty list clears explicit types and restores the dialect's defaults.
 func (s Source) ColumnTypes(types ...string) Source {
@@ -83,7 +84,8 @@ func writeTypedSourceValue(s *strings.Builder, c *BuildContext, types []string, 
 }
 
 // Account for CAST syntax before emitting a batch, without inspecting values
-// or invoking renderers/Valuers. Unusual types or expressions may still grow.
+// or invoking renderers/[driver.Valuer] implementations. Unusual types or expressions may still
+// grow.
 func valuesCastSizeHint(columns, types []string, rows, args int) int {
 	digits := 1
 	for n := args + rows*len(columns); n >= 10; n /= 10 {
@@ -109,8 +111,8 @@ func valuesCastSizeHint(columns, types []string, rows, args int) int {
 	return n + 32
 }
 
-// Do not run driver.Valuer while building SQL. Its output can change between
-// executions, and a compiled Param has no Go value from which to infer a type.
+// Do not run [driver.Valuer] while building SQL. Its output can change between
+// executions, and a compiled [Param] has no Go value from which to infer a type.
 func postgresValueType(value any) string {
 	for {
 		switch v := value.(type) {

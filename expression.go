@@ -31,7 +31,7 @@ const (
 )
 
 // Expression is an explicit SQL expression or identifier. Raw SQL supplied to
-// Expr must be trusted; values belong in bound parameters, not SQL strings.
+// [Expr] must be trusted; values belong in bound parameters, not SQL strings.
 type Expression struct {
 	// Keep this field first: a trailing zero-sized field adds padding.
 	_ [0]func() // Preserve non-comparability; SQL equivalence is context-dependent.
@@ -41,7 +41,7 @@ type Expression struct {
 }
 
 // Ident represents an identifier with explicit qualification boundaries.
-// Ident("a.b") quotes one name; Ident("a", "b") quotes two components.
+// [Ident]("a.b") quotes one name; [Ident]("a", "b") quotes two components.
 func Ident(parts ...string) Expression {
 	switch len(parts) {
 	case 0:
@@ -373,8 +373,8 @@ func writeValue(buf *strings.Builder, c *BuildContext, v any) {
 	}
 }
 
-// Tuple constructs a row value containing at least two values or Expressions.
-// Use Ident for columns; strings are bound as data.
+// Tuple constructs a row value containing at least two values or [Expression] values.
+// Use [Ident] for columns; strings are bound as data.
 func Tuple(values ...any) Expression {
 	return Expression{
 		node: &expressionArgs{

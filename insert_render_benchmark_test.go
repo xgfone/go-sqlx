@@ -63,7 +63,8 @@ func BenchmarkInsertTemplate(b *testing.B) {
 	}
 }
 
-// Incremental VALUES complements the flat Structs/InsertPlan workloads. Inputs
+// Incremental VALUES complements the flat [InsertBuilder.Structs]/[InsertPlan] workloads.
+// Inputs
 // are prebuilt; construction still owns a snapshot of every appended row.
 func BenchmarkInsertValueWorkloads(b *testing.B) {
 	for _, kind := range []string{"plain", "expressions", "mixed"} {

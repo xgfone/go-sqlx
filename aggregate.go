@@ -52,7 +52,8 @@ func MaxExpr(e Expression) Expression { return aggregate("MAX", e, false) }
 // AvgExpr averages an expression.
 func AvgExpr(e Expression) Expression { return aggregate("AVG", e, false) }
 
-// Filter limits an aggregate's input rows. Apply it before Over or OverName.
+// Filter limits an aggregate's input rows. Apply it before [Expression.Over] or
+// [Expression.OverName].
 func (e Expression) Filter(conditions ...Condition) Expression {
 	conditions = slices.Clone(conditions)
 	size := e.renderSizeHint() + 16
@@ -100,7 +101,7 @@ func GroupingSet(expressions ...Expression) Expression {
 	}
 }
 
-// GroupingSets groups by each supplied set. Use GroupingSet for each set.
+// GroupingSets groups by each supplied set. Use [GroupingSet] for each set.
 func GroupingSets(sets ...Expression) Expression {
 	return grouping("GROUPING SETS", dialect.GroupingSets, sets)
 }
@@ -111,7 +112,7 @@ func Cube(expressions ...Expression) Expression {
 }
 
 // Rollup generates hierarchical subtotals. For MySQL's WITH ROLLUP spelling,
-// use SelectBuilder.GroupByRollup instead of this expression.
+// use [SelectBuilder.GroupByRollup] instead of this expression.
 func Rollup(expressions ...Expression) Expression {
 	e := grouping("ROLLUP", dialect.Rollup, expressions)
 	return Expression{

@@ -9,7 +9,7 @@ import (
 	"slices"
 )
 
-// UnsupportedTypeError is returned by Prepare when a binder does not recognize
+// UnsupportedTypeError is returned by [RowsBinder.Prepare] when a binder does not recognize
 // a destination type. A recognized but invalid destination returns another error.
 type UnsupportedTypeError struct {
 	Name string
@@ -20,7 +20,7 @@ func (e UnsupportedTypeError) Error() string {
 	return fmt.Sprintf("%s: unsupported type %s", e.Name, e.Type)
 }
 
-// IsUnsupportedTypeError checks if the error is a UnsupportedTypeError.
+// IsUnsupportedTypeError checks if the error is a [UnsupportedTypeError].
 func IsUnsupportedTypeError(err error) bool {
 	if _, ok := errors.AsType[UnsupportedTypeError](err); ok {
 		return true
@@ -32,7 +32,7 @@ func IsUnsupportedTypeError(err error) bool {
 
 // RowsBinder prepares an immutable mapping from the supplied columns and scan
 // options without accessing a cursor or borrowing execution scratch. It must not
-// mutate dst. Once it succeeds, no fallback is attempted, whatever Scan returns.
+// mutate dst. Once it succeeds, no fallback is attempted, whatever [RowsBinding.Scan] returns.
 // Implementations may be shared by concurrent queries; each prepared binding
 // must own its state and scratch storage.
 type RowsBinder interface {
@@ -48,20 +48,22 @@ func (f RowsBinderFunc) Prepare(dst any, options BindOptions) (RowsBinding, erro
 	return f(dst, options)
 }
 
-// RowsBinding is a single-use staged operation. Scan reads into independent
+// RowsBinding is a single-use staged operation. [RowsBinding.Scan] reads into independent
 // storage using a raw cursor matching the prepared column order and returns
-// iteration errors. BindOptions supplies conversion policies. Commit publishes
-// it and must not fail or perform I/O. Call Commit only after Scan and any owning
-// result's Close have succeeded. Custom side effects are the binder's responsibility.
+// iteration errors. [BindOptions] supplies conversion policies. [RowsBinding.Commit] publishes
+// it and must not fail or perform I/O. Call [RowsBinding.Commit] only after [RowsBinding.Scan]
+// and any owning
+// result's [Rows.Close] have succeeded. Custom side effects are the binder's responsibility.
 type RowsBinding interface {
 	Scan(RowCursor) error
 	Commit()
 }
 
-// RowsBindingFuncs adapts callbacks to a RowsBinding. Scan rejects missing
-// callbacks before consuming rows. Commit may be called only after Scan succeeds.
+// RowsBindingFuncs adapts callbacks to a [RowsBinding]. [RowsBindingFuncs.Scan] rejects missing
+// callbacks before consuming rows. [RowsBindingFuncs.Commit] may be called only after
+// [RowsBindingFuncs.Scan] succeeds.
 // For allocation-sensitive binders, let the per-result state implement
-// RowsBinding directly instead of creating method-value callbacks.
+// [RowsBinding] directly instead of creating method-value callbacks.
 type RowsBindingFuncs struct {
 	ScanFunc   func(RowCursor) error
 	CommitFunc func()
@@ -87,7 +89,7 @@ func (e *BindError) Error() string { return fmt.Sprintf("sqlx: row %d: %v", e.Ro
 
 func (e *BindError) Unwrap() error { return e.Err }
 
-// DuplicateKeyError reports a collision under the DuplicateKeyReject policy.
+// DuplicateKeyError reports a collision under the [DuplicateKeyReject] policy.
 type DuplicateKeyError struct{ Key any }
 
 func (e *DuplicateKeyError) Error() string {
@@ -98,9 +100,9 @@ func unsupportedBinder(name string, dst any) (RowsBinding, error) {
 	return nil, UnsupportedTypeError{Name: name, Type: gettype(dst)}
 }
 
-// ComposeRowsBinders tries Prepare in order. Unsupported destinations fall
+// ComposeRowsBinders tries [RowsBinder.Prepare] in order. Unsupported destinations fall
 // through; validation errors stop selection. Empty/all-nil chains return an
-// UnsupportedTypeError. Put SliceRowsBinder last when a general fallback is wanted.
+// [UnsupportedTypeError]. Put [SliceRowsBinder] last when a general fallback is wanted.
 func ComposeRowsBinders(binders ...RowsBinder) RowsBinder {
 	binders = slices.Clone(binders)
 	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {

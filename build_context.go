@@ -25,7 +25,7 @@ var buildContextPool = sync.Pool{New: func() any {
 }}
 
 // BuildContext renders identifiers and collects arguments for SQL renderers.
-// Contexts passed to clause and CTE body renderers are borrowed for that call only: do not
+// Contexts passed to clause and [CTE] body renderers are borrowed for that call only: do not
 // copy or retain them or use them concurrently. Pool ownership is internal to sqlx.
 type BuildContext struct {
 	statementScope
@@ -88,7 +88,7 @@ func releaseBuildContext(a *BuildContext) {
 	buildContextPool.Put(a)
 }
 
-// Reuse the builder object, not its byte storage: Reset leaves returned SQL
+// Reuse the builder object, not its byte storage: [strings.Builder.Reset] leaves returned SQL
 // strings immutable. Reentrant rendering borrows an independent builder.
 func (a *BuildContext) acquireBuffer() *strings.Builder {
 	if a.bufferInUse {
@@ -128,12 +128,12 @@ func (a *BuildContext) Dialect() Dialect {
 }
 
 // Quote quotes a dotted identifier path, preserving a trailing wildcard.
-// Expressions must be supplied through an explicit expression API.
+// [Expression] values must be supplied through an explicit expression API.
 func (a *BuildContext) Quote(name string) string {
 	return quotePath(a.Dialect(), name)
 }
 
-// WriteQuote appends a quoted identifier path, like Quote, without an
+// WriteQuote appends a quoted identifier path, like [BuildContext.Quote], without an
 // intermediate string for built-in dialects.
 func (a *BuildContext) WriteQuote(buf *strings.Builder, name string) {
 	writeQuotedPath(buf, a.Dialect(), name)
@@ -155,14 +155,14 @@ func (a *BuildContext) Add(arg any) string {
 	return placeholder
 }
 
-// WriteArg binds arg and appends its placeholder, like Add, without an
+// WriteArg binds arg and appends its placeholder, like [BuildContext.Add], without an
 // intermediate string for built-in positional placeholders. Invalid named
 // arguments panic; the enclosing builder reports the panic as a build error.
 func (a *BuildContext) WriteArg(buf *strings.Builder, arg any) {
 	a.writeArg(buf, arg)
 }
 
-// writeArg shares named-argument validation with Add, while positional
+// writeArg shares named-argument validation with [BuildContext.Add], while positional
 // placeholders can be written without allocating an intermediate string.
 func (a *BuildContext) writeArg(buf *strings.Builder, arg any) {
 	d := a.Dialect()
@@ -259,19 +259,19 @@ func validParameterName(name string) bool {
 	return name != ""
 }
 
-// Value renders an Expression in this context or binds any other value. Adapters
-// should use Value for operands that may contain expressions or subqueries and
-// Add when a value must always be bound as data.
+// Value renders an [Expression] in this context or binds any other value. Adapters
+// should use [BuildContext.Value] for operands that may contain expressions or subqueries and
+// [BuildContext.Add] when a value must always be bound as data.
 func (a *BuildContext) Value(value any) string { return renderValue(a, value) }
 
-// WriteValue appends an Expression in this context or binds any other value,
-// like Value, without an intermediate SQL string. Invalid expressions panic;
+// WriteValue appends an [Expression] in this context or binds any other value,
+// like [BuildContext.Value], without an intermediate SQL string. Invalid expressions panic;
 // the enclosing builder reports the panic as a build error.
 func (a *BuildContext) WriteValue(buf *strings.Builder, value any) {
 	writeValue(buf, a, value)
 }
 
-// Rendering state belongs to one query level. Subqueries and CTEs have their
+// Rendering state belongs to one query level. Subqueries and [CTE] values have their
 // own named windows and expression bindings, while sharing statement arguments.
 type statementScope struct {
 	windows map[string]WindowSpec

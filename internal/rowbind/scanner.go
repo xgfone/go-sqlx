@@ -13,25 +13,27 @@ import (
 )
 
 // GeneralScanner adapts scalar values with SQL NULL mapped to the destination's
-// zero value (or rejected with NullError). Pointer chains use the same conversion
+// zero value (or rejected with [NullError]). Pointer chains use the same conversion
 // rules and remain nil on NULL. Results that retain driver bytes own their
 // storage; numeric conversions consume bytes without retaining them. It checks
 // numeric ranges and leaves destinations unchanged on conversion errors. Custom
-// sql.Scanner values receive the original source, including NULL, and must copy
+// [sql.Scanner] values receive the original source, including NULL, and must copy
 // borrowed bytes they retain. Their implementations must return errors instead
-// of panicking and release their own resources; sqlx does not recover their
-// panics or close application Scanners. A nil Value discards the column.
+// of panicking and release their own resources; [github.com/xgfone/go-sqlx] does not recover
+// their
+// panics or close application [sql.Scanner] implementations. A nil [GeneralScanner.Value]
+// discards the column.
 //
 // Text numbers use decimal syntax; empty text is invalid. Boolean inputs accept
-// ParseBool text, numeric 0/1, and the single binary bytes 0/1. Integer conversions
+// [strconv.ParseBool] text, numeric 0/1, and the single binary bytes 0/1. Integer conversions
 // reject fractions and overflow. Floating-point conversions allow normal IEEE
 // rounding, but reject non-finite values, overflow, and float32 narrowing
 // underflow to zero.
 //
 // Named scalar types and *[]byte are supported in addition to built-in pointers.
-// Time strings default to RFC3339Nano, SQL datetime, or SQL date. Existing
-// time.Time values retain their location unless Location is explicitly set.
-// Numeric timestamps are Unix seconds. Numeric durations use DurationUnit
+// Time strings default to [time.RFC3339Nano], SQL datetime, or SQL date. Existing
+// [time.Time] values retain their location unless [GeneralScanner.Location] is explicitly set.
+// Numeric timestamps are Unix seconds. Numeric durations use [GeneralScanner.DurationUnit]
 // (milliseconds by default), regardless of whether the source is integral.
 // Floating durations tolerate scaling roundoff only when integer nanoseconds
 // convert back to the original value at the source's floating-point precision.
@@ -43,7 +45,7 @@ type GeneralScanner struct {
 	TimeLayouts  []string
 	DurationUnit time.Duration
 
-	// AllowZeroDate maps MySQL zero dates to time.Time{} instead of an error.
+	// AllowZeroDate maps MySQL zero dates to [time.Time]{} instead of an error.
 	AllowZeroDate bool
 }
 

@@ -9,10 +9,11 @@ import (
 	"reflect"
 )
 
-// WithVisitScan lends scanning scratch to Visit's synchronous operation. When
+// WithVisitScan lends scanning scratch to [github.com/xgfone/go-sqlx.Rows.Visit]'s synchronous
+// operation. When
 // reusable[0] is true, run must supply the same private temporary on every scan
 // and zero it before each row. Flat struct fields can then stay bound until the
-// operation ends. Other layouts keep WithScan's per-row mapping.
+// operation ends. Other layouts keep [Mapping.WithScan]'s per-row mapping.
 // Neither the scan function nor its adapters may escape the operation.
 func (m Mapping) WithVisitScan(cursor Cursor, run func(RowScanFunc, Reuse) error) error {
 	if m.layout == nil || !m.layout.stableFields || m.types[0].Elem().Kind() != reflect.Struct {

@@ -7,15 +7,15 @@ import "strings"
 
 // Column is a dot-separated column path, such as "id" or "u.id".
 // It can be declared as a constant and used directly as a predicate's left
-// operand. On the right, use Ref explicitly to reference a column instead of
-// binding its name as data. Column does not validate model or database metadata.
-// For a literal identifier containing a dot, use Ident instead.
+// operand. On the right, use [Column.Ref] explicitly to reference a column instead of
+// binding its name as data. [Column] does not validate model or database metadata.
+// For a literal identifier containing a dot, use [Ident] instead.
 type Column string
 
 // Name returns the unquoted column path.
 func (c Column) Name() string { return string(c) }
 
-// Column returns c itself, matching RuleColumn.Column.
+// Column returns c itself, matching [RuleColumn.Column].
 func (c Column) Column() Column { return c }
 
 // Scope prefixes the path with a table, alias, or other qualifying path.
@@ -31,7 +31,7 @@ func (c Column) Scope(scope string) Column {
 // Ref returns an explicit column reference, quoting each path component.
 func (c Column) Ref() Expression { return Ident(strings.Split(string(c), ".")...) }
 
-// Eq compares the column to a value or Expression; nil means IS NULL.
+// Eq compares the column to a value or [Expression]; nil means IS NULL.
 func (c Column) Eq(v any) Condition { return Eq(string(c), v) }
 
 // Ne compares the column for inequality; nil means IS NOT NULL.
@@ -55,7 +55,7 @@ func (c Column) IsNull() Condition { return IsNull(string(c)) }
 // IsNotNull tests the column for a non-NULL value.
 func (c Column) IsNotNull() Condition { return IsNotNull(string(c)) }
 
-// Between tests an inclusive range of values or Expressions.
+// Between tests an inclusive range of values or [Expression] values.
 func (c Column) Between(low, high any) Condition { return Between(string(c), low, high) }
 
 // NotBetween tests whether the column lies outside an inclusive range.
@@ -77,7 +77,7 @@ func (c Column) In(values ...any) Condition { return In(string(c), values...) }
 // NotIn tests non-membership in a value list. An empty list is true.
 func (c Column) NotIn(values ...any) Condition { return NotIn(string(c), values...) }
 
-// Set assigns a bound value or Expression to the column.
+// Set assigns a bound value or [Expression] to the column.
 func (c Column) Set(v any) Updater { return Set(string(c), v) }
 
 // Asc returns an ascending ordering term.
@@ -86,7 +86,7 @@ func (c Column) Asc() SortColumn { return SortColumn{Column: string(c), Order: A
 // Desc returns a descending ordering term.
 func (c Column) Desc() SortColumn { return SortColumn{Column: string(c), Order: Desc} }
 
-// On compares two column paths for equality. Unlike Eq, its right operand is
+// On compares two column paths for equality. Unlike [Column.Eq], its right operand is
 // always a column reference. Strings and defined string types are accepted.
 func (c Column) On[C ~string](right C) Condition { return On(string(c), string(right)) }
 
@@ -96,11 +96,11 @@ func (c Column) InQuery(q *SelectBuilder) Condition { return InQuery(string(c), 
 // NotInQuery compares the column to a one-column subquery using NOT IN.
 func (c Column) NotInQuery(q *SelectBuilder) Condition { return NotInQuery(string(c), q) }
 
-// As returns a named selection for SelectNamers. The alias is one identifier,
+// As returns a named selection for [SelectBuilder.SelectNamers]. The alias is one identifier,
 // not a qualifying path, and does not change the column itself.
 func (c Column) As(alias string) Namer { return Namer{Name: string(c), Alias: alias} }
 
-// ColValue pairs the column name with an inserted value for InsertBuilder.Row.
+// ColValue pairs the column name with an inserted value for [InsertBuilder.Row].
 // Use an unqualified column name, as required by the INSERT column list.
 func (c Column) ColValue(v any) ColumnValue { return ColValue(string(c), v) }
 
@@ -126,12 +126,12 @@ func (c Column) Avg() Expression { return Avg(string(c)) }
 func (c Column) Cast(typeSQL string) Expression { return Cast(c.Ref(), typeSQL) }
 
 // Coalesce returns the first non-NULL value, starting with this column.
-// At least one fallback value or Expression is required.
+// At least one fallback value or [Expression] is required.
 func (c Column) Coalesce(values ...any) Expression {
 	args := make([]any, 1, 1+len(values))
 	args[0] = c.Ref()
 	return Coalesce(append(args, values...)...)
 }
 
-// NullIf returns NULL when the column equals v. Use Ref for a column-valued v.
+// NullIf returns NULL when the column equals v. Use [Column.Ref] for a column-valued v.
 func (c Column) NullIf(v any) Expression { return NullIf(c.Ref(), v) }

@@ -11,9 +11,9 @@ import (
 )
 
 // SQLWriter appends to the current statement and shares its parameter numbers,
-// dialect, and nested-query scope. It is borrowed only for a WriteCondition or
-// WriteUpdate call: do not retain, copy, or use it concurrently. Its zero value
-// is not usable. Invalid SQL operations may panic; Build converts them to errors.
+// dialect, and nested-query scope. It is borrowed only for a [Condition.WriteCondition] or
+// [Updater.WriteUpdate] call: do not retain, copy, or use it concurrently. Its zero value
+// is not usable. Invalid SQL operations may panic; [SQLBuilder.Build] converts them to errors.
 // Methods do not insert spaces. Raw SQL and SQL syntax must be trusted.
 type SQLWriter struct {
 	buf    *strings.Builder
@@ -32,7 +32,8 @@ func (w *SQLWriter) start() {
 	}
 }
 
-// Raw appends trusted SQL verbatim. Bind untrusted data with Arg or Value.
+// Raw appends trusted SQL verbatim. Bind untrusted data with [SQLWriter.Arg] or
+// [SQLWriter.Value].
 func (w *SQLWriter) Raw(sql string) {
 	if sql != "" {
 		w.start()
@@ -40,8 +41,8 @@ func (w *SQLWriter) Raw(sql string) {
 	}
 }
 
-// Ident quotes explicit identifier components: Ident("a.b") is one name,
-// whereas Ident("a", "b") is a qualified name.
+// Ident quotes explicit identifier components: [SQLWriter.Ident]("a.b") is one name,
+// whereas [SQLWriter.Ident]("a", "b") is a qualified name.
 func (w *SQLWriter) Ident(parts ...string) {
 	if len(parts) == 0 {
 		panic("sqlx.Ident: no identifier")
@@ -59,25 +60,26 @@ func (w *SQLWriter) Ident(parts ...string) {
 // Path quotes a dotted identifier path, preserving a trailing wildcard.
 func (w *SQLWriter) Path(path string) { w.start(); w.ctx.WriteQuote(w.buf, path) }
 
-// Arg binds data and writes its placeholder. Param slots and named arguments
-// follow BuildContext.Add; use Expr or Value to render other expressions.
+// Arg binds data and writes its placeholder. [Param] slots and named arguments
+// follow [BuildContext.Add]; use [SQLWriter.Expr] or [SQLWriter.Value] to render other
+// expressions.
 func (w *SQLWriter) Arg(value any) { w.start(); w.ctx.writeArg(w.buf, value) }
 
 // Expr renders an expression in the current statement's context.
 func (w *SQLWriter) Expr(e Expression) { w.start(); e.writeTo(w.buf, w.ctx) }
 
-// Value renders an Expression or binds any other value as data.
+// Value renders an [Expression] or binds any other value as data.
 func (w *SQLWriter) Value(value any) { w.start(); writeValue(w.buf, w.ctx, value) }
 
 // Dialect returns the statement's dialect. Reading it does not emit SQL.
 func (w *SQLWriter) Dialect() Dialect { return w.ctx.Dialect() }
 
-// ConditionWriterFunc implements the streaming Condition interface.
+// ConditionWriterFunc implements the streaming [Condition] interface.
 type ConditionWriterFunc func(*SQLWriter) (bool, error)
 
 func (f ConditionWriterFunc) WriteCondition(w *SQLWriter) (bool, error) { return f(w) }
 
-// UpdaterWriterFunc implements the streaming Updater interface.
+// UpdaterWriterFunc implements the streaming [Updater] interface.
 type UpdaterWriterFunc func(*SQLWriter) (bool, error)
 
 func (f UpdaterWriterFunc) WriteUpdate(w *SQLWriter) (bool, error) { return f(w) }

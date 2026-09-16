@@ -112,7 +112,7 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 }
 
 // NewMapSetBinder scans each row as a set key. Duplicate keys are intentionally
-// deduplicated, including during Merge. Use map[K]struct{} to express a set.
+// deduplicated, including during [Rows.Merge]. Use map[K]struct{} to express a set.
 func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
 	return mapRowsBinder[M](
 		true,

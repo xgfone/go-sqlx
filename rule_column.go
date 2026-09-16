@@ -9,12 +9,14 @@ import (
 	"fmt"
 )
 
-// RuleColumn pairs a column with a reusable value rule. Set and ColValue
-// apply the rule immediately and retain only its result or error. Build,
-// Compile, Bind and execution never reapply it. Use Name or Column to reuse
+// RuleColumn pairs a column with a reusable value rule. [RuleColumn.Set] and
+// [RuleColumn.ColValue]
+// apply the rule immediately and retain only its result or error. [SQLBuilder.Build],
+// [InsertBuilder.Compile], [UpdateBuilder.Compile], [StatementTemplate.Bind]
+// and execution never reapply it. Use [RuleColumn.Name] or [RuleColumn.Column] to reuse
 // this definition in queries; reading the column does not apply the rule.
-// Raw paths, ordinary Column assignments and struct inserts do not use it.
-// A zero RuleColumn has no rule and rejects non-nil data.
+// Raw paths, ordinary [Column] assignments and struct inserts do not use it.
+// A zero [RuleColumn] has no rule and rejects non-nil data.
 type RuleColumn struct {
 	column Column
 	rule   ValueRule
@@ -26,7 +28,7 @@ func (c Column) WithValueRule(rule ValueRule) RuleColumn {
 	return RuleColumn{column: c, rule: rule}
 }
 
-// Name returns the unquoted column path for string-taking APIs such as Select.
+// Name returns the unquoted column path for string-taking APIs such as [Select].
 func (c RuleColumn) Name() string { return c.column.Name() }
 
 // Column returns the underlying column for selection, comparisons and sorting.
@@ -34,9 +36,10 @@ func (c RuleColumn) Name() string { return c.column.Name() }
 func (c RuleColumn) Column() Column { return c.column }
 
 // Apply processes data immediately and returns any error with column context.
-// Nil passes through, Value(data) is unwrapped, and sql.Named retains its name.
-// Param and database-computed expressions are rejected: process template inputs
-// before binding, and use Column().Set for SQL expressions. Driver Valuers are
+// Nil passes through, [Value](data) is unwrapped, and [sql.Named] retains its name.
+// [Param] and database-computed expressions are rejected: process template inputs
+// before binding, and use [RuleColumn.Column] with [Column.Set] for SQL expressions.
+// [driver.Valuer] implementations are
 // passed to the rule as-is; no driver conversion or deep copy is performed.
 func (c RuleColumn) Apply(value any) (any, error) {
 	value, err := c.apply(value)
@@ -93,7 +96,8 @@ func (c RuleColumn) apply(value any) (any, error) {
 }
 
 // Set processes value now and returns an assignment. A rule error is retained
-// in the Updater and reported by Build, Compile or execution. Use Apply when
+// in the [Updater] and reported by [UpdateBuilder.Build], [UpdateBuilder.Compile] or execution.
+// Use [RuleColumn.Apply] when
 // the caller needs to handle the error immediately.
 func (c RuleColumn) Set(value any) Updater {
 	value, err := c.Apply(value)
@@ -104,7 +108,8 @@ func (c RuleColumn) Set(value any) Updater {
 }
 
 // ColValue processes value now and pairs it with an unqualified INSERT column.
-// Row saves any rule error on the builder for Build, Compile or execution.
+// [InsertBuilder.Row] saves any rule error on the builder for [InsertBuilder.Build],
+// [InsertBuilder.Compile] or execution.
 func (c RuleColumn) ColValue(value any) ColumnValue {
 	value, err := c.Apply(value)
 	return ColumnValue{Column: c.Name(), Value: value, err: err}

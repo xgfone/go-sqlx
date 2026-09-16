@@ -9,21 +9,22 @@ import (
 )
 
 // WrapExecutor returns an executor that calls after synchronously once after
-// each underlying Executor method returns. Results and errors are returned
+// each underlying [Executor] method returns. Results and errors are returned
 // unchanged. If e or after is nil, it returns e unchanged.
 //
-// PrepareContext passes nil arguments and reports only statement preparation.
-// QueryRowContext reports Row.Err when a row is returned. Errors from later
-// Scan, Next, or Close calls, including sql.ErrNoRows, are not observed. Calls
-// on a returned *sql.Stmt are not observed either.
+// [Executor.PrepareContext] passes nil arguments and reports only statement preparation.
+// [Executor.QueryRowContext] reports [sql.Row.Err] when a row is returned. Errors from later
+// [sql.Row.Scan], [sql.Rows.Scan], [sql.Rows.Next], or [sql.Rows.Close] calls, including
+// [sql.ErrNoRows], are not observed. Calls
+// on a returned *[sql.Stmt] are not observed either.
 //
 // The callback borrows the original arguments for its duration; it must not
 // modify them and must copy any slice it retains. It must support concurrent
 // calls if the executor is used concurrently. Panics propagate; after is not
 // called when the underlying method panics.
 //
-// The wrapper implements Unwrap() Executor for AsExecutor and DB's capability
-// lookup. Each WrapExecutor call adds a layer, even to an already wrapped input.
+// The wrapper implements Unwrap() [Executor] for [AsExecutor] and [DB]'s capability
+// lookup. Each [WrapExecutor] call adds a layer, even to an already wrapped input.
 func WrapExecutor(e Executor, after func(query string, args []any, err error)) Executor {
 	if e == nil || after == nil {
 		return e

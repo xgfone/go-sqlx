@@ -9,7 +9,7 @@ import (
 )
 
 // Built-in dialects target MySQL 8.0, PostgreSQL 14+, and SQLite 3.39+.
-// Use WithVersion to enable later MySQL capabilities. SQLite uses sqlite3
+// Use [WithVersion] to enable later MySQL capabilities. SQLite uses sqlite3
 // as its canonical driver name.
 var (
 	MySQL    Dialect = builtin("mysql")

@@ -11,7 +11,7 @@ import (
 )
 
 // Consume bytes synchronously without retaining them, to isolate capture costs
-// from the result Scanner's own copy and from database/sql driver allocations.
+// from the result [sql.Scanner]'s own copy and from [database/sql] driver allocations.
 type captureByteCount int
 
 func (v *captureByteCount) Scan(src any) error {

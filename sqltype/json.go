@@ -54,7 +54,7 @@ func DecodeJSON[T any](dst *T, src any) error {
 	return nil
 }
 
-// JSON wraps any Go value stored as JSON. A nil V is encoded as JSON null.
+// JSON wraps any Go value stored as JSON. A nil [JSON.V] is encoded as JSON null.
 // SQL NULL and empty strings/byte slices scan into the zero value of T; use a
 // nullable wrapper if SQL NULL must remain distinguishable from other values.
 type JSON[T any] struct{ V T }

@@ -17,7 +17,7 @@ import (
 // Sep is the fixed separator for nested SQL field names.
 const Sep = "_"
 
-// Field describes one mapped field. Its contents and Indexes are immutable.
+// Field describes one mapped field. Its contents and [Field.Indexes] are immutable.
 type Field struct {
 	Type       reflect.Type
 	Column     string
@@ -41,7 +41,7 @@ type structParent struct {
 }
 
 // Metadata owns immutable model information and its private scan-layout cache.
-// Callers must not modify fields returned by Fields or Field.
+// Callers must not modify fields returned by [Metadata.Fields] or [Metadata.Field].
 type Metadata struct {
 	parents []structParent
 	fields  []Field

@@ -75,7 +75,7 @@ type scanPlan struct {
 	captured      []nullableCaptureScanner
 	skip          []bool
 
-	visitBound bool // Only Visit may keep its private flat target bound between rows.
+	visitBound bool // Only [github.com/xgfone/go-sqlx.Rows.Visit] may keep its private flat target bound between rows.
 }
 
 type discardScanner struct{}
@@ -151,9 +151,9 @@ func (p *scanPlan) initStorage(count int, types []reflect.Type, options ScanOpti
 	p.visitBound = false
 }
 
-// Scans with a synchronous operation or explicit Reset borrow this scratch pool.
+// Scans with a synchronous operation or explicit [ScanState.Reset] borrow this scratch pool.
 // Large plans are discarded, and no result, configuration or destination is
-// retained. sync.Pool may drop storage at any GC; correctness never relies on it.
+// retained. [sync.Pool] may drop storage at any GC; correctness never relies on it.
 var scanPlanPool = sync.Pool{New: func() any { return &scanPlan{} }}
 
 // releasePlan clears all references and returns a borrowed plan to the scratch pool.

@@ -12,7 +12,7 @@ import (
 )
 
 // Include query setup, preparation, scanning and callback/cursor cleanup.
-// The immutable RowMapping is shared when benchmarking custom binder execution.
+// The immutable [RowMapping] is shared when benchmarking custom binder execution.
 func BenchmarkWithScan(b *testing.B) {
 	for _, source := range []string{"Rows", "raw", "mapping"} {
 		b.Run(source, func(b *testing.B) {

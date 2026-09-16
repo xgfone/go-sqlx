@@ -9,7 +9,7 @@ import (
 )
 
 // ScanState reuses private scratch for manual scans of one result set. It must
-// not be copied or used concurrently. Reset it when columns or options change,
+// not be copied or used concurrently. [ScanState.Reset] it when columns or options change,
 // when advancing result sets, and when closing the result. Scans must consume
 // their arguments synchronously. No cursor or destination is retained.
 type ScanState struct{ plan *scanPlan }
@@ -23,7 +23,7 @@ func (s *ScanState) Reset() {
 }
 
 // Scan reuses preparation while destination types match. Columns and options
-// must remain immutable until Reset. Each call clears destination references,
+// must remain immutable until [ScanState.Reset]. Each call clears destination references,
 // including when conversion fails or a custom scanner panics.
 func (s *ScanState) Scan(source RowScanFunc, columns []string, dst []any, options ScanOptions) error {
 	if source == nil {

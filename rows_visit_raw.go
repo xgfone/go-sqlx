@@ -11,8 +11,8 @@ import (
 
 var errRawVisitActive = errors.New("sqlx: Rows is in a raw-byte visitor callback")
 
-// The internal marker belongs to one Rows. Returning the public error and using
-// it to construct another Rows must not prevent that other cursor from closing.
+// The internal marker belongs to one [Rows]. Returning the public error and using
+// it to construct another [Rows] must not prevent that other cursor from closing.
 type rawVisitGuard struct{ owner *Rows }
 
 func (*rawVisitGuard) Error() string {
@@ -24,15 +24,15 @@ func (r *Rows) inRawVisit() bool {
 	return ok && guard.owner == r
 }
 
-// VisitRawBytes reads all columns as sql.RawBytes, in result order. The row slice
+// VisitRawBytes reads all columns as [sql.RawBytes], in result order. The row slice
 // and its bytes are read-only and valid only until yield returns. Clone any
 // bytes to be retained; copying the row's slice headers alone is insufficient.
 // SQL NULL becomes nil. Empty values may also become nil depending on the driver
-// and database/sql conversion, so nil alone does not establish SQL NULL. Select
+// and [database/sql] conversion, so nil alone does not establish SQL NULL. Select
 // a separate IS NULL column when that distinction is required.
 //
-// Conversion follows database/sql.RawBytes, without sqlx ScanOptions or struct
-// mapping. RowsBinder, Capacity and duplicate-key policies are not applied.
+// Conversion follows [sql.RawBytes], without sqlx [ScanOptions] or struct
+// mapping. [RowsBinder], [BindConfig.Capacity] and duplicate-key policies are not applied.
 // Column label overrides are validated but do not change positional values.
 // Pass the query's context: it is checked between reads/callbacks and during
 // finalization. It does not replace the context of an already running query.
@@ -41,7 +41,7 @@ func (r *Rows) inRawVisit() bool {
 // number. Iteration errors refer to the next row. The current result is closed
 // on completion, early stop, error or panic, and close errors are preserved.
 //
-// Do not use r or its underlying sql.Rows from yield. Reentrant cursor methods
+// Do not use r or its underlying [sql.Rows] from yield. Reentrant cursor methods
 // return an error/false, and Set methods do nothing. Concurrent use is unsupported.
 // Cancellation cannot invalidate the bytes during yield, but cursor closing may
 // wait for yield to return. The callback must not wait for that close to finish.

@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// These benchmarks include database/sql iteration and conversion, with an
+// These benchmarks include [database/sql] iteration and conversion, with an
 // in-memory driver so network latency does not hide binding costs.
 func BenchmarkBind(b *testing.B) {
 	values := make([]driver.Value, 1000)

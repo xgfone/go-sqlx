@@ -24,7 +24,7 @@ func (v *safetyNumber) Scan(src any) error {
 
 // Include the complete query and cleanup lifecycle. Multi-row scans reuse the
 // destination so capture overhead is distinguishable from result allocation.
-// A func(int) driver.Value supplies varying rows without generation in the timer.
+// A func(int) [driver.Value] supplies varying rows without generation in the timer.
 func benchmarkScannerSafety[T any](b *testing.B, value driver.Value, count int, options ...ScanOptions) {
 	for _, mode := range []string{"Row", "Rows", "WithScan"} {
 		if mode == "Row" && count != 1 {
@@ -160,7 +160,8 @@ func (v *safetyTextFloat) Scan(src any) error {
 	return err
 }
 
-// Decode driver bytes through custom Scanners, including the full query lifecycle.
+// Decode driver bytes through custom [sql.Scanner] implementations, including the full query
+// lifecycle.
 func BenchmarkScannerSnapshots(b *testing.B) {
 	b.Run("text_number", func(b *testing.B) {
 		benchmarkScannerSafety[safetyTextNumber](b, []byte("123456789"), 1000)

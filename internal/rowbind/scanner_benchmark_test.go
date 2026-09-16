@@ -14,7 +14,7 @@ type benchmarkScanCloser interface {
 	Close() error
 }
 
-// Keep the production Scanner factory opaque to measure interface dispatch.
+// Keep the production [Mapping.Scanner] factory opaque to measure interface dispatch.
 //
 //go:noinline
 func benchmarkScanInterface(m Mapping, source RowScanFunc) benchmarkScanCloser {

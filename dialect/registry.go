@@ -28,14 +28,15 @@ func init() {
 	MustRegister("sqlite", SQLite)
 }
 
-// MustRegister is the same as Register, but panics if there is an error.
+// MustRegister is the same as [Register], but panics if there is an error.
 func MustRegister(name string, d Dialect) {
 	if err := Register(name, d); err != nil {
 		panic(err)
 	}
 }
 
-// Register adds a name, which may differ from d.Name(). Duplicate names fail.
+// Register adds a name, which may differ from the result of [Dialect.Name]. Duplicate names
+// fail.
 func Register(name string, d Dialect) error {
 	if strings.TrimSpace(name) == "" || name != strings.TrimSpace(name) {
 		return fmt.Errorf("dialect: invalid registration name %q", name)
@@ -63,7 +64,8 @@ func Register(name string, d Dialect) error {
 	return nil
 }
 
-// Unregister removes a lookup name. Existing DB instances are unaffected.
+// Unregister removes a lookup name. Existing [github.com/xgfone/go-sqlx.DB] instances are
+// unaffected.
 func Unregister(name string) bool {
 	registry.Lock()
 	defer registry.Unlock()

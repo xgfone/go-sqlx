@@ -10,11 +10,12 @@ import (
 	"reflect"
 )
 
-// Cursor scans raw current-row destinations positionally, honoring sql.Scanner.
-// Scan must not apply another sqlx mapping or conversion layer. It borrows dst
+// Cursor scans raw current-row destinations positionally, honoring [sql.Scanner].
+// [Cursor.Scan] must not apply another [github.com/xgfone/go-sqlx] mapping or conversion layer.
+// It borrows dst
 // for the call; retaining the slice or a subslice requires a clone. Adapter
 // scanners must be consumed synchronously even if the slice is cloned. Columns
-// and policies come from Prepare. The caller owns iteration and cursor closing.
+// and policies come from [Prepare]. The caller owns iteration and cursor closing.
 type Cursor interface {
 	Scan(...any) error
 	Next() bool
@@ -25,7 +26,7 @@ type Cursor interface {
 // determines whether scanning is positional or applies struct mapping.
 // It borrows the destination slice only for the call; retaining the slice or a
 // subslice requires a copy. Temporary scanner adapters must be used synchronously.
-// Functions lent by a Mapping are valid only within their callbacks.
+// Functions lent by a [Mapping] are valid only within their callbacks.
 type RowScanFunc func(...any) error
 
 // Mapping is immutable preparation for one ordered result shape and destination
@@ -166,7 +167,8 @@ func (m Mapping) init(p *scanPlan) {
 // callback must not retain it. Destination types must match the prepared types.
 // Scratch is cleared and returned on success, error and panic. reusable reports
 // whether map temporaries may safely be reused with this mapping and cursor.
-// Application Scanners receive borrowed inputs synchronously; they must copy
+// Application [sql.Scanner] implementations receive borrowed inputs synchronously; they must
+// copy
 // bytes they retain. Nullable-parent layouts own their deferred input storage.
 func (m Mapping) WithScan(cursor Cursor, run func(scan RowScanFunc, reusable Reuse) error) error {
 	if m.flags&mappingPrepared == 0 || nilBindingValue(cursor) || run == nil {

@@ -12,7 +12,7 @@ import (
 )
 
 // A representative value-only web record, rather than a one-column model.
-// The Oper and fixture are reused; each measured request owns fresh output.
+// The [Oper] and fixture are reused; each measured request owns fresh output.
 type operPerformanceRecord struct {
 	ID        int64     `sql:"id"`
 	TenantID  int64     `sql:"tenant_id"`

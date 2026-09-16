@@ -8,7 +8,7 @@ import (
 )
 
 // NullPolicy controls NULL conversion for non-nullable scalar destinations.
-// Pointer destinations remain nil on NULL; custom sql.Scanner values own their
+// Pointer destinations remain nil on NULL; custom [sql.Scanner] values own their
 // NULL semantics regardless of this policy.
 type NullPolicy = rowbind.NullPolicy
 
@@ -30,10 +30,11 @@ const (
 )
 
 // ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns. Custom Scanners
+// maps NULL scalars to zero and rejects unknown result columns. Custom [sql.Scanner]
+// implementations
 // receive original source types and must copy borrowed bytes they retain.
 // Their implementations must return errors instead of panicking and manage
-// their own resources. sqlx does not recover application Scanner panics.
+// their own resources. sqlx does not recover application [sql.Scanner] panics.
 type ScanOptions = rowbind.ScanOptions
 
 func cloneScanOptions(o ScanOptions) ScanOptions { return rowbind.CloneOptions(o) }

@@ -24,7 +24,7 @@ type performanceRecord struct {
 	G  int64 `sql:"g"`
 }
 
-// Each query uses database/sql and fresh output storage. Fixtures are built
+// Each query uses [database/sql] and fresh output storage. Fixtures are built
 // outside the timed loop. The configured binders are shared across queries.
 func BenchmarkBindingWorkloads(b *testing.B) {
 	type child struct {

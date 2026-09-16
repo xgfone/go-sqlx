@@ -81,7 +81,7 @@ func BenchmarkSyntaxBuild(b *testing.B) {
 }
 
 // Keep both the common path and the paths requiring expression validation or
-// reuse visible. Setup is outside timing; Build includes its owned SQL/args.
+// reuse visible. Setup is outside timing; [SQLBuilder.Build] includes its owned SQL/args.
 func BenchmarkSQLFixes(b *testing.B) {
 	for _, d := range []Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
 		b.Run(d.Name(), func(b *testing.B) {

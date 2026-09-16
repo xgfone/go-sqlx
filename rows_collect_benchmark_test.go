@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// All paths include the same real database/sql fixture, fresh owned results,
-// explicit capacity and complete query/scan/close lifecycle. Collect uses the
+// All paths include the same real [database/sql] fixture, fresh owned results,
+// explicit capacity and complete query/scan/close lifecycle. [Rows.Collect] uses the
 // registry fallback, without installing the typed binder first.
 func BenchmarkCollect(b *testing.B) {
 	for _, mode := range []string{"general", "typed", "collect"} {

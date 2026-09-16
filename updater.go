@@ -10,20 +10,20 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// Updater writes comma-separated assignments without SET. It shares Condition's
+// Updater writes comma-separated assignments without SET. It shares [Condition]'s
 // emission, error, precedence, and borrowed-writer contract.
 type Updater interface {
 	WriteUpdate(*SQLWriter) (emitted bool, err error)
 }
 
-// Set assigns a bound value or an Expression to a column. Nil binds SQL NULL.
-// String values are bound as data; use Ident to assign another column's value.
-// Expr supports arithmetic evaluated by the database, for example:
+// Set assigns a bound value or an [Expression] to a column. Nil binds SQL NULL.
+// String values are bound as data; use [Ident] to assign another column's value.
+// [Expr] supports arithmetic evaluated by the database, for example:
 //
 //	Set("backup_name", Ident("name"))
 //	Set("version", Expr("? + 1", Ident("version")))
 //
-// See Expr for the dialect-independent ? and ?? template markers.
+// See [Expr] for the dialect-independent ? and ?? template markers.
 func Set[C ~string](column C, value any) Updater {
 	name := string(column)
 	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
@@ -50,7 +50,7 @@ func writeAssignment(buf *strings.Builder, c *BuildContext, value any) {
 	writeValue(buf, c, value)
 }
 
-// SetRow assigns equal-length column and value lists. Values may be Expressions.
+// SetRow assigns equal-length column and value lists. Values may be [Expression] values.
 func SetRow(columns []string, values ...any) Updater {
 	columns = slices.Clone(columns)
 	values = slices.Clone(values)

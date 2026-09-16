@@ -18,7 +18,7 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// This application type has no Build method or embedded sqlx implementation.
+// This application type has no [sqlx.SQLBuilder.Build] method or embedded sqlx implementation.
 type customCTEBody struct{ values []any }
 
 func (b *customCTEBody) Kind() sqlx.CTEBodyKind {

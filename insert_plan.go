@@ -13,9 +13,9 @@ import (
 )
 
 // InsertPlan is an immutable field-extraction plan for a struct or pointer to
-// struct T. CompileInsert creates a plan; its zero value is not usable. A plan
+// struct T. [CompileInsert] creates a plan; its zero value is not usable. A plan
 // may be shared across goroutines using separate builders and safe input values.
-// It retains no input rows, DB, dialect, SQL or driver.Valuer results.
+// It retains no input rows, [DB], dialect, SQL or [driver.Valuer] results.
 type InsertPlan[T any] struct {
 	model    reflect.Type
 	fields   []structInsertField
@@ -35,10 +35,10 @@ const (
 
 // CompileInsert resolves mapped columns, field paths and value capabilities.
 // With no columns it selects all mapped fields in declaration order; omitted
-// zero values use DEFAULT, as with Structs. Explicit columns select and order
+// zero values use DEFAULT, as with [InsertBuilder.Structs]. Explicit columns select and order
 // fields and include zero values. Columns are copied and must be unique.
-// T must be a struct (except time.Time) or a pointer chain to one, not an interface.
-// Compilation does not read values or call IsZero or driver.Valuer.Value.
+// T must be a struct (except [time.Time]) or a pointer chain to one, not an interface.
+// Compilation does not read values or call an IsZero method or [driver.Valuer.Value].
 // It validates and caches string limit options in SQL tags.
 func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
 	defer func() {
@@ -79,7 +79,7 @@ func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
 }
 
 // Cache whether field reads need only static value paths. Keep the whole-row
-// box in AppendTo: it preserves snapshots and avoids boxing every field.
+// box in [InsertPlan.AppendTo]: it preserves snapshots and avoids boxing every field.
 func (p *InsertPlan[T]) prepareDirectFields() {
 	p.directMode = insertDirectAlways
 	for _, f := range p.fields {
@@ -98,7 +98,7 @@ func (p *InsertPlan[T]) prepareDirectFields() {
 // plan's order exactly; existing positional rows must have the same width.
 // Empty builders adopt the plan's columns. Explicit columns on either the plan
 // or builder include zero values, and an explicit plan marks the builder's
-// columns explicit for subsequent Struct/Structs calls.
+// columns explicit for subsequent [InsertBuilder.Struct]/[InsertBuilder.Structs] calls.
 //
 // A nil/uncompiled plan, nil builder or existing builder error always returns
 // an error. Empty slices otherwise leave the builder unchanged. Nonempty input
@@ -108,13 +108,15 @@ func (p *InsertPlan[T]) prepareDirectFields() {
 // effects cannot be rolled back. The builder must not be used concurrently or
 // reentered by an IsZero method.
 //
-// Values are read during AppendTo, not Build/Exec. Copies are shallow, just as
-// with Structs: pointer/slice members may still share objects with the caller.
+// Values are read during [InsertPlan.AppendTo], not
+// [InsertBuilder.Build]/[InsertBuilder.ExecContext]. Copies are shallow, just as
+// with [InsertBuilder.Structs]: pointer/slice members may still share objects with the caller.
 // String limits in SQL tags apply here without changing rows; tagged string
 // pointers bind snapshots of their values, including when already within limits.
-// A value field whose pointer implements driver.Valuer gets an independent
-// addressable copy; an existing pointer Valuer remains shared. Value is called
-// later by the driver. AppendTo does not validate dialect-specific SQL features.
+// A value field whose pointer implements [driver.Valuer] gets an independent
+// addressable copy; an existing pointer [driver.Valuer] remains shared. [driver.Valuer.Value]
+// is called
+// later by the driver. [InsertPlan.AppendTo] does not validate dialect-specific SQL features.
 func (p *InsertPlan[T]) AppendTo(b *InsertBuilder, rows []T) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

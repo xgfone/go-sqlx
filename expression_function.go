@@ -16,8 +16,8 @@ type expressionFunction struct {
 }
 
 // Func calls a SQL function. name is a trusted unquoted function path; arguments
-// are values or Expressions. Callers supply a valid path for their dialect;
-// only an empty name is rejected. Use Ident for column arguments.
+// are values or [Expression] values. Callers supply a valid path for their dialect;
+// only an empty name is rejected. Use [Ident] for column arguments.
 func Func(name string, args ...any) Expression {
 	return Expression{
 		node: &expressionFunction{
@@ -57,7 +57,7 @@ func Coalesce(values ...any) Expression {
 // NullIf returns NULL when its two operands compare equal.
 func NullIf(left, right any) Expression { return Func("NULLIF", left, right) }
 
-// Cast converts a value or Expression to typeSQL, a trusted SQL type specification
+// Cast converts a value or [Expression] to typeSQL, a trusted SQL type specification
 // such as DECIMAL(12,2). Type names are SQL syntax, not bound parameters.
 func Cast(value any, typeSQL string) Expression {
 	return Expression{

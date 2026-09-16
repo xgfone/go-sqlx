@@ -23,7 +23,8 @@ func (m Mapping) WithCheckedScan(source RowScanFunc, run func(RowScanFunc) error
 	return run(scanner.Scan)
 }
 
-// Scanner borrows private scratch until Close. Each scanner validates destination
+// Scanner borrows private scratch until [PreparedScanner.Close]. Each scanner validates
+// destination
 // types and must not be copied or used concurrently. Closing it releases only
 // scanning resources; ownership of the source stays with the caller.
 func (m Mapping) Scanner(source RowScanFunc) (*PreparedScanner, error) {
@@ -36,8 +37,8 @@ func (m Mapping) Scanner(source RowScanFunc) (*PreparedScanner, error) {
 	return &PreparedScanner{plan: p, source: source}, nil
 }
 
-// PreparedScanner scans a whole row and owns its mutable storage until Close.
-// It is not a single-column sql.Scanner. Its zero value is closed; a closed
+// PreparedScanner scans a whole row and owns its mutable storage until [PreparedScanner.Close].
+// It is not a single-column [sql.Scanner]. Its zero value is closed; a closed
 // handle must never regain access to a recycled plan.
 type PreparedScanner struct {
 	plan   *scanPlan

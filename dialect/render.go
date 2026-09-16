@@ -9,8 +9,8 @@ import (
 )
 
 // WriteIdent writes one quoted identifier into buf. Built-in dialects avoid
-// an intermediate string; custom dialects retain their QuoteIdent behavior.
-// As with QuoteIdent, name is a single identifier, not a path or wildcard.
+// an intermediate string; custom dialects retain their [Dialect.QuoteIdent] behavior.
+// As with [Dialect.QuoteIdent], name is a single identifier, not a path or wildcard.
 func WriteIdent(buf *strings.Builder, d Dialect, name string) {
 	d = renderingDialect(d)
 	builtinDialect, ok := d.(builtin)
@@ -43,7 +43,7 @@ func WriteIdent(buf *strings.Builder, d Dialect, name string) {
 }
 
 // WritePlaceholder writes a positional parameter directly into buf; i starts
-// at one. Custom dialects retain their Placeholder behavior.
+// at one. Custom dialects retain their [Dialect.Placeholder] behavior.
 func WritePlaceholder(buf *strings.Builder, d Dialect, i int) {
 	b, ok := renderingDialect(d).(builtin)
 	if !ok {
@@ -77,7 +77,7 @@ func renderingDialect(d Dialect) Dialect {
 }
 
 // WriteLimitOffset writes pagination without an intermediate string for built-in
-// dialects. Custom dialects retain their LimitOffset behavior.
+// dialects. Custom dialects retain their [Dialect.LimitOffset] behavior.
 func WriteLimitOffset(buf *strings.Builder, d Dialect, p Pagination) {
 	if b, ok := renderingDialect(d).(builtin); ok {
 		var storage [64]byte

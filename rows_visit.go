@@ -11,20 +11,22 @@ import (
 )
 
 // Visit scans the current result set and calls yield once per successful row.
-// Returning false stops normally; returning an error stops with a BindError for
+// Returning false stops normally; returning an error stops with a [BindError] for
 // that row. Delivered values may be retained and are not overwritten by later
-// rows. Custom Scanner implementations still own their buffer-copying duties.
+// rows. Custom [sql.Scanner] implementations still own their buffer-copying duties.
 // Callbacks must not advance, scan, close, reconfigure or concurrently use r.
 //
-// Visit closes r on completion, an early stop, an error or a yield panic.
-// Application Scanners must not panic: sqlx cannot guarantee cursor cleanup
-// after a panic inside the underlying Scan. Callback side effects are not rolled
+// [Rows.Visit] closes r on completion, an early stop, an error or a yield panic.
+// Application [sql.Scanner] implementations must not panic: sqlx cannot guarantee cursor
+// cleanup
+// after a panic inside the underlying [sql.Rows.Scan]. Callback side effects are not rolled
 // back. A close error is returned, or joined with an earlier error. Iteration
 // errors report the next row being requested. No subsequent result set is visited
 // automatically.
 //
-// Like Scan, Visit uses the result's labels and ScanOptions directly, ignoring
-// collection-level RowsBinder registrations, Capacity and DuplicateKeys.
+// Like [Rows.Scan], [Rows.Visit] uses the result's labels and [ScanOptions] directly, ignoring
+// collection-level [RowsBinder] registrations, [BindConfig.Capacity] and
+// [BindConfig.DuplicateKeys].
 func (r *Rows) Visit[T any](yield func(T) (continueReading bool, err error)) (err error) {
 	defer r.closeConsumedRows(&err)
 

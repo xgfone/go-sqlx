@@ -40,8 +40,8 @@ func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
 	}
 }
 
-// Row owns a single-use rows. Scan and Bind close it automatically. It is not
-// an iterator; close an unread Row explicitly to release the connection.
+// Row owns a single-use rows. [Row.Scan] and [Row.Bind] close it automatically. It is not
+// an iterator; close an unread [Row] explicitly to release the connection.
 type Row struct {
 	err     error
 	rows    *sql.Rows
@@ -50,8 +50,9 @@ type Row struct {
 	labels  []string
 }
 
-// Build a fresh adapter rather than copying Rows or sharing mutable options
-// between the value-returning Row.With methods. Row never advances result sets.
+// Build a fresh adapter rather than copying [Rows] or sharing mutable options
+// between the value-returning [Row.WithColumns] and [Row.WithScanOptions] methods. [Row] never
+// advances result sets.
 func (r Row) result() *Rows {
 	return &Rows{
 		err:     r.err,
@@ -85,8 +86,8 @@ func (r Row) Bind(dst ...any) (bool, error) {
 	return CheckErrNoRows(r.Scan(dst...))
 }
 
-// Scan uses the same conversion rules as Rows.Scan and returns sql.ErrNoRows
-// for an empty result. As with database/sql, row scans are not atomic.
+// Scan uses the same conversion rules as [Rows.Scan] and returns [sql.ErrNoRows]
+// for an empty result. As with [database/sql], row scans are not atomic.
 // It borrows dst for the call and does not retain the slice after returning.
 func (r Row) Scan(dst ...any) (err error) {
 	rows := r.result()
@@ -125,10 +126,10 @@ func (r Row) Err() error { return r.result().Err() }
 
 func (r Row) Close() error { return r.result().Close() }
 
-// CheckErrNoRows extracts the error sql.ErrNoRows as the bool, which returns
+// CheckErrNoRows extracts the error [sql.ErrNoRows] as the bool, which returns
 //
 //   - (true, nil)  if err is equal to nil
-//   - (false, nil) if err is equal to sql.ErrNoRows
+//   - (false, nil) if err is equal to [sql.ErrNoRows]
 //   - (false, err) if err is equal to others
 func CheckErrNoRows(err error) (exist bool, e error) {
 	switch err {

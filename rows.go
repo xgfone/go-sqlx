@@ -53,7 +53,7 @@ func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) *Rows {
 }
 
 // noCopy lets go vet's copylocks analyzer detect accidental copies. It must be
-// a named field so Rows does not acquire Lock and Unlock methods.
+// a named field so [Rows] does not acquire Lock and Unlock methods.
 // This is a static-analysis marker, not a mutex or a compiler restriction.
 type noCopy struct{}
 
@@ -61,10 +61,11 @@ func (*noCopy) Lock() {}
 
 func (*noCopy) Unlock() {}
 
-// Rows owns a forward-only SQL result and must not be copied. Pass *Rows to
+// Rows owns a forward-only SQL result and must not be copied. Pass *[Rows] to
 // share the cursor. Set methods mutate this object and all aliases observe the
-// changes. It must not be used concurrently. Collection methods and Visit close
-// it automatically; for manual iteration defer Close and check Err after Next.
+// changes. It must not be used concurrently. Collection methods and [Rows.Visit] close
+// it automatically; for manual iteration defer [Rows.Close] and check [Rows.Err] after
+// [Rows.Next].
 type Rows struct {
 	noCopy noCopy
 
@@ -80,9 +81,9 @@ type Rows struct {
 	capacityHint int
 }
 
-// NewRows takes ownership of rows and uses zero BindConfig. Nil columns use the
+// NewRows takes ownership of rows and uses zero [BindConfig]. Nil columns use the
 // driver's metadata; non-nil columns override labels for the current result set.
-// Advance through the returned Rows to keep cached metadata synchronized.
+// Advance through the returned [Rows] to keep cached metadata synchronized.
 // The result should be closed even when err is non-nil.
 func NewRows(rows *sql.Rows, columns []string, err error) *Rows {
 	r := (BindConfig{}).rows(rows, nil, err)
@@ -102,7 +103,7 @@ func (r *Rows) Columns() ([]string, error) {
 	return slices.Clone(columns), err
 }
 
-// ColumnTypes returns the current result set's driver metadata. SetColumns
+// ColumnTypes returns the current result set's driver metadata. [Rows.SetColumns]
 // changes binding labels only; it does not alter the names in this metadata.
 func (r *Rows) ColumnTypes() ([]*sql.ColumnType, error) {
 	if err := r.Err(); err != nil {
@@ -113,7 +114,7 @@ func (r *Rows) ColumnTypes() ([]*sql.ColumnType, error) {
 
 // SetColumns changes this result's binding labels and returns r. Labels are
 // copied and checked against the driver count when preparing a scan. Nil restores
-// driver labels. NextResultSet clears the override for every alias of r.
+// driver labels. [Rows.NextResultSet] clears the override for every alias of r.
 func (r *Rows) SetColumns(columns ...string) *Rows {
 	if r.inRawVisit() {
 		return r
@@ -164,7 +165,7 @@ func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 
 // SetCapacity sets the incoming-row allocation hint and returns r. Positive
 // values are not capped; zero restores automatic sizing from the query's LIMIT
-// hint (up to 100), or DefaultRowsCapacity when no hint is available. Negative
+// hint (up to 100), or [DefaultRowsCapacity] when no hint is available. Negative
 // values are rejected during collection binding. Other configuration and
 // prepared scan state are preserved.
 func (r *Rows) SetCapacity(capacity int) *Rows {
@@ -197,7 +198,7 @@ func (r *Rows) Bind(dst any) error { return r.bind(dst, BindReplace, nil) }
 // the original backing array. Errors leave the original destination intact.
 func (r *Rows) Append(dst any) error { return r.bind(dst, BindAppend, nil) }
 
-// Merge merges into a map using independent storage. DuplicateKeys controls
+// Merge merges into a map using independent storage. [BindConfig.DuplicateKeys] controls
 // collisions with existing entries as well as duplicates in the result.
 func (r *Rows) Merge(dst any) error { return r.bind(dst, BindMerge, nil) }
 
@@ -287,7 +288,8 @@ func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 
 // Scan scans the current row, reusing rowbind's private preparation and scratch
 // while destination types match. Individual columns may have been written on
-// error. Application Scanners must return errors instead of panicking; their
+// error. Application [sql.Scanner] implementations must return errors instead of panicking;
+// their
 // panics are not recovered and may prevent the underlying cursor from closing.
 // The destination slice is borrowed only for the call and is not retained
 // after returning.
@@ -334,8 +336,8 @@ func (r *Rows) Next() bool {
 }
 
 // NextResultSet advances to the next result set and invalidates cached labels,
-// the query's capacity hint and active WithScan scopes. All aliases refer to
-// this same object. Call Next before scanning its rows; check Err when the
+// the query's capacity hint and active [WithScan] scopes. All aliases refer to
+// this same object. Call [Rows.Next] before scanning its rows; check [Rows.Err] when the
 // result is false.
 func (r *Rows) NextResultSet() bool {
 	if r == nil || r.err != nil || r.rows == nil {

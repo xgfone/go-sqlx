@@ -16,7 +16,7 @@ import (
 // SQLBuilder builds a complete SQL string and its bound arguments without
 // executing it. Applications and third-party builders may implement this
 // interface. The implementation chooses the dialect and placeholder syntax.
-// Use SQLBuilder when only independent construction through Build is needed.
+// Use [SQLBuilder] when only independent construction through [SQLBuilder.Build] is needed.
 type SQLBuilder interface {
 	Build() (string, []any, error)
 }

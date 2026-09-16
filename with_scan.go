@@ -12,19 +12,22 @@ import (
 
 // WithScan prepares and lends a type-checked current-row scan function to run.
 // It validates the result shape before calling run, even for an empty result.
-// *Rows supplies its binding labels and ScanOptions; other RowScanners use zero
-// ScanOptions. Single-use Row values are rejected; use Row.Scan instead.
+// *[Rows] supplies its binding labels and [ScanOptions]; other [RowScanner] implementations use
+// zero
+// [ScanOptions]. Single-use [Row] values are rejected; use [Row.Scan] instead.
 //
 // Each call covers one result set with fixed labels, options and destination
-// types. Destination addresses may change. For *Rows, SetColumns, SetScanOptions,
-// SetBindConfig, NextResultSet or Close during run invalidates the scope and
+// types. Destination addresses may change. For *[Rows], [Rows.SetColumns],
+// [Rows.SetScanOptions],
+// [Rows.SetBindConfig], [Rows.NextResultSet] or [Rows.Close] during run invalidates the scope
+// and
 // returns an error. For raw scanners, the caller must keep the result set and
-// metadata unchanged. Start a new WithScan call after changing sets or options.
+// metadata unchanged. Start a new [WithScan] call after changing sets or options.
 //
 // The scan function borrows its destinations only for each call. Use it only
 // synchronously within run; calls after run returns fail. Scratch and source
-// references are released on return, error or panic; panics propagate. WithScan
-// does not advance or close the cursor. The caller owns iteration, Err and Close.
+// references are released on return, error or panic; panics propagate. [WithScan]
+// does not advance or close the cursor. The caller owns iteration, [Rows.Err] and [Rows.Close].
 func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFunc) error) error {
 	if run == nil {
 		return errors.New("sqlx: nil scan callback")
@@ -62,7 +65,7 @@ func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFun
 
 var errScanScopeChanged = errors.New("sqlx: result set or scan configuration changed during WithScan")
 
-// Select the raw function so a prepared scan does not repeat Rows.Scan's
+// Select the raw function so a prepared scan does not repeat [Rows.Scan]'s
 // mapping and adaptation. Only this public convenience API infers configuration.
 func scanSource(scanner RowScanner) (RowScanFunc, []string, ScanOptions, error) {
 	if nilBindingValue(scanner) {

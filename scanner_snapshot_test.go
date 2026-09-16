@@ -18,7 +18,7 @@ type snapshotScanFunc func(any) error
 
 func (f snapshotScanFunc) Scan(src any) error { return f(src) }
 
-// A retaining Scanner owns its copy under the database/sql borrowing contract.
+// A retaining [sql.Scanner] owns its copy under the [database/sql] borrowing contract.
 type snapshotRetainedBytes []byte
 
 func (v *snapshotRetainedBytes) Scan(src any) error {

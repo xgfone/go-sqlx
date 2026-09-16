@@ -14,7 +14,7 @@ import (
 
 // Oper is an optional struct-aware operation layer. It has no default ordering,
 // primary-key convention or implicit filtering. Builders remain independently usable.
-// Configure SetDB before concurrent use, just as for Table.
+// Configure [Oper.SetDB] before concurrent use, just as for [Table].
 type Oper[T any] struct {
 	Table Table
 
@@ -43,7 +43,7 @@ func NewOper[T any](name string) Oper[T] {
 }
 
 // NewRegisteredOper creates an operation and registers the typed []T
-// binder in DefaultMixRowsBinder unless that destination is already registered.
+// binder in [DefaultMixRowsBinder] unless that destination is already registered.
 // The registration is shared by all queries using the default registry.
 func NewRegisteredOper[T any](name string) Oper[T] {
 	DefaultMixRowsBinder.registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
@@ -57,7 +57,7 @@ func (o Oper[T]) WithDB(db *DB) Oper[T]       { o.Table.SetDB(db); return o }
 func (o Oper[T]) WithTable(t Table) Oper[T]   { o.Table = t; return o }
 func (o Oper[T]) WithSorter(s Sorter) Oper[T] { o.Sorter = s; return o }
 
-// WithBindConfig overrides the DB binding configuration for this operation.
+// WithBindConfig overrides the [DB] binding configuration for this operation.
 func (o Oper[T]) WithBindConfig(config BindConfig) Oper[T] {
 	config = config.clone()
 	o.bindConfig = &config
@@ -97,7 +97,7 @@ func (o Oper[T]) ClearWhere() Oper[T] { o.conditions = nil; return o }
 func (o Oper[T]) Active() Oper[T]     { return o.Where(o.SoftCondition) }
 func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 
-// Select creates a column query; typed model fields use SelectStruct instead.
+// Select creates a column query; typed model fields use [Oper.SelectStruct] instead.
 func (o Oper[T]) Select(columns ...string) *SelectBuilder {
 	q := o.Table.Select(columns...).Where(o.conditions...).Sort(o.Sorter)
 	// Owned configurations are immutable and can be shared with the query.
@@ -125,8 +125,8 @@ type zeroResult struct{}
 func (zeroResult) LastInsertId() (int64, error) { return 0, nil }
 func (zeroResult) RowsAffected() (int64, error) { return 0, nil }
 
-// Update does nothing when u is nil and returns a result whose LastInsertId
-// and RowsAffected both return zero without an error.
+// Update does nothing when u is nil and returns a result whose [sql.Result.LastInsertId]
+// and [sql.Result.RowsAffected] both return zero without an error.
 func (o Oper[T]) Update(ctx context.Context, u Updater, cs ...Condition) (sql.Result, error) {
 	if u == nil {
 		return zeroResult{}, nil
@@ -161,7 +161,7 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 }
 
 // CountGets counts matching rows and fetches the requested page when the count
-// is positive. Pagination is evaluated once and validated before querying.
+// is positive. [Pagination] is evaluated once and validated before querying.
 func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
 	q := o.SelectStruct().Where(cs...).Pagination(p)
 	if err = q.err; err != nil {
@@ -181,9 +181,9 @@ func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 }
 
 // Aggregate scans an aggregate expression into a non-nil destination pointer.
-// It uses NullToZero regardless of the configured NULL policy, preserving other
-// scan options. Nullable pointers and custom sql.Scanner values retain their
-// usual NULL semantics. R must be supported by Row.Scan.
+// It uses [NullToZero] regardless of the configured NULL policy, preserving other
+// scan options. Nullable pointers and custom [sql.Scanner] values retain their
+// usual NULL semantics. R must be supported by [Row.Scan].
 func (o Oper[T]) Aggregate[R any](ctx context.Context, e Expression, dst *R, cs ...Condition) error {
 	if dst == nil {
 		return errors.New("sqlx: aggregate destination must be a non-nil pointer")
@@ -194,8 +194,8 @@ func (o Oper[T]) Aggregate[R any](ctx context.Context, e Expression, dst *R, cs 
 	return row.Scan(dst)
 }
 
-// AggregateValue returns an aggregate result scanned into R. It uses Aggregate's
-// scan options, including NULL handling. R must be supported by Row.Scan.
+// AggregateValue returns an aggregate result scanned into R. It uses [Oper.Aggregate]'s
+// scan options, including NULL handling. R must be supported by [Row.Scan].
 func (o Oper[T]) AggregateValue[R any](ctx context.Context, e Expression, cs ...Condition) (value R, err error) {
 	err = o.Aggregate(ctx, e, &value, cs...)
 	return

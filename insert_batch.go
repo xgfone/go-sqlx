@@ -11,7 +11,8 @@ import (
 // A batch supplied at once uses one flat cell allocation. Incremental appends
 // keep completed chunks instead of repeatedly copying all preceding cells.
 // Additional metadata is allocated only when a second chunk or ragged row is
-// needed. Ragged boundaries preserve deferred Build errors and ClearValues.
+// needed. Ragged boundaries preserve deferred [InsertBuilder.Build] errors and
+// [InsertBuilder.ClearValues].
 type insertBatch struct {
 	cells []any
 	extra *insertBatchExtra

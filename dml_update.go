@@ -66,7 +66,7 @@ func (b *UpdateBuilder) Set(updaters ...Updater) *UpdateBuilder {
 	return b
 }
 
-// SetExpr appends an assignment whose value must be an Expression.
+// SetExpr appends an assignment whose value must be an [Expression].
 func (b *UpdateBuilder) SetExpr(column string, e Expression) *UpdateBuilder {
 	return b.Set(Set(column, e))
 }
@@ -163,7 +163,7 @@ func (b *UpdateBuilder) SetDB(db *DB) *UpdateBuilder { b.db = db; return b }
 func (b *UpdateBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-// Non-nil executors use the interceptor set by SetDefaultExecutorInterceptor.
+// Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].
 func (b *UpdateBuilder) SetExecutor(e Executor) *UpdateBuilder {
 	b.executor = interceptExecutor(e)
 	return b

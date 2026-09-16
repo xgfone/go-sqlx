@@ -137,7 +137,7 @@ func (d *configured) NamedPlaceholder(name string) (string, bool) {
 
 // WithFeatures returns an immutable capability override. Disabled features win.
 //
-// For SQLite, enable UpdateOrderLimit/DeleteOrderLimit only when the engine was
+// For SQLite, enable [UpdateOrderLimit]/[DeleteOrderLimit] only when the engine was
 // compiled with SQLITE_ENABLE_UPDATE_DELETE_LIMIT. Inputs are copied.
 func WithFeatures(d Dialect, enabled, disabled []Feature) Dialect {
 	v := configuration(d)
@@ -152,10 +152,10 @@ func WithFeatures(d Dialect, enabled, disabled []Feature) Dialect {
 
 // WithLexicalRules returns a dialect using rules matching the connection's modes.
 //
-// For MySQL NO_BACKSLASH_ESCAPES, clear BackslashStrings; for ANSI_QUOTES, clear
-// DoubleQuotedStrings.
+// For MySQL NO_BACKSLASH_ESCAPES, clear [LexicalRules.BackslashStrings]; for ANSI_QUOTES, clear
+// [LexicalRules.DoubleQuotedStrings].
 //
-// For PostgreSQL standard_conforming_strings=off, enable BackslashStrings.
+// For PostgreSQL standard_conforming_strings=off, enable [LexicalRules.BackslashStrings].
 // No session SQL is executed.
 func WithLexicalRules(d Dialect, rules LexicalRules) Dialect {
 	v := configuration(d)
@@ -180,7 +180,7 @@ func WithGrammar(d Dialect, grammar Grammar) Dialect {
 //   - MySQL 8.0.19 adds VALUES tables and inserted-row aliases
 //   - MySQL 8.0.31 adds INTERSECT/EXCEPT.
 //
-// Apply explicit feature overrides after WithVersion. The server is not queried
+// Apply explicit feature overrides after [WithVersion]. The server is not queried
 // or modified.
 func WithVersion(d Dialect, major, minor, patch int) Dialect {
 	if major < 0 || minor < 0 || patch < 0 {

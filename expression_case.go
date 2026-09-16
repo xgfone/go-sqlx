@@ -16,7 +16,7 @@ type caseArm struct {
 	simple bool
 }
 
-// CaseBuilder builds a searched CASE, or a simple CASE when created by CaseValue.
+// CaseBuilder builds a searched CASE, or a simple CASE when created by [CaseValue].
 type CaseBuilder struct {
 	arms      []caseArm
 	value     any
@@ -28,7 +28,7 @@ type CaseBuilder struct {
 // Case starts a searched CASE expression.
 func Case() *CaseBuilder { return new(CaseBuilder) }
 
-// CaseValue starts a CASE comparing value against WhenValue matches.
+// CaseValue starts a CASE comparing value against [CaseBuilder.WhenValue] matches.
 func CaseValue(value any) *CaseBuilder {
 	return &CaseBuilder{value: value, simple: true}
 }
@@ -52,7 +52,7 @@ func (b *CaseBuilder) Else(value any) *CaseBuilder {
 	return b
 }
 
-// End snapshots the CASE as an Expression. Missing ELSE has SQL's NULL behavior.
+// End snapshots the CASE as an [Expression]. Missing ELSE has SQL's NULL behavior.
 func (b *CaseBuilder) End() Expression {
 	v := *b
 	v.arms = slices.Clone(b.arms)

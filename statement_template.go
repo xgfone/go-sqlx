@@ -12,15 +12,17 @@ import (
 	"slices"
 )
 
-// Param declares a runtime value slot in a StatementTemplate through Compile.
+// Param declares a runtime value slot in a [StatementTemplate] through
+// [SelectBuilder.Compile], [InsertBuilder.Compile], [UpdateBuilder.Compile]
+// or [DeleteBuilder.Compile].
 // Used indexes must be contiguous from zero; repeated indexes share an input
-// value, not necessarily a driver placeholder. Ordinary Build/Exec with an
-// unbound Param fails.
+// value, not necessarily a driver placeholder. Ordinary [SQLBuilder.Build]
+// or builder execution with an unbound [Param] fails.
 //
-// A Param changes data, never SQL structure. Eq("id", Param(0)) compiles an
-// equality even when its runtime value is nil; use IsNull or an explicit
+// A [Param] changes data, never SQL structure. [Eq]("id", [Param](0)) compiles an
+// equality even when its runtime value is nil; use [IsNull] or an explicit
 // null-safe comparison for SQL NULL matching. IN lengths and pagination are
-// fixed when compiled. sql.Named cannot contain a Param.
+// fixed when compiled. [sql.Named] cannot contain a [Param].
 func Param(index int) Expression {
 	e := Expr("?", templateParam(index))
 	e.node.(*expressionArgs).kind = parameterExpression
@@ -35,20 +37,23 @@ type templateBinding struct {
 }
 
 // StatementTemplate owns a compiled SQL statement and argument-slot mapping.
-// SELECT, INSERT, UPDATE and DELETE builders create it with Compile, which
-// renders once; Bind and execution never render the builder again. The zero
+// SELECT, INSERT, UPDATE and DELETE builders create it with
+// [SelectBuilder.Compile], [InsertBuilder.Compile], [UpdateBuilder.Compile]
+// or [DeleteBuilder.Compile]. Each method renders once;
+// [StatementTemplate.Bind] and execution never render the builder again. The zero
 // value is not compiled. Copies may share immutable template state.
 //
 // Templates may be used concurrently provided their constant argument objects,
 // dialect and custom binder remain unchanged and safe to share. Constants are
-// shallow snapshots, like Build arguments; slices, pointers and Valuers are not
-// deep-frozen. Put mutable request data in Param slots instead.
+// shallow snapshots, like [SQLBuilder.Build] arguments; slices, pointers and [driver.Valuer]
+// implementations are not deep-frozen. Put mutable request data in [Param] slots instead.
 //
-// Compile captures an explicit builder BindConfig, including an explicit zero
-// override. Otherwise execution uses the supplied DB's current configuration.
-// The originating DB and SetExecutor override are not retained: execution takes
-// a DB explicitly, including one returned by WithExecutor for a transaction.
-// This is client-side compilation, not a database/sql prepared statement.
+// Compilation captures an explicit builder [BindConfig], including an explicit zero
+// override. Otherwise execution uses the supplied [DB]'s current configuration.
+// The originating [DB] and any builder executor override (see [SelectBuilder.SetExecutor])
+// are not retained: execution takes a [DB] explicitly, including one returned
+// by [DB.WithExecutor] for a transaction.
+// This is client-side compilation, not a [database/sql] prepared statement.
 type StatementTemplate struct {
 	dialect Dialect
 
@@ -62,8 +67,8 @@ type StatementTemplate struct {
 }
 
 // Compile freezes this SELECT's SQL shape and positive LIMIT capacity hint.
-// Custom renderers run during Compile only. Further builder changes do not
-// alter the template. Compilation does not execute SQL or call Valuer.Value.
+// Custom renderers run during [SelectBuilder.Compile] only. Further builder changes do not
+// alter the template. Compilation does not execute SQL or call [driver.Valuer.Value].
 func (b *SelectBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil SELECT builder")
@@ -77,7 +82,7 @@ func (b *SelectBuilder) Compile() (*StatementTemplate, error) {
 }
 
 // Compile freezes this INSERT, including its row count, DEFAULT cells and
-// conflict clauses. Use QueryRowsContext for a template with RETURNING.
+// conflict clauses. Use [StatementTemplate.QueryRowsContext] for a template with RETURNING.
 func (b *InsertBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil INSERT builder")
@@ -85,8 +90,9 @@ func (b *InsertBuilder) Compile() (*StatementTemplate, error) {
 	return b.compileStatement(b, len(b.returning) > 0, 0)
 }
 
-// Compile freezes this UPDATE. Use QueryRowsContext with RETURNING and
-// ExecContext otherwise. See StatementTemplate for configuration ownership.
+// Compile freezes this UPDATE. Use [StatementTemplate.QueryRowsContext] with RETURNING and
+// [StatementTemplate.ExecContext] otherwise. See [StatementTemplate] for configuration
+// ownership.
 func (b *UpdateBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil UPDATE builder")
@@ -94,8 +100,9 @@ func (b *UpdateBuilder) Compile() (*StatementTemplate, error) {
 	return b.compileStatement(b, len(b.returning) > 0, 0)
 }
 
-// Compile freezes this DELETE. Use QueryRowsContext with RETURNING and
-// ExecContext otherwise. See StatementTemplate for configuration ownership.
+// Compile freezes this DELETE. Use [StatementTemplate.QueryRowsContext] with RETURNING and
+// [StatementTemplate.ExecContext] otherwise. See [StatementTemplate] for configuration
+// ownership.
 func (b *DeleteBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil DELETE builder")
@@ -151,9 +158,9 @@ func (b *builderBase) compileStatement(s statementWriter, returnsRows bool, hint
 }
 
 // Bind returns the frozen SQL and an independent, shallow argument slice.
-// Supply exactly one value per declared Param index. Expression, SQLBuilder
-// and sql.NamedArg inputs are rejected: slots hold data, not SQL or names.
-// Driver-specific value validation and Valuer.Value remain execution-time work.
+// Supply exactly one value per declared [Param] index. [Expression], [SQLBuilder]
+// and [sql.NamedArg] inputs are rejected: slots hold data, not SQL or names.
+// Driver-specific value validation and [driver.Valuer.Value] remain execution-time work.
 func (q *StatementTemplate) Bind(params ...any) (string, []any, error) {
 	if err := q.validateParams(params); err != nil {
 		return "", nil, err
@@ -220,15 +227,16 @@ func (q *StatementTemplate) executionDB(db *DB) error {
 }
 
 // QueryRowsContext executes a SELECT or a DML template with RETURNING. It uses
-// the supplied DB's executor and requires the same or structurally equal
-// immutable dialect configuration used at Compile. Custom dialects containing
-// functions should be shared by pointer; matching Name alone is insufficient.
+// the supplied [DB]'s executor and requires the same or structurally equal
+// immutable dialect configuration used at compilation (see [SelectBuilder.Compile]). Custom
+// dialects containing
+// functions should be shared by pointer; matching [dialect.Dialect.Name] alone is insufficient.
 // No dialect is reinterpreted and no SQL is rewritten at execution time.
 //
-// The returned Rows owns its cursor; Bind closes it, or close it explicitly
+// The returned [Rows] owns its cursor; [Rows.Bind] closes it, or close it explicitly
 // when iterating manually. Result-level configuration may override the captured
-// builder configuration. A nil DB, invalid parameters or wrong execution mode
-// is returned through Rows.Err without issuing a query.
+// builder configuration. A nil [DB], invalid parameters or wrong execution mode
+// is returned through [Rows.Err] without issuing a query.
 func (q *StatementTemplate) QueryRowsContext(ctx context.Context, db *DB, params ...any) *Rows {
 	config := db.binding()
 	if q != nil && q.config != nil {
@@ -253,7 +261,8 @@ func (q *StatementTemplate) QueryRowsContext(ctx context.Context, db *DB, params
 }
 
 // ExecContext executes a DML template without RETURNING. SELECT and RETURNING
-// templates require QueryRowsContext. See QueryRowsContext for dialect rules;
+// templates require [StatementTemplate.QueryRowsContext]. See
+// [StatementTemplate.QueryRowsContext] for dialect rules;
 // the executor borrows the argument slice only until this call returns.
 func (q *StatementTemplate) ExecContext(ctx context.Context, db *DB, params ...any) (sql.Result, error) {
 	if err := q.validateParams(params); err != nil {

@@ -12,14 +12,14 @@ import (
 
 // NewChunkedSliceRowsBinder binds S, a slice of pointers to mapped structs,
 // allocating the structs in fixed blocks instead of one allocation per row.
-// blockSize must be positive. Scalar elements, including time.Time and structs
-// implementing sql.Scanner, are unsupported; use NewSliceRowsBinder for them.
+// blockSize must be positive. Scalar elements, including [time.Time] and structs
+// implementing [sql.Scanner], are unsupported; use [NewSliceRowsBinder] for them.
 //
 // Blocks never move or get reused across queries. Retaining one element keeps
 // its entire block alive, including other elements' referenced data. The final
-// block may have unused space. Capacity controls the separate pointer slice;
+// block may have unused space. [BindOptions.Capacity] controls the separate pointer slice;
 // blockSize controls object storage. Empty results allocate neither region.
-// Bind and Append preserve their atomic publication and alias contracts.
+// [Rows.Bind] and [Rows.Append] preserve their atomic publication and alias contracts.
 func NewChunkedSliceRowsBinder[S ~[]*T, T any](blockSize int) RowsBinder {
 	return chunkedSliceRowsBinder[S, T]{blockSize: blockSize}
 }

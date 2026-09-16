@@ -27,7 +27,7 @@ func ConflictColumns(columns ...string) ConflictTarget {
 }
 
 // ConflictExpressions targets unique-index expressions on PostgreSQL or SQLite.
-// Use Ident for plain column targets; expressions are grouped automatically.
+// Use [Ident] for plain column targets; expressions are grouped automatically.
 func ConflictExpressions(expressions ...Expression) ConflictTarget {
 	return ConflictTarget{expressions: slices.Clone(expressions)}
 }
@@ -41,7 +41,7 @@ func ConflictConstraint(name string) ConflictTarget {
 }
 
 // Where adds PostgreSQL/SQLite partial-index inference predicates to the target.
-// This is independent of ConflictClause.Where, which limits updates.
+// This is independent of [ConflictClause.Where], which limits updates.
 func (t ConflictTarget) Where(conditions ...Condition) ConflictTarget {
 	t.predicates = append(slices.Clone(t.predicates), conditions...)
 	return t
@@ -75,7 +75,7 @@ func (a ConflictClause) Where(conditions ...Condition) ConflictClause {
 // OnConflict appends PostgreSQL or SQLite conflict clauses in call order.
 // Each clause keeps its own target and action; calls do not merge targets or
 // assignments. Multiple clauses are supported only by SQLite; an omitted target
-// must belong to the final clause. ClearConflict removes all conflict handling.
+// must belong to the final clause. [InsertBuilder.ClearConflict] removes all conflict handling.
 func (b *InsertBuilder) OnConflict(clauses ...ConflictClause) *InsertBuilder {
 	b.conflicts = append(b.conflicts, clauses...)
 	return b
@@ -90,7 +90,7 @@ func (b *InsertBuilder) IntoAlias(table, alias string) *InsertBuilder {
 
 // RowsAlias sets MySQL's inserted-row alias after VALUES (MySQL 8.0.19+).
 // Optional column aliases replace the inserted columns' names in that scope.
-// Use Inserted to reference the row in ON DUPLICATE KEY UPDATE.
+// Use [Inserted] to reference the row in ON DUPLICATE KEY UPDATE.
 func (b *InsertBuilder) RowsAlias(alias string, columns ...string) *InsertBuilder {
 	if alias == "" {
 		b.fail(errors.New("sqlx: inserted-row alias is empty"))
@@ -126,7 +126,7 @@ func Excluded(column string) Expression {
 }
 
 // Inserted references MySQL's inserted-row alias in ON DUPLICATE KEY UPDATE.
-// Configure RowsAlias and a MySQL version of at least 8.0.19 first.
+// Configure [InsertBuilder.RowsAlias] and a MySQL version of at least 8.0.19 first.
 func Inserted(column string) Expression {
 	return Expression{
 		node: &expressionWriter{

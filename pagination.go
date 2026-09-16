@@ -8,8 +8,8 @@ import (
 )
 
 // Pagination supplies a nonnegative limit and offset. A zero limit means zero
-// rows. A nil Pagination leaves the builder unchanged. Implementations may
-// panic on invalid input; the builder records the failure for Build to return.
+// rows. A nil [Pagination] leaves the builder unchanged. Implementations may
+// panic on invalid input; the builder records the failure for [SelectBuilder.Build] to return.
 type Pagination interface {
 	LimitOffset() (limit, offset int64)
 }
@@ -30,8 +30,8 @@ func (p PageSizer) LimitOffset() (limit, offset int64) {
 	return p.Size, (p.Page - 1) * p.Size
 }
 
-// PageSize constructs a Pagination. Invalid bounds are reported by Build when
-// this value is supplied to a builder's Pagination method.
+// PageSize constructs a [Pagination]. Invalid bounds are reported by [SelectBuilder.Build] when
+// this value is supplied to [SelectBuilder.Pagination].
 func PageSize(page, size int64) PageSizer {
 	return PageSizer{Page: page, Size: size}
 }

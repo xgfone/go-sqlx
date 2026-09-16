@@ -78,7 +78,7 @@ func FuzzDefaultTimeLayoutSelection(f *testing.F) {
 }
 
 // These are independently produced parse errors, not an error and its sentinel.
-// Check the concrete error payload, including fields omitted by Error().
+// Check the concrete error payload, including fields omitted by [time.ParseError.Error].
 func sameTimeParseError(got, want error) bool {
 	if got == nil || want == nil {
 		return got == nil && want == nil

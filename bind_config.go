@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-// DuplicateKeyPolicy controls collisions in map pairs, map indexes and Merge.
+// DuplicateKeyPolicy controls collisions in map pairs, map indexes and [Rows.Merge].
 type DuplicateKeyPolicy uint8
 
 const (
@@ -25,7 +25,7 @@ const (
 	BindMerge            // Maps only.
 )
 
-// DefaultRowsCapacity is the allocation hint used when Capacity is zero and
+// DefaultRowsCapacity is the allocation hint used when [BindConfig.Capacity] is zero and
 // no positive SELECT limit is available.
 const DefaultRowsCapacity = 20
 
@@ -33,15 +33,17 @@ const DefaultRowsCapacity = 20
 // callers can explicitly request larger capacities when they know the workload.
 const maxLimitRowsCapacity = 100
 
-// BindOptions is passed to RowsBinder.Prepare. Implementations must leave the
-// destination unchanged until Commit, including its shared backing storage.
-// Columns is the ordered binding-label snapshot for the current result set.
-// ScanOptions supplies the conversion policy; it is not inferred from the raw cursor.
-// Built-in binders prepare the mapping here, so supply Columns before Prepare.
+// BindOptions is passed to [RowsBinder.Prepare]. Implementations must leave the
+// destination unchanged until [RowsBinding.Commit], including its shared backing storage.
+// [BindOptions.Columns] is the ordered binding-label snapshot for the current result set.
+// [BindOptions.ScanOptions] supplies the conversion policy; it is not inferred from the raw
+// cursor.
+// Built-in binders prepare the mapping here, so supply [BindOptions.Columns] before
+// [RowsBinder.Prepare].
 type BindOptions struct {
 	// Capacity hints at the number of incoming rows to reserve, not a row limit.
-	// Zero uses DefaultRowsCapacity. SELECT results fill an unspecified capacity
-	// from their positive LIMIT, capped at 100, before calling Prepare.
+	// Zero uses [DefaultRowsCapacity]. SELECT results fill an unspecified capacity
+	// from their positive LIMIT, capped at 100, before calling [RowsBinder.Prepare].
 	Capacity      int
 	Columns       []string
 	ScanOptions   ScanOptions
@@ -71,10 +73,11 @@ func (o BindOptions) capacity() int {
 
 // BindConfig is query binding configuration.
 //
-// A nil RowsBinder uses DefaultMixRowsBinder; map types without a default
-// registration require an explicit binder or registration. Configure a DB
-// with SetBindConfig or WithBindConfig, override a builder/Oper, or customize
-// an individual result. Configurations copy TimeLayouts; custom RowsBinder
+// A nil [BindConfig.RowsBinder] uses [DefaultMixRowsBinder]; map types without a default
+// registration require an explicit binder or registration. Configure a [DB]
+// with [DB.SetBindConfig] or [DB.WithBindConfig], override a builder/[Oper], or customize
+// an individual result. Configurations copy [rowbind.ScanOptions.TimeLayouts]; custom
+// [RowsBinder]
 // implementations must be safe to share.
 type BindConfig struct {
 	ScanOptions ScanOptions
@@ -83,7 +86,7 @@ type BindConfig struct {
 	DuplicateKeys DuplicateKeyPolicy
 
 	// Capacity is an explicit allocation hint and is not capped. Zero lets a
-	// SELECT result use its positive LIMIT (up to 100), otherwise DefaultRowsCapacity.
+	// SELECT result use its positive LIMIT (up to 100), otherwise [DefaultRowsCapacity].
 	Capacity int
 }
 
@@ -101,31 +104,32 @@ func (c BindConfig) options(mode BindMode) BindOptions {
 	}
 }
 
-// WithBindConfig returns an independent DB configuration with the same executor.
+// WithBindConfig returns an independent [DB] configuration with the same executor.
 func (db *DB) WithBindConfig(config BindConfig) *DB {
 	v := *db
 	return v.SetBindConfig(config)
 }
 
-// SetBindConfig replaces this DB's binding configuration and returns db.
-// TimeLayouts is copied; RowsBinder is shared. Existing builders without an override
+// SetBindConfig replaces this [DB]'s binding configuration and returns db.
+// [rowbind.ScanOptions.TimeLayouts] is copied; [BindConfig.RowsBinder] is shared. Existing
+// builders without an override
 // inherit the new configuration on execution; existing results keep theirs.
-// See DB for synchronization requirements.
+// See [DB] for synchronization requirements.
 func (db *DB) SetBindConfig(config BindConfig) *DB {
 	db.config = config.clone()
 	return db
 }
 
-// WithBinder returns a DB sharing the binder and executor while preserving
+// WithBinder returns a [DB] sharing the binder and executor while preserving
 // all other binding options. A nil binder restores the default registry.
 func (db *DB) WithBinder(binder RowsBinder) *DB {
 	v := *db
 	return v.SetBinder(binder)
 }
 
-// SetBinder replaces this DB's binder, preserves other binding options, and
+// SetBinder replaces this [DB]'s binder, preserves other binding options, and
 // returns db. Nil restores the default registry. The binder is shared and must
-// support concurrent preparation. See DB for synchronization requirements.
+// support concurrent preparation. See [DB] for synchronization requirements.
 func (db *DB) SetBinder(binder RowsBinder) *DB {
 	db.config.RowsBinder = binder
 	return db

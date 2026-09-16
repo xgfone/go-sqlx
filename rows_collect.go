@@ -11,7 +11,7 @@ import (
 )
 
 // Collect consumes and closes the current result set, returning a typed slice.
-// It inherits Rows' labels, ScanOptions and capacity hint. Explicit binders and
+// It inherits [Rows]' labels, [ScanOptions] and capacity hint. Explicit binders and
 // exact registry registrations remain authoritative, including on failure;
 // an unregistered slice uses the native typed slice binder.
 //
@@ -37,10 +37,10 @@ func (r *Rows) Collect[T any]() ([]T, error) {
 // nil storage remains nil. Existing capacity is used before consulting the
 // result's capacity hint for growth. This hint never limits the number of rows.
 //
-// Like Scan, this method uses the result's labels and ScanOptions directly;
-// collection-level RowsBinder registrations are not applied. Bind and Collect
-// provide independent storage and atomic publication instead. Custom Scanner
-// side effects and panics follow Scan's contract.
+// Like [Rows.Scan], this method uses the result's labels and [ScanOptions] directly;
+// collection-level [RowsBinder] registrations are not applied. [Rows.Bind] and [Rows.Collect]
+// provide independent storage and atomic publication instead. Custom [sql.Scanner]
+// side effects and panics follow [Rows.Scan]'s contract.
 func (r *Rows) CollectInto[S ~[]T, T any](storage S) (result S, err error) {
 	defer r.closeConsumedRows(&err)
 

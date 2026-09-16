@@ -41,8 +41,8 @@ func (b *SelectBuilder) SelectStruct[T any](s T, qualifier ...string) *SelectBui
 }
 
 // SelectType appends the mapped fields of T without requiring an instance.
-// It deliberately uses type metadata, not per-instance ColumnProvider output.
-// Use SelectStruct(value) when the model supplies dynamic columns.
+// It deliberately uses type metadata, not per-instance [ColumnProvider] output.
+// Use [SelectBuilder.SelectStruct](value) when the model supplies dynamic columns.
 func (b *SelectBuilder) SelectType[T any](qualifier ...string) *SelectBuilder {
 	b.mutate(func() {
 		b.selectStructType(reflect.TypeFor[T](), selectQualifier(qualifier))

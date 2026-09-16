@@ -11,8 +11,8 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// CTEBodyKind identifies the SQL statement written by a CTEBody. The zero
-// value and unrecognized values are invalid. Dialect support is checked
+// CTEBodyKind identifies the SQL statement written by a [CTEBody]. The zero
+// value and unrecognized values are invalid. [Dialect] support is checked
 // at build time.
 type CTEBodyKind uint8
 
@@ -23,14 +23,15 @@ const (
 	CTEDelete                        // DELETE.
 )
 
-// CTEBody is the body inside a CTE's AS (...), without its name or parentheses.
+// CTEBody is the body inside a [CTE]'s AS (...), without its name or parentheses.
 // All four built-in builders implement it; applications may implement it without
-// implementing SQLBuilder. Implementations must honor the borrowing/snapshot
+// implementing [SQLBuilder]. Implementations must honor the borrowing/snapshot
 // contract and must not panic. Other composition APIs retain their own input types.
 type CTEBody interface {
 	// WriteSQL appends nonempty SQL using ctx's dialect and bindings.
 	//
-	// Use ctx.WriteArg/WriteValue for parameters; do not splice independently
+	// Use [BuildContext.WriteArg]/[BuildContext.WriteValue] for parameters; do not splice
+	// independently
 	// built placeholders into the statement. The buffer and context are borrowed:
 	// do not copy, reset, retain, or use them concurrently.
 	//
@@ -49,7 +50,7 @@ type CTEBody interface {
 	Kind() CTEBodyKind
 }
 
-// CTE is an immutable common table expression, constructed with NewCTE.
+// CTE is an immutable common table expression, constructed with [NewCTE].
 type CTE struct {
 	name         string
 	body         CTEBody
@@ -61,10 +62,10 @@ type CTE struct {
 type commonTable = CTE
 
 // NewCTE snapshots a body and optional output column names. PostgreSQL
-// additionally permits INSERT, UPDATE, and DELETE statements as the CTE body;
-// those data-modifying CTEs must belong to the top-level statement.
+// additionally permits INSERT, UPDATE, and DELETE statements as the [CTE] body;
+// those data-modifying [CTE] values must belong to the top-level statement.
 // Nil bodies and nil snapshots become errors when a statement containing the
-// CTE is built. Custom bodies must honor the CTEBody contract and must not panic.
+// [CTE] is built. Custom bodies must honor the [CTEBody] contract and must not panic.
 func NewCTE(name string, body CTEBody, columns ...string) (cte CTE) {
 	cte.name, cte.columns = name, slices.Clone(columns)
 
@@ -78,7 +79,7 @@ func NewCTE(name string, body CTEBody, columns ...string) (cte CTE) {
 	return
 }
 
-// Recursive marks this CTE as recursive, enabling WITH RECURSIVE for the clause.
+// Recursive marks this [CTE] as recursive, enabling WITH RECURSIVE for the clause.
 func (t CTE) Recursive() CTE { t.recursive = true; return t }
 
 // Materialized requests MATERIALIZED on PostgreSQL and SQLite.
@@ -178,12 +179,12 @@ func (b *SelectBuilder) WithCTE(ctes ...CTE) *SelectBuilder {
 	return b
 }
 
-// With appends a snapshotted SELECT CTE with optional output column names.
+// With appends a snapshotted SELECT [CTE] with optional output column names.
 func (b *SelectBuilder) With(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive appends a recursive SELECT CTE with optional output column names.
+// WithRecursive appends a recursive SELECT [CTE] with optional output column names.
 func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *SelectBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
@@ -191,20 +192,20 @@ func (b *SelectBuilder) WithRecursive(name string, q *SelectBuilder, columns ...
 // ClearWith removes SELECT common table expressions.
 func (b *SelectBuilder) ClearWith() *SelectBuilder { b.ctes = nil; return b }
 
-// WithCTE appends CTEs to an INSERT. MySQL permits these only with a SELECT source
-// and renders them after the INSERT target. PostgreSQL also permits DML CTE bodies.
+// WithCTE appends [CTE] values to an INSERT. MySQL permits these only with a SELECT source
+// and renders them after the INSERT target. PostgreSQL also permits DML [CTE] bodies.
 func (b *InsertBuilder) WithCTE(ctes ...CTE) *InsertBuilder {
 	b.ctes = append(b.ctes, ctes...)
 	return b
 }
 
-// With adds a SELECT CTE with optional output column names to an INSERT.
+// With adds a SELECT [CTE] with optional output column names to an INSERT.
 // MySQL requires a SELECT insert source.
 func (b *InsertBuilder) With(name string, q *SelectBuilder, columns ...string) *InsertBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive adds a recursive CTE with optional output column names to an INSERT.
+// WithRecursive adds a recursive [CTE] with optional output column names to an INSERT.
 // MySQL requires a SELECT insert source.
 func (b *InsertBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *InsertBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
@@ -213,18 +214,19 @@ func (b *InsertBuilder) WithRecursive(name string, q *SelectBuilder, columns ...
 // ClearWith removes INSERT common table expressions.
 func (b *InsertBuilder) ClearWith() *InsertBuilder { b.ctes = nil; return b }
 
-// WithCTE appends common table expressions to an UPDATE. PostgreSQL also permits DML CTE bodies.
+// WithCTE appends common table expressions to an UPDATE. PostgreSQL also permits DML [CTE]
+// bodies.
 func (b *UpdateBuilder) WithCTE(ctes ...CTE) *UpdateBuilder {
 	b.ctes = append(b.ctes, ctes...)
 	return b
 }
 
-// With appends a SELECT CTE with optional output column names to an UPDATE.
+// With appends a SELECT [CTE] with optional output column names to an UPDATE.
 func (b *UpdateBuilder) With(name string, q *SelectBuilder, columns ...string) *UpdateBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive appends a recursive CTE with optional output column names to an UPDATE.
+// WithRecursive appends a recursive [CTE] with optional output column names to an UPDATE.
 func (b *UpdateBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *UpdateBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }
@@ -232,18 +234,19 @@ func (b *UpdateBuilder) WithRecursive(name string, q *SelectBuilder, columns ...
 // ClearWith removes UPDATE common table expressions.
 func (b *UpdateBuilder) ClearWith() *UpdateBuilder { b.ctes = nil; return b }
 
-// WithCTE appends common table expressions to a DELETE. PostgreSQL also permits DML CTE bodies.
+// WithCTE appends common table expressions to a DELETE. PostgreSQL also permits DML [CTE]
+// bodies.
 func (b *DeleteBuilder) WithCTE(ctes ...CTE) *DeleteBuilder {
 	b.ctes = append(b.ctes, ctes...)
 	return b
 }
 
-// With appends a SELECT CTE with optional output column names to a DELETE.
+// With appends a SELECT [CTE] with optional output column names to a DELETE.
 func (b *DeleteBuilder) With(name string, q *SelectBuilder, columns ...string) *DeleteBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...))
 }
 
-// WithRecursive appends a recursive CTE with optional output column names to a DELETE.
+// WithRecursive appends a recursive [CTE] with optional output column names to a DELETE.
 func (b *DeleteBuilder) WithRecursive(name string, q *SelectBuilder, columns ...string) *DeleteBuilder {
 	return b.WithCTE(NewCTE(name, q, columns...).Recursive())
 }

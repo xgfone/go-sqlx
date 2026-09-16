@@ -108,7 +108,7 @@ func TestBindingShapeErrorsArePreparationErrors(t *testing.T) {
 	}
 }
 
-// No Columns method: all metadata belongs to the preparation boundary.
+// No [sql.Rows.Columns] method: all metadata belongs to the preparation boundary.
 type rawBindingCursor struct{ next int }
 
 func (c *rawBindingCursor) Next() bool { c.next++; return c.next <= 2 }

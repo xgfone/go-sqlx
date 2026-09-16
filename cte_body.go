@@ -9,7 +9,7 @@ import (
 )
 
 // Native bodies already establish a statement scope and report failures to the
-// enclosing build. Match exact types: an embedding wrapper may override WriteSQL.
+// enclosing build. Match exact types: an embedding wrapper may override [CTEBody.WriteSQL].
 func writeCTEBody(buf *strings.Builder, ctx *BuildContext, body CTEBody) {
 	switch b := body.(type) {
 	case *SelectBuilder:
@@ -53,13 +53,13 @@ func writeSQL(buf *strings.Builder, ctx *BuildContext, body statementWriter) (er
 	return nil
 }
 
-// WriteSQL implements CTEBody using the supplied dialect and binding context.
-// It appends SQL and returns validation or rendering errors; see CTEBody.
+// WriteSQL implements [CTEBody] using the supplied dialect and binding context.
+// It appends SQL and returns validation or rendering errors; see [CTEBody].
 func (b *SelectBuilder) WriteSQL(buf *strings.Builder, ctx *BuildContext) error {
 	return writeSQL(buf, ctx, b)
 }
 
-// Snapshot implements CTEBody by cloning the builder's SQL description.
+// Snapshot implements [CTEBody] by cloning the builder's SQL description.
 func (b *SelectBuilder) Snapshot() CTEBody {
 	if b == nil {
 		return nil
@@ -67,16 +67,16 @@ func (b *SelectBuilder) Snapshot() CTEBody {
 	return b.Clone()
 }
 
-// Kind identifies this CTE body as SELECT.
+// Kind identifies this [CTE] body as SELECT.
 func (*SelectBuilder) Kind() CTEBodyKind { return CTESelect }
 
-// WriteSQL implements CTEBody using the supplied dialect and binding context.
-// It appends SQL and returns validation or rendering errors; see CTEBody.
+// WriteSQL implements [CTEBody] using the supplied dialect and binding context.
+// It appends SQL and returns validation or rendering errors; see [CTEBody].
 func (b *InsertBuilder) WriteSQL(buf *strings.Builder, ctx *BuildContext) error {
 	return writeSQL(buf, ctx, b)
 }
 
-// Snapshot implements CTEBody by cloning the builder's SQL description.
+// Snapshot implements [CTEBody] by cloning the builder's SQL description.
 func (b *InsertBuilder) Snapshot() CTEBody {
 	if b == nil {
 		return nil
@@ -84,16 +84,16 @@ func (b *InsertBuilder) Snapshot() CTEBody {
 	return b.Clone()
 }
 
-// Kind identifies this CTE body as INSERT.
+// Kind identifies this [CTE] body as INSERT.
 func (*InsertBuilder) Kind() CTEBodyKind { return CTEInsert }
 
-// WriteSQL implements CTEBody using the supplied dialect and binding context.
-// It appends SQL and returns validation or rendering errors; see CTEBody.
+// WriteSQL implements [CTEBody] using the supplied dialect and binding context.
+// It appends SQL and returns validation or rendering errors; see [CTEBody].
 func (b *UpdateBuilder) WriteSQL(buf *strings.Builder, ctx *BuildContext) error {
 	return writeSQL(buf, ctx, b)
 }
 
-// Snapshot implements CTEBody by cloning the builder's SQL description.
+// Snapshot implements [CTEBody] by cloning the builder's SQL description.
 func (b *UpdateBuilder) Snapshot() CTEBody {
 	if b == nil {
 		return nil
@@ -101,16 +101,16 @@ func (b *UpdateBuilder) Snapshot() CTEBody {
 	return b.Clone()
 }
 
-// Kind identifies this CTE body as UPDATE.
+// Kind identifies this [CTE] body as UPDATE.
 func (*UpdateBuilder) Kind() CTEBodyKind { return CTEUpdate }
 
-// WriteSQL implements CTEBody using the supplied dialect and binding context.
-// It appends SQL and returns validation or rendering errors; see CTEBody.
+// WriteSQL implements [CTEBody] using the supplied dialect and binding context.
+// It appends SQL and returns validation or rendering errors; see [CTEBody].
 func (b *DeleteBuilder) WriteSQL(buf *strings.Builder, ctx *BuildContext) error {
 	return writeSQL(buf, ctx, b)
 }
 
-// Snapshot implements CTEBody by cloning the builder's SQL description.
+// Snapshot implements [CTEBody] by cloning the builder's SQL description.
 func (b *DeleteBuilder) Snapshot() CTEBody {
 	if b == nil {
 		return nil
@@ -118,5 +118,5 @@ func (b *DeleteBuilder) Snapshot() CTEBody {
 	return b.Clone()
 }
 
-// Kind identifies this CTE body as DELETE.
+// Kind identifies this [CTE] body as DELETE.
 func (*DeleteBuilder) Kind() CTEBodyKind { return CTEDelete }

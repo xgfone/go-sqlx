@@ -10,10 +10,12 @@ import (
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-// Struct appends one row. Explicit Columns select fields and include zero values.
+// Struct appends one row. Explicit [InsertBuilder.Columns] select fields and include zero
+// values.
 // Otherwise omission tags are honored and every row must have the same column set.
 // SQL tag options maxlen, overflow and lenunit apply string limits immediately
-// without changing s. Errors are retained for Build/Compile/Exec.
+// without changing s. Errors are retained for
+// [InsertBuilder.Build]/[InsertBuilder.Compile]/[InsertBuilder.ExecContext].
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	b.mutate(func() { b.appendStruct(s) })
 	return b
@@ -63,11 +65,13 @@ func (b *InsertBuilder) appendStruct(s any) {
 }
 
 // Structs appends a slice of structs or pointers using a fixed set of mapped columns.
-// Without explicit Columns, zero fields tagged omitempty or omitzero use SQL DEFAULT
+// Without explicit [InsertBuilder.Columns], zero fields tagged omitempty or omitzero use SQL
+// DEFAULT
 // instead of being omitted. The dialect must support DEFAULT in VALUES when needed.
-// Explicit Columns select fields in that order and include their actual zero values.
-// Empty slices append no rows; an otherwise empty insert still fails Build.
-// String limits in SQL tags apply during extraction, as with Struct.
+// Explicit [InsertBuilder.Columns] select fields in that order and include their actual zero
+// values.
+// Empty slices append no rows; an otherwise empty insert still fails [InsertBuilder.Build].
+// String limits in SQL tags apply during extraction, as with [InsertBuilder.Struct].
 func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
 	b.mutate(func() { b.appendStructs(slice) })
 	return b

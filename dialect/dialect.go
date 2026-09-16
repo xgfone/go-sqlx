@@ -16,7 +16,7 @@ type Dialect interface {
 	// It does not parse qualified names, wildcards, or SQL expressions.
 	QuoteIdent(name string) string
 
-	// Grammar selects SQL forms and clause placement independently of Name.
+	// Grammar selects SQL forms and clause placement independently of [Dialect.Name].
 	Grammar() Grammar
 
 	// LexicalRules controls template scanning and must match the connection's
@@ -27,7 +27,7 @@ type Dialect interface {
 }
 
 // NamedDialect optionally provides named-parameter syntax. The selected
-// database/sql driver must also support binding sql.NamedArg values.
+// [database/sql] driver must also support binding [database/sql.NamedArg] values.
 type NamedDialect interface {
 	NamedPlaceholder(name string) (placeholder string, supported bool)
 }

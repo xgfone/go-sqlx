@@ -25,14 +25,15 @@ const (
 	NullsLast  NullsOrder = "LAST"
 )
 
-// Sorter supplies ordering terms. SelectBuilder copies the returned slice;
+// Sorter supplies ordering terms. [SelectBuilder] copies the returned slice;
 // expression values and their arguments remain shallow copies.
 type Sorter interface {
 	SortColumns() []SortColumn
 }
 
-// SortColumn is an ordering term. Expr, when non-nil, takes precedence over
-// Column. Order may be Asc, Desc or empty (the database's default direction).
+// SortColumn is an ordering term. [SortColumn.Expr], when non-nil, takes precedence over
+// [SortColumn.Column]. [SortColumn.Order] may be [Asc], [Desc] or empty (the database's default
+// direction).
 type SortColumn struct {
 	Column string
 	Order  Order

@@ -59,8 +59,8 @@ func (w WindowSpec) Sort(sorters ...Sorter) WindowSpec {
 	return w
 }
 
-// FrameBound is a boundary in a window frame. Construct it with CurrentRow,
-// Preceding, Following, UnboundedPreceding, or UnboundedFollowing.
+// FrameBound is a boundary in a window frame. Construct it with [CurrentRow],
+// [Preceding], [Following], [UnboundedPreceding], or [UnboundedFollowing].
 type FrameBound struct {
 	position int8
 	offset   int64
@@ -283,21 +283,23 @@ func (e Expression) OverName(name string) Expression {
 	}
 }
 
-// RowNumber returns the ROW_NUMBER function; apply Over or OverName before use.
+// RowNumber returns the ROW_NUMBER function; apply [Expression.Over] or [Expression.OverName]
+// before use.
 func RowNumber() Expression {
 	e := Func("ROW_NUMBER")
 	e.node.(*expressionFunction).window = true
 	return e
 }
 
-// Rank returns the RANK function; apply Over or OverName before use.
+// Rank returns the RANK function; apply [Expression.Over] or [Expression.OverName] before use.
 func Rank() Expression {
 	e := Func("RANK")
 	e.node.(*expressionFunction).window = true
 	return e
 }
 
-// DenseRank returns the DENSE_RANK function; apply Over or OverName before use.
+// DenseRank returns the DENSE_RANK function; apply [Expression.Over] or [Expression.OverName]
+// before use.
 func DenseRank() Expression {
 	e := Func("DENSE_RANK")
 	e.node.(*expressionFunction).window = true

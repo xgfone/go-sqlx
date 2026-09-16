@@ -137,7 +137,7 @@ func BenchmarkStatementTemplateExec(b *testing.B) {
 	}
 }
 
-// Exercise compiled queries through database/sql and result binding. Fixtures
+// Exercise compiled queries through [database/sql] and result binding. Fixtures
 // and declarations are outside timing; each iteration creates a fresh result.
 func BenchmarkStatementTemplateRows(b *testing.B) {
 	for _, n := range []int{0, 1, 20, 100, 1000} {

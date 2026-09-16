@@ -53,7 +53,8 @@ func (b *SelectBuilder) Pagination(p Pagination) *SelectBuilder {
 }
 
 // FetchWithTies limits results while retaining rows tied on the final ORDER BY
-// key. ORDER BY is required. A subsequent Limit call restores ordinary limiting.
+// key. ORDER BY is required. A subsequent [SelectBuilder.Limit] call restores ordinary
+// limiting.
 func (b *SelectBuilder) FetchWithTies(n int64) *SelectBuilder {
 	b.Limit(n)
 	b.withTies = true

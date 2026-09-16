@@ -10,27 +10,27 @@ import (
 
 // Expr represents trusted SQL with optional arguments. With arguments, sql is
 // a template using sqlx's own markers, independent of the database's parameter
-// syntax. Build interprets the template using the statement's dialect:
+// syntax. [SQLBuilder.Build] interprets the template using the statement's dialect:
 //
-//   - ? consumes the next argument. An Expression (including Ident, Value and
-//     Subquery) is rendered in the same build context. Any other value is bound
-//     through BuildContext.Add, which obtains its placeholder from the dialect
+//   - ? consumes the next argument. An [Expression] (including [Ident], [Value] and
+//     [Subquery]) is rendered in the same build context. Any other value is bound
+//     through [BuildContext.Add], which obtains its placeholder from the dialect
 //     (for example, ? for MySQL or $1, $2, ... for PostgreSQL).
 //   - ?? emits a literal ? without consuming an argument. This escapes SQL
 //     operators containing ?, such as PostgreSQL's JSON operators: ??, ??| and
 //     ??& emit ?, ?| and ?& respectively. It does not quote an identifier;
-//     use ? with Ident for column or table references.
+//     use ? with [Ident] for column or table references.
 //
 // These are the only template markers. Native placeholders such as $1, :name
 // and @name are copied unchanged; they do not consume args and are not rebound.
-// To supply a named value, pass sql.Named(name, value) as an argument to ?;
-// BuildContext.Add handles the dialect's named-parameter support.
+// To supply a named value, pass [sql.Named](name, value) as an argument to ?;
+// [BuildContext.Add] handles the dialect's named-parameter support.
 //
 // Markers in quoted text and comments are ignored according to the dialect's
-// LexicalRules. PostgreSQL recognizes E'...' strings, nested comments, and
+// [dialect.LexicalRules]. PostgreSQL recognizes E'...' strings, nested comments, and
 // dollar quotes; MySQL recognizes # comments, whitespace-qualified -- comments,
 // and string backslash escapes. SQLite also recognizes [identifier] quoting.
-// Use dialect.WithLexicalRules for connection SQL modes that differ from the
+// Use [dialect.WithLexicalRules] for connection SQL modes that differ from the
 // defaults. Other SQL syntax and operators are not translated between dialects;
 // the caller must supply SQL valid for the target database.
 //
@@ -50,11 +50,11 @@ import (
 //	// PostgreSQL: "document" ? $1; bound values: ["key"].
 //
 // Without arguments, sql is copied verbatim: neither ? nor ?? is interpreted
-// or unescaped. For example, Expr("document ? 'key'") preserves the JSON
-// operator as written, and Expr("??") preserves both question marks.
+// or unescaped. For example, [Expr]("document ? 'key'") preserves the JSON
+// operator as written, and [Expr]("??") preserves both question marks.
 //
 // When arguments are present, mismatched argument counts or unterminated quoted
-// regions or block comments cause rendering to panic; statement Build returns
+// regions or block comments cause rendering to panic; [SQLBuilder.Build] returns
 // that failure as an error. Raw SQL must be trusted: supply untrusted values
 // through arguments instead of concatenating them into sql.
 func Expr(sql string, args ...any) Expression {

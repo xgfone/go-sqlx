@@ -3,7 +3,7 @@
 
 package sqlx
 
-// Table binds a table name to an optional database. It does not embed DB methods.
+// Table binds a table name to an optional database. It does not embed [DB] methods.
 type Table struct {
 	Name string
 	db   *DB
@@ -19,7 +19,7 @@ func (t Table) NewOper[T any]() Oper[T] {
 }
 
 // NewRegisteredOper creates an operation using this table and
-// registers its typed []T binder in DefaultMixRowsBinder unless already
+// registers its typed []T binder in [DefaultMixRowsBinder] unless already
 // registered.
 func (t Table) NewRegisteredOper[T any]() Oper[T] {
 	return NewRegisteredOper[T](t.Name).WithTable(t)

@@ -25,7 +25,7 @@ type insertBenchmarkWide struct {
 var insertSQLResult string
 var insertArgsResult []any
 
-// Fixtures are prepared outside timing. Build and exec reuse a builder;
+// Fixtures are prepared outside timing. [InsertBuilder.Build] and execution reuse a builder;
 // construct and construct_build include each batch's snapshot allocations.
 func BenchmarkInsertBatchWorkloads(b *testing.B) {
 	for _, width := range []int{3, 12} {

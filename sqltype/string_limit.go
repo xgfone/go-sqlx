@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-// LengthUnit specifies how StringLimit measures UTF-8 text.
+// LengthUnit specifies how [StringLimit] measures UTF-8 text.
 type LengthUnit uint8
 
 const (
@@ -26,7 +26,7 @@ const (
 	Truncate
 )
 
-// StringLimit is an immutable, reusable string value rule. Zero Max allows
+// StringLimit is an immutable, reusable string value rule. Zero [StringLimit.Max] allows
 // only empty strings. Nil passes through; strings and defined string types
 // are accepted. Invalid UTF-8, invalid configuration and other types fail.
 // Truncation preserves complete UTF-8 code points without normalization.
@@ -51,7 +51,8 @@ func (e *StringLengthError) Error() string {
 	return fmt.Sprintf("string length %d exceeds maximum %d %s", e.Actual, e.Max, unit)
 }
 
-// Apply validates or truncates a value. It implements sqlx.ValueRule without
+// Apply validates or truncates a value. It implements [github.com/xgfone/go-sqlx.ValueRule]
+// without
 // depending on the SQL builder package. Successful text results are strings.
 func (r StringLimit) Apply(value any) (any, error) {
 	if err := r.validate(); err != nil {
@@ -80,7 +81,7 @@ func (r StringLimit) Apply(value any) (any, error) {
 }
 
 // ApplyString validates or truncates UTF-8 text without boxing its input or
-// result in an interface. It has the same string semantics as Apply.
+// result in an interface. It has the same string semantics as [StringLimit.Apply].
 func (r StringLimit) ApplyString(s string) (string, error) {
 	if err := r.validate(); err != nil {
 		return "", err

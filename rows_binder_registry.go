@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
-// MixRowsBinder dispatches by the exact type passed to Rows.Bind, Append or
-// Merge. An unregistered destination falls back to SliceRowsBinder. Its zero
-// value is ready to use. Register, Get, Unregister and Prepare are concurrent
+// MixRowsBinder dispatches by the exact type passed to [Rows.Bind], [Rows.Append] or
+// [Rows.Merge]. An unregistered destination falls back to [SliceRowsBinder]. Its zero
+// value is ready to use. [MixRowsBinder.Register], [MixRowsBinder.Get],
+// [MixRowsBinder.Unregister] and [MixRowsBinder.Prepare] are concurrent
 // safe; a registry must not be copied after first use. Registered binders must
-// themselves support concurrent Prepare calls.
+// themselves support concurrent [RowsBinder.Prepare] calls.
 type MixRowsBinder struct{ types sync.Map }
 
 func NewMixRowsBinder() *MixRowsBinder { return &MixRowsBinder{} }
@@ -21,8 +22,8 @@ func NewMixRowsBinder() *MixRowsBinder { return &MixRowsBinder{} }
 // DefaultMixRowsBinder is the shared default for collection binding.
 //
 // Common scalar slices, two-column maps and map sets are registered at
-// initialization; NewRegisteredOper registers its model slice unless the exact
-// destination is already registered. Register custom map semantics explicitly.
+// initialization; [NewRegisteredOper] registers its model slice unless the exact
+// destination is already registered. Use [MixRowsBinder.Register] for custom map semantics.
 //
 // Configure this variable before use; use the registry methods for concurrent
 // changes rather than reassigning it.
@@ -79,7 +80,8 @@ func newDefaultMixRowsBinder() *MixRowsBinder {
 }
 
 // Get returns the explicitly registered binder, or nil. The slice fallback is
-// not returned by Get. For a destination &values, register reflect.TypeOf(&values).
+// not returned by [MixRowsBinder.Get]. For a destination &values, register
+// [reflect.TypeOf](&values).
 func (b *MixRowsBinder) Get(t reflect.Type) RowsBinder {
 	if binder, ok := b.types.Load(t); ok {
 		return binder.(RowsBinder)
@@ -101,14 +103,16 @@ func (b *MixRowsBinder) Register(t reflect.Type, binder RowsBinder) (old RowsBin
 	return nil
 }
 
-// RegisterType is Register with the exact destination type D. For example,
-// RegisterType[*map[int64]Model](NewMapIndexBinder[map[int64]Model](key)).
+// RegisterType is [MixRowsBinder.Register] with the exact destination type D. For example,
+// using [NewMapIndexBinder]:
+//
+//	r.RegisterType[*map[int64]Model](NewMapIndexBinder[map[int64]Model](key))
 func (b *MixRowsBinder) RegisterType[D any](binder RowsBinder) RowsBinder {
 	return b.Register(reflect.TypeFor[D](), binder)
 }
 
 // Unregister removes an exact registration and returns it, or nil if absent.
-// Subsequent bindings use SliceRowsBinder, including its built-in scalar paths.
+// Subsequent bindings use [SliceRowsBinder], including its built-in scalar paths.
 func (b *MixRowsBinder) Unregister(t reflect.Type) (old RowsBinder) {
 	if previous, loaded := b.types.LoadAndDelete(t); loaded {
 		return previous.(RowsBinder)
@@ -123,7 +127,7 @@ func (b *MixRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, erro
 	return resolveRowsBinder(b, reflect.TypeOf(dst)).Prepare(dst, options)
 }
 
-// Built-in routing is shared by registry preparation and Rows.Bind.
+// Built-in routing is shared by registry preparation and [Rows.Bind].
 // A registered user binder is returned intact, never bypassed.
 func resolveRowsBinder(binder RowsBinder, t reflect.Type) RowsBinder {
 	if registry, ok := binder.(*MixRowsBinder); ok {

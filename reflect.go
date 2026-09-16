@@ -30,7 +30,7 @@ var (
 
 // IsPointerToStruct returns true if v is a pointer to struct, else false.
 //
-// Notice: struct{} is considered as a struct, but time.Time is not.
+// Notice: struct{} is considered as a struct, but [time.Time] is not.
 func IsPointerToStruct(v any) (ok bool) {
 	if v == nil {
 		return

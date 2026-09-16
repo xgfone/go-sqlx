@@ -11,7 +11,7 @@ import (
 var stringLimitResult any
 var stringLimitErr error
 
-// Keep Apply covered when changing the typed helper used by struct tags.
+// Keep [StringLimit.Apply] covered when changing the typed helper used by struct tags.
 func BenchmarkStringLimitApply(b *testing.B) {
 	for _, tc := range []struct {
 		name  string

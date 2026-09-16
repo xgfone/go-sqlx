@@ -22,7 +22,7 @@ type unionQuery struct {
 // the complete result. Row locking is not supported in compound queries.
 func (b *SelectBuilder) Union(q *SelectBuilder) *SelectBuilder { return b.union(q, false) }
 
-// UnionAll appends an operand without eliminating duplicates; see Union.
+// UnionAll appends an operand without eliminating duplicates; see [SelectBuilder.Union].
 func (b *SelectBuilder) UnionAll(q *SelectBuilder) *SelectBuilder { return b.union(q, true) }
 
 func (b *SelectBuilder) union(q *SelectBuilder, all bool) *SelectBuilder {

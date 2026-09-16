@@ -19,7 +19,7 @@ func reserveSQL(buf *strings.Builder, minimum int) {
 }
 
 // These are estimates of immutable native descriptions only. User renderers,
-// driver.Valuer, and dialect hooks are never invoked for capacity planning.
+// [driver.Valuer], and dialect hooks are never invoked for capacity planning.
 func (e Expression) renderSizeHint() int {
 	switch n := e.node.(type) {
 	case *expressionWriter:

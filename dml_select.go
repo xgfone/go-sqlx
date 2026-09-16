@@ -11,8 +11,10 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// SelectBuilder is mutable. Clone before deriving an independent query; builders
-// are not safe for concurrent mutation. Build itself does not mutate the builder.
+// SelectBuilder is mutable. [SelectBuilder.Clone] before deriving an independent query;
+// builders
+// are not safe for concurrent mutation. [SelectBuilder.Build] itself does not mutate the
+// builder.
 type SelectBuilder struct {
 	builderBase
 
@@ -361,7 +363,7 @@ func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }
 func (b *SelectBuilder) GetDB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
-// Non-nil executors use the interceptor set by SetDefaultExecutorInterceptor.
+// Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].
 func (b *SelectBuilder) SetExecutor(e Executor) *SelectBuilder {
 	b.executor = interceptExecutor(e)
 	return b
@@ -386,7 +388,7 @@ func (b *SelectBuilder) Where(conds ...Condition) *SelectBuilder {
 // DistinctOn selects the first row of each key group using PostgreSQL DISTINCT ON.
 // When ORDER BY is supplied, its leading expressions must match these keys;
 // order within the key prefix may differ. Callers own this semantic relationship.
-// Combine neither with Distinct nor locks.
+// Combine neither with [SelectBuilder.Distinct] nor locks.
 func (b *SelectBuilder) DistinctOn(columns ...string) *SelectBuilder {
 	for _, col := range columns {
 		b.distinctOn = append(b.distinctOn, Ident(strings.Split(col, ".")...))

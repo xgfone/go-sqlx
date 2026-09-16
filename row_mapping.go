@@ -28,9 +28,9 @@ func (o BindOptions) PrepareMapping(types ...reflect.Type) (RowMapping, error) {
 // calls fail. Destination addresses may change, but their types must match the
 // prepared signature. The callback must keep the cursor on the same result set.
 //
-// The caller owns iteration, Err and cursor closing. The cursor must obey
-// RowCursor's raw-scan contract; *Rows is rejected to avoid a second mapping and
-// conversion layer. Use the package-level WithScan for *Rows instead.
+// The caller owns iteration, [rowbind.Cursor.Err] and cursor closing. The cursor must obey
+// [RowCursor]'s raw-scan contract; *[Rows] is rejected to avoid a second mapping and
+// conversion layer. Use the package-level [WithScan] for *[Rows] instead.
 func (m RowMapping) WithScan(cursor RowCursor, run func(scan RowScanFunc) error) error {
 	if nilBindingValue(cursor) {
 		return errors.New("sqlx: nil row cursor")
