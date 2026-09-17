@@ -116,7 +116,14 @@ func (o Oper[T]) SelectStruct() *SelectBuilder {
 	return o.Select().SelectStruct(v)
 }
 
-func (o Oper[T]) Add(ctx context.Context, v T) (sql.Result, error) {
+// Insert inserts v, discarding the execution result. Use [Oper.InsertResult] to retrieve it.
+func (o Oper[T]) Insert(ctx context.Context, v T) error {
+	_, err := o.InsertResult(ctx, v)
+	return err
+}
+
+// InsertResult inserts v and returns the execution result.
+func (o Oper[T]) InsertResult(ctx context.Context, v T) (sql.Result, error) {
 	return o.Table.Insert().Struct(v).ExecContext(ctx)
 }
 
@@ -125,24 +132,49 @@ type zeroResult struct{}
 func (zeroResult) LastInsertId() (int64, error) { return 0, nil }
 func (zeroResult) RowsAffected() (int64, error) { return 0, nil }
 
-// Update does nothing when u is nil and returns a result whose [sql.Result.LastInsertId]
+// Update updates matching rows, discarding the execution result. It does nothing
+// and returns nil when u is nil. Use [Oper.UpdateResult] to retrieve the result.
+func (o Oper[T]) Update(ctx context.Context, u Updater, cs ...Condition) error {
+	_, err := o.UpdateResult(ctx, u, cs...)
+	return err
+}
+
+// UpdateResult updates matching rows and returns the execution result.
+// When u is nil, it does nothing and returns a result whose [sql.Result.LastInsertId]
 // and [sql.Result.RowsAffected] both return zero without an error.
-func (o Oper[T]) Update(ctx context.Context, u Updater, cs ...Condition) (sql.Result, error) {
+func (o Oper[T]) UpdateResult(ctx context.Context, u Updater, cs ...Condition) (sql.Result, error) {
 	if u == nil {
 		return zeroResult{}, nil
 	}
 	return o.Table.Update().Set(u).Where(o.conditions...).Where(cs...).ExecContext(ctx)
 }
 
-func (o Oper[T]) Delete(ctx context.Context, cs ...Condition) (sql.Result, error) {
+// Delete deletes matching rows, discarding the execution result.
+// Use [Oper.DeleteResult] to retrieve it.
+func (o Oper[T]) Delete(ctx context.Context, cs ...Condition) error {
+	_, err := o.DeleteResult(ctx, cs...)
+	return err
+}
+
+// DeleteResult deletes matching rows and returns the execution result.
+func (o Oper[T]) DeleteResult(ctx context.Context, cs ...Condition) (sql.Result, error) {
 	return o.Table.Delete().Where(o.conditions...).Where(cs...).ExecContext(ctx)
 }
 
-func (o Oper[T]) SoftDelete(ctx context.Context, cs ...Condition) (sql.Result, error) {
+// SoftDelete applies SoftDeleteUpdater to matching active rows, discarding the
+// execution result. Use [Oper.SoftDeleteResult] to retrieve it.
+func (o Oper[T]) SoftDelete(ctx context.Context, cs ...Condition) error {
+	_, err := o.SoftDeleteResult(ctx, cs...)
+	return err
+}
+
+// SoftDeleteResult applies SoftDeleteUpdater to matching active rows and returns
+// the execution result. It returns an error if SoftDeleteUpdater is nil.
+func (o Oper[T]) SoftDeleteResult(ctx context.Context, cs ...Condition) (sql.Result, error) {
 	if o.SoftDeleteUpdater == nil {
 		return nil, errors.New("sqlx: no soft-delete updater")
 	}
-	return o.Active().Update(ctx, o.SoftDeleteUpdater(), cs...)
+	return o.Active().UpdateResult(ctx, o.SoftDeleteUpdater(), cs...)
 }
 
 func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err error) {

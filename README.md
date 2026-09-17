@@ -1182,14 +1182,18 @@ For an existing table, use `table.NewOper[T]()` or
 `table.NewRegisteredOper[T]()`; both preserve its database.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
-Get/Gets, Add/Update/Delete, Count/CountGets, Exist, Aggregate, and AggregateValue.
-Mutations return sql.Result; Count returns int64. CountGets queries the count
-first, then fetches a page if it is positive. It validates pagination before
+Get/Gets, Insert/Update/Delete/SoftDelete, Count/CountGets, Exist, Aggregate, and
+AggregateValue. Insert/Update/Delete/SoftDelete return only error, allowing business
+methods to directly `return oper.Insert(ctx, model)`. Use `InsertResult`, `UpdateResult`,
+`DeleteResult`, or `SoftDeleteResult` for `(sql.Result, error)` when execution
+metadata is needed. Count returns int64. CountGets queries the count first,
+then fetches a page if it is positive. It validates pagination before
 querying and does not promise a shared database snapshot without an appropriate
 transaction.
 
-`Update(ctx, nil, ...)` skips SQL execution and succeeds; both `LastInsertId()`
-and `RowsAffected()` on its result return `(0, nil)`.
+`Update(ctx, nil, ...)` skips SQL execution and returns nil.
+`UpdateResult(ctx, nil, ...)` also skips execution; both `LastInsertId()` and
+`RowsAffected()` on its result return `(0, nil)`.
 
 `Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;

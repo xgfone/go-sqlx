@@ -331,15 +331,20 @@ explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
 | GetAll                                                   | Gets with nil pagination                                         |
 | Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with a typed destination, or AggregateValue[R], using Sum |
 | CountDistinct                                            | Aggregate or AggregateValue[R] with CountDistinct expression      |
-| AddWithId                                                | Add returns sql.Result, or use an INSERT RETURNING builder       |
+| Add, AddResult                                           | Insert, InsertResult                                             |
+| AddWithId                                                | InsertResult returns sql.Result, or use an INSERT RETURNING builder |
 | ById helpers                                             | Explicit conditions on the application's key column              |
 | Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()` |
 | GetRow/GetRows                                           | Select builder with QueryRowContext/QueryRowsContext             |
 | IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                |
 
-Add/Update/Delete/SoftDelete now return sql.Result and error. Count/CountGets use
-int64 counts. CountGets does not modify the page size based on the count and
-validates pagination before querying, even when no rows match.
+Insert/Update/Delete/SoftDelete return only error. Use
+InsertResult/UpdateResult/DeleteResult/SoftDeleteResult to receive `(sql.Result, error)`.
+Code using the intermediate refactored API must rename mutation calls that
+receive two return values to the corresponding Result method. Calls that discard
+the result, such as `_, err := oper.Add(ctx, model)`, become `err := oper.Insert(ctx, model)`.
+Count/CountGets use int64 counts. CountGets does not modify the page size based
+on the count and validates pagination before querying, even when no rows match.
 Soft-delete defaults use NULL and current time, independently of go-op's legacy
 zero-date constants. Configure WithSoftCondition, WithDeletedCondition and
 WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers. The

@@ -160,7 +160,11 @@ func TestOperUpdateNil(t *testing.T) {
 		NewOper[struct{}]("t").WithDB(db).Where(condition),
 	} {
 		for _, ctx := range []context.Context{context.Background(), ctx} {
-			result, err := o.Update(ctx, nil, condition)
+			if err := o.Update(ctx, nil, condition); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := o.UpdateResult(ctx, nil, condition)
 			if err != nil || result == nil {
 				t.Fatal(result, err)
 			}
@@ -174,27 +178,106 @@ func TestOperUpdateNil(t *testing.T) {
 	}
 }
 
-func TestOperUpdateExecutesNonNilUpdater(t *testing.T) {
-	ctx := context.Background()
-	for _, wantErr := range []error{nil, errors.New("update failed")} {
-		calls := 0
-		wantResult := driver.RowsAffected(2)
-		db := &DB{Dialect: dialect.SQLite, Executor: templateTestExecutor{
-			exec: func(gotCtx context.Context, query string, args ...any) (sql.Result, error) {
-				calls++
-				if gotCtx != ctx || query != `UPDATE "t" SET "value"=? WHERE (("tenant" = ?) AND ("id" = ?))` ||
-					!reflect.DeepEqual(args, []any{3, 7, 9}) {
-					t.Fatal(gotCtx, query, args)
-				}
-				return wantResult, wantErr
-			},
-		}}
+func TestOperMutations(t *testing.T) {
+	type model struct {
+		Value int `sql:"value"`
+	}
 
-		o := NewOper[struct{}]("t").WithDB(db).Where(Eq("tenant", 7))
-		result, err := o.Update(ctx, Set("value", 3), Eq("id", 9))
-		if result != wantResult || err != wantErr || calls != 1 {
-			t.Fatal(result, err, calls)
+	ctx := t.Context()
+	for _, tc := range []struct {
+		name       string
+		query      string
+		args       []any
+		run        func(Oper[model]) error
+		runResult  func(Oper[model]) (sql.Result, error)
+		softDelete bool
+	}{
+		{
+			name:      "Insert",
+			query:     `INSERT INTO "t" ("value") VALUES (?)`,
+			args:      []any{3},
+			run:       func(o Oper[model]) error { return o.Insert(ctx, model{3}) },
+			runResult: func(o Oper[model]) (sql.Result, error) { return o.InsertResult(ctx, model{3}) },
+		},
+		{
+			name:  "Update",
+			query: `UPDATE "t" SET "value"=? WHERE (("tenant" = ?) AND ("id" = ?))`,
+			args:  []any{3, 7, 9},
+			run:   func(o Oper[model]) error { return o.Update(ctx, Set("value", 3), Eq("id", 9)) },
+			runResult: func(o Oper[model]) (sql.Result, error) {
+				return o.UpdateResult(ctx, Set("value", 3), Eq("id", 9))
+			},
+		},
+		{
+			name:      "Delete",
+			query:     `DELETE FROM "t" WHERE (("tenant" = ?) AND ("id" = ?))`,
+			args:      []any{7, 9},
+			run:       func(o Oper[model]) error { return o.Delete(ctx, Eq("id", 9)) },
+			runResult: func(o Oper[model]) (sql.Result, error) { return o.DeleteResult(ctx, Eq("id", 9)) },
+		},
+		{
+			name:       "SoftDelete",
+			query:      `UPDATE "t" SET "deleted"=? WHERE (("tenant" = ?) AND ("deleted" = ?) AND ("id" = ?))`,
+			args:       []any{true, 7, false, 9},
+			run:        func(o Oper[model]) error { return o.SoftDelete(ctx, Eq("id", 9)) },
+			runResult:  func(o Oper[model]) (sql.Result, error) { return o.SoftDeleteResult(ctx, Eq("id", 9)) },
+			softDelete: true,
+		},
+	} {
+		for _, outcome := range []struct {
+			name string
+			err  error
+		}{
+			{"success", nil},
+			{"error", errors.New("mutation failed")},
+		} {
+			t.Run(tc.name+"/"+outcome.name, func(t *testing.T) {
+				calls, updaterCalls := 0, 0
+				wantResult := driver.RowsAffected(2)
+				db := &DB{Dialect: dialect.SQLite, Executor: templateTestExecutor{
+					exec: func(gotCtx context.Context, query string, args ...any) (sql.Result, error) {
+						calls++
+						if gotCtx != ctx || query != tc.query || !reflect.DeepEqual(args, tc.args) {
+							t.Fatal(gotCtx, query, args)
+						}
+						return wantResult, outcome.err
+					},
+				}}
+
+				o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 7)).
+					WithSoftCondition(Eq("deleted", false)).
+					WithSoftDeleteUpdater(func() Updater {
+						updaterCalls++
+						return Set("deleted", true)
+					})
+
+				if err := tc.run(o); err != outcome.err || calls != 1 {
+					t.Fatal(err, calls)
+				}
+
+				result, err := tc.runResult(o)
+				if result != wantResult || err != outcome.err || calls != 2 {
+					t.Fatal(result, err, calls)
+				}
+
+				if tc.softDelete && updaterCalls != 2 || !tc.softDelete && updaterCalls != 0 {
+					t.Fatal("unexpected soft-delete updater calls", updaterCalls)
+				}
+			})
 		}
+	}
+}
+
+func TestOperSoftDeleteWithoutUpdater(t *testing.T) {
+	o := NewOper[struct{}]("t").WithSoftDeleteUpdater(nil)
+	err := o.SoftDelete(t.Context())
+	if err == nil || err.Error() != "sqlx: no soft-delete updater" {
+		t.Fatal(err)
+	}
+
+	result, err := o.SoftDeleteResult(t.Context())
+	if result != nil || err == nil || err.Error() != "sqlx: no soft-delete updater" {
+		t.Fatal(result, err)
 	}
 }
 
