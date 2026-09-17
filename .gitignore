@@ -28,6 +28,7 @@ _testmain.go
 *.iml
 
 # test
+testdata/
 test_*
 
 # log
@@ -35,12 +36,9 @@ test_*
 
 # Mac
 .DS_Store
+._*
 
 # VS Code
 .vscode/
 debug
 debug_test
-
-# Unix hidden files
-.*
-_*
