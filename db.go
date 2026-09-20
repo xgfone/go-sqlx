@@ -32,10 +32,9 @@ type DB struct {
 // Open opens a database specified by its database driver name
 // and a driver-specific data source name,
 func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
-	d, ok := dialect.Get(driverName)
-	if !ok {
-		return nil, fmt.Errorf("the dialect '%s' has not been registered",
-			driverName)
+	d := dialect.Get(driverName)
+	if d == nil {
+		return nil, fmt.Errorf("the dialect '%s' has not been registered", driverName)
 	}
 
 	db, err := DefaultOpener(driverName, dataSourceName)

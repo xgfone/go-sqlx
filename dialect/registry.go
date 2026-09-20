@@ -74,10 +74,10 @@ func Unregister(name string) bool {
 	return ok
 }
 
-// Get looks up a registered name without changing the registry.
-func Get(name string) (Dialect, bool) {
+// Get returns the registered dialect, or nil if name is not registered.
+func Get(name string) Dialect {
 	registry.RLock()
-	d, ok := registry.values[name]
+	d := registry.values[name]
 	registry.RUnlock()
-	return d, ok
+	return d
 }

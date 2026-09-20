@@ -16,19 +16,19 @@ func TestRegistry(t *testing.T) {
 	if err := Register(name, Postgres); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := Get(name); !ok || got != Postgres {
-		t.Fatal(got, ok)
+	if got := Get(name); got != Postgres {
+		t.Fatal(got)
 	}
 	if err := Register(name, MySQL); err == nil {
 		t.Fatal("duplicate registration accepted")
 	}
-	if got, _ := Get(name); got != Postgres {
+	if got := Get(name); got != Postgres {
 		t.Fatal("duplicate changed registration")
 	}
 	if !Unregister(name) || Unregister(name) {
 		t.Fatal("wrong removal result")
 	}
-	if _, ok := Get(name); ok {
+	if Get(name) != nil {
 		t.Fatal("removed name found")
 	}
 	if err := Register("", MySQL); err == nil {
@@ -53,7 +53,7 @@ func TestRegistryConcurrentAccess(t *testing.T) {
 				if err := Register(name, MySQL); err != nil {
 					t.Error(err)
 				}
-				if _, ok := Get(name); !ok {
+				if Get(name) == nil {
 					t.Error("missing name")
 				}
 				Unregister(name)
