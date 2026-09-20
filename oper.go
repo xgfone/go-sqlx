@@ -18,7 +18,8 @@ import (
 type Oper[T any] struct {
 	Table Table
 
-	Sorter            Sorter
+	// StructSorter supplies default ordering for SelectStruct and its convenience queries.
+	StructSorter      Sorter
 	SoftCondition     Condition
 	DeletedCondition  Condition
 	SoftDeleteUpdater func() Updater
@@ -53,9 +54,13 @@ func NewRegisteredOper[T any](name string) Oper[T] {
 func (o *Oper[T]) SetDB(db *DB) { o.Table.SetDB(db) }
 func (o Oper[T]) GetDB() *DB    { return o.Table.GetDB() }
 
-func (o Oper[T]) WithDB(db *DB) Oper[T]       { o.Table.SetDB(db); return o }
-func (o Oper[T]) WithTable(t Table) Oper[T]   { o.Table = t; return o }
-func (o Oper[T]) WithSorter(s Sorter) Oper[T] { o.Sorter = s; return o }
+func (o Oper[T]) WithDB(db *DB) Oper[T]     { o.Table.SetDB(db); return o }
+func (o Oper[T]) WithTable(t Table) Oper[T] { o.Table = t; return o }
+
+// WithStructSorter sets default ordering for SelectStruct, Get, Gets, and the
+// data query in CountGets. Select and SelectColumns do not inherit it.
+// A nil sorter disables default ordering on the returned operation.
+func (o Oper[T]) WithStructSorter(s Sorter) Oper[T] { o.StructSorter = s; return o }
 
 // WithBindConfig overrides the [DB] binding configuration for this operation.
 func (o Oper[T]) WithBindConfig(config BindConfig) Oper[T] {
@@ -97,23 +102,26 @@ func (o Oper[T]) ClearWhere() Oper[T] { o.conditions = nil; return o }
 func (o Oper[T]) Active() Oper[T]     { return o.Where(o.SoftCondition) }
 func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 
-// Select creates a column query; typed model fields use [Oper.SelectStruct] instead.
+// Select creates a column query without applying StructSorter.
+// Typed model fields use [Oper.SelectStruct] instead.
 func (o Oper[T]) Select(columns ...string) *SelectBuilder {
-	q := o.Table.Select(columns...).Where(o.conditions...).Sort(o.Sorter)
+	q := o.Table.Select(columns...).Where(o.conditions...)
 	// Owned configurations are immutable and can be shared with the query.
 	q.bconfig = o.bindConfig
 	return q
 }
 
 // SelectColumns creates a column query preserving the operation's database,
-// conditions, sorter, and binding configuration.
+// conditions, and binding configuration. It does not apply StructSorter.
 func (o Oper[T]) SelectColumns(columns ...Column) *SelectBuilder {
 	return o.Select().SelectColumns(columns...)
 }
 
+// SelectStruct selects the model's default mapped columns and applies StructSorter.
+// Subsequent Sort and OrderBy calls append ordering; use ClearOrderBy to replace it.
 func (o Oper[T]) SelectStruct() *SelectBuilder {
 	var v T
-	return o.Select().SelectStruct(v)
+	return o.Select().SelectStruct(v).Sort(o.StructSorter)
 }
 
 // Insert inserts v, discarding the execution result. Use [Oper.InsertResult] to retrieve it.
@@ -188,7 +196,7 @@ func (o Oper[T]) Gets(ctx context.Context, p Pagination, cs ...Condition) (vs []
 }
 
 func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error) {
-	err = o.Select().ClearOrderBy().SelectExpr(Count("*")).Where(cs...).QueryRowContext(ctx).Scan(&n)
+	err = o.Select().SelectExpr(Count("*")).Where(cs...).QueryRowContext(ctx).Scan(&n)
 	return
 }
 
@@ -209,7 +217,7 @@ func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (
 
 func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
 	var n int
-	return o.Select().ClearOrderBy().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
+	return o.Select().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
 }
 
 // Aggregate scans an aggregate expression into a non-nil destination pointer.
@@ -221,7 +229,7 @@ func (o Oper[T]) Aggregate[R any](ctx context.Context, e Expression, dst *R, cs 
 		return errors.New("sqlx: aggregate destination must be a non-nil pointer")
 	}
 
-	row := o.Select().ClearOrderBy().SelectExpr(e).Where(cs...).QueryRowContext(ctx)
+	row := o.Select().SelectExpr(e).Where(cs...).QueryRowContext(ctx)
 	row.options.Nulls = NullToZero
 	return row.Scan(dst)
 }

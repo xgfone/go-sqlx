@@ -38,8 +38,9 @@ update := sqlx.Update().Table("users").
 Its methods delegate to the existing predicate, assignment, and ordering APIs.
 `SelectColumns(...Column)` is available on the package, `DB`, `Table`, `Oper`,
 and `SelectBuilder`. Each entry preserves the same context as its `Select`
-counterpart, including the operation's conditions, sorter, and binding settings.
-It accepts individual columns or an expanded `[]Column`; an empty call is valid.
+counterpart, including the operation's conditions and binding settings.
+`SelectColumns` accepts individual columns or an expanded `[]Column`; an empty
+call is valid. `Oper.Select` and `Oper.SelectColumns` do not apply `StructSorter`.
 
 ```go
 columns := []sqlx.Column{UserID, UserName}
@@ -1227,6 +1228,16 @@ metadata is needed. Count returns int64. CountGets queries the count first,
 then fetches a page if it is positive. It validates pagination before
 querying and does not promise a shared database snapshot without an appropriate
 transaction.
+
+Use `WithStructSorter(sqlx.Column("id").Desc())` to configure model-query ordering.
+`StructSorter` is applied only by `Oper.SelectStruct()` and, through it, `Get`,
+`Gets`, and the data query in `CountGets`. `Select`, `SelectColumns`, `Count`,
+`Exist`, and aggregate queries do not inherit it. Custom column queries can opt
+in with `.Sort(oper.StructSorter)` or specify their own `OrderBy` terms.
+`WithStructSorter(nil)` disables the default on a copy of the operation.
+Builder sorting methods append terms; use `.ClearOrderBy().OrderByAsc("name")`
+to replace inherited ordering. `oper.Select().SelectStruct(model)` does not
+inherit `StructSorter`; use `oper.SelectStruct()` for model-query defaults.
 
 `Update(ctx, nil, ...)` skips SQL execution and returns nil.
 `UpdateResult(ctx, nil, ...)` also skips execution; both `LastInsertId()` and

@@ -330,7 +330,7 @@ func TestOperCountGetsEvaluatesPaginationOnce(t *testing.T) {
 		}
 
 		o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 7)).
-			WithSorter(SortColumn{
+			WithStructSorter(SortColumn{
 				Column: "value",
 				Order:  Desc,
 			})
@@ -472,7 +472,7 @@ func TestOperAggregateValueDistinctScopeAndErrors(t *testing.T) {
 	ctx := context.Background()
 	f := &scanFixture{values: []driver.Value{int64(3)}}
 	o := NewOper[struct{}]("payments").WithDB(fixtureDB(t, f)).
-		WithSorter(SortColumn{Column: "created_at", Order: Desc}).
+		WithStructSorter(SortColumn{Column: "created_at", Order: Desc}).
 		Where(Eq("tenant", 7))
 	n, err := o.AggregateValue[int64](ctx, CountDistinct("user_id"), Eq("status", "paid"))
 	if err != nil || n != 3 {
@@ -501,4 +501,32 @@ func TestOperAggregateValueDistinctScopeAndErrors(t *testing.T) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal(err)
 	}
+}
+
+func TestOperStructSorterScope(t *testing.T) {
+	type model struct {
+		ID   int    `sql:"id"`
+		Name string `sql:"name"`
+	}
+
+	base := NewOper[model]("users").WithDB(&DB{Dialect: dialect.Postgres}).Where(Eq("tenant", 7))
+	o := base.WithStructSorter(Column("id").Desc())
+	modelSQL := `SELECT "id", "name" FROM "users" WHERE ("tenant" = $1)`
+	columnSQL := `SELECT "name" FROM "users" WHERE ("tenant" = $1)`
+	checkSQL(t, base.SelectStruct(), modelSQL, 7)
+	checkSQL(t, o.SelectStruct(), modelSQL+` ORDER BY "id" DESC`, 7)
+	checkSQL(t, o.WithStructSorter(nil).SelectStruct(), modelSQL, 7)
+	checkSQL(t, o.SelectStruct(), modelSQL+` ORDER BY "id" DESC`, 7)
+	for _, q := range []*SelectBuilder{
+		o.Select("name"), o.SelectColumns(Column("name")),
+		o.Select().Select("name"), o.SelectColumns().Select("name"),
+	} {
+		checkSQL(t, q, columnSQL, 7)
+		checkSQL(t, q.Distinct(), `SELECT DISTINCT "name" FROM "users" WHERE ("tenant" = $1)`, 7)
+	}
+	checkSQL(t, o.Select().SelectStruct(model{}), modelSQL, 7)
+	checkSQL(t, o.Select("name").Sort(o.StructSorter), columnSQL+` ORDER BY "id" DESC`, 7)
+	checkSQL(t, o.SelectColumns(Column("name")).OrderByAsc("name"), columnSQL+` ORDER BY "name" ASC`, 7)
+	checkSQL(t, o.SelectStruct().OrderByAsc("name"), modelSQL+` ORDER BY "id" DESC, "name" ASC`, 7)
+	checkSQL(t, o.SelectStruct().ClearOrderBy().OrderByAsc("name"), modelSQL+` ORDER BY "name" ASC`, 7)
 }

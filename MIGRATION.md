@@ -187,7 +187,7 @@ adapter. No go-op adapter is distributed by this module.
 
 | Previous use                                                | Native replacement                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------- |
-| `Where(op.Eq("id", id))`                                    | `Where(sqlx.Eq("id", id))`                           |
+| `Where(op.Eq("id", id))`                                    | `Where(sqlx.Eq("id", id))`                              |
 | `Set(op.Set("name", value))`                                | `Set(sqlx.Set("name", value))`                          |
 | `Sort(sorter)`                                              | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
 | `Pagination(op.PageSize(page, size))`                       | `Pagination(sqlx.PageSize(page, size))`                 |
@@ -241,10 +241,10 @@ clears UNION, INTERSECT and EXCEPT, including their ALL variants.
 | Package/DB `SelectStruct`; `SelectStructWithTable`                     | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)`               |
 | Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc.                                     |
 | `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                                |
-| `JoinOn`                                                               | `sqlx.Condition`; On compares column paths; Eq compares paths/expressions to values                |
+| `JoinOn`                                                               | `sqlx.Condition`; On compares column paths; Eq compares paths/expressions to values        |
 | `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition                         |
 | `IgnoreColumns`, `ForceOrderBy`                                        | Removed; choose projection explicitly and specify ordering intentionally                   |
-| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(Eq(...))`, `Set(sqlx.Set(...))`                                                  |
+| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(Eq(...))`, `Set(sqlx.Set(...))`                                                     |
 | `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column,value),...)`, or positional Columns/Values                            |
 | `ValuesFromStructs`                                                    | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit              |
 | `GrowValues`, `DefaultBufferCap`                                       | Removed internal allocation controls                                                       |
@@ -319,24 +319,33 @@ names, not output aliases. ColumnProvider output is per-call and not type-cached
 ## Optional Oper layer
 
 Oper stays in the root package for convenient use but has no role in builder
-execution. Default id ordering and fixed-id helpers were removed. Set a sorter
-explicitly for list queries. Count/Exist/Aggregate do not inherit list sorting.
+execution. Default id ordering and fixed-id helpers were removed. Configure model
+query ordering with `WithStructSorter(sqlx.Column("id").Desc())`.
 
-| Previous Oper API                                        | Replacement                                                      |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| SoftGet/SoftGets/SoftCount/SoftExist and similar         | `Active().Get/Gets/Count/Exist`                                  |
-| SoftSelect                                               | `Active().Select` or `Active().SelectStruct`                     |
-| SoftUpdate                                               | `Active().Update`                                                |
-| Query, CountQuery                                        | Gets, CountGets with sqlx.PageSize                               |
-| GetAll                                                   | Gets with nil pagination                                         |
+Rename the intermediate API's `Oper.Sorter` to `Oper.StructSorter` and
+`WithSorter` to `WithStructSorter`. The configured sorter now applies only to
+`Oper.SelectStruct()` and the `Get`, `Gets`, and `CountGets` data queries that
+use it. `Select` and `SelectColumns` no longer inherit ordering, including empty
+calls. Use `.Sort(oper.StructSorter)` to explicitly reuse it on a column query,
+or specify sorting with builder methods. Count/Exist/Aggregate do not inherit
+model-query sorting. Use `WithStructSorter(nil)` to disable the default on an
+operation copy, or `ClearOrderBy()` to remove it from a built query builder.
+
+| Previous Oper API                                        | Replacement                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------- |
+| SoftGet/SoftGets/SoftCount/SoftExist and similar         | `Active().Get/Gets/Count/Exist`                                     |
+| SoftSelect                                               | `Active().Select` or `Active().SelectStruct`                        |
+| SoftUpdate                                               | `Active().Update`                                                   |
+| Query, CountQuery                                        | Gets, CountGets with sqlx.PageSize                                  |
+| GetAll                                                   | Gets with nil pagination                                            |
 | Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with a typed destination, or AggregateValue[R], using Sum |
-| CountDistinct                                            | Aggregate or AggregateValue[R] with CountDistinct expression      |
-| Add, AddResult                                           | Insert, InsertResult                                             |
+| CountDistinct                                            | Aggregate or AggregateValue[R] with CountDistinct expression        |
+| Add, AddResult                                           | Insert, InsertResult                                                |
 | AddWithId                                                | InsertResult returns sql.Result, or use an INSERT RETURNING builder |
-| ById helpers                                             | Explicit conditions on the application's key column              |
-| Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()` |
-| GetRow/GetRows                                           | Select builder with QueryRowContext/QueryRowsContext             |
-| IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                |
+| ById helpers                                             | Explicit conditions on the application's key column                 |
+| Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()`    |
+| GetRow/GetRows                                           | Select builder with QueryRowContext/QueryRowsContext                |
+| IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                   |
 
 Insert/Update/Delete/SoftDelete return only error. Use
 InsertResult/UpdateResult/DeleteResult/SoftDeleteResult to receive `(sql.Result, error)`.
@@ -452,11 +461,11 @@ do not mutate the parent. `WithExecutor` retains the configuration.
 Binding configuration fields have been renamed. Update struct literals and field
 accesses to use the following names:
 
-| Previous field | Replacement |
-| --- | --- |
-| `BindConfig.Scan` | `BindConfig.ScanOptions` |
-| `BindConfig.Binder` | `BindConfig.RowsBinder` |
-| `BindOptions.Scan` | `BindOptions.ScanOptions` |
+| Previous field      | Replacement               |
+| ------------------- | ------------------------- |
+| `BindConfig.Scan`   | `BindConfig.ScanOptions`  |
+| `BindConfig.Binder` | `BindConfig.RowsBinder`   |
+| `BindOptions.Scan`  | `BindOptions.ScanOptions` |
 
 `BindOptions.Mode` and `DuplicateKeys` retain their names. The renamed fields
 keep the same types, defaults, and behavior. `SetBinder` and `WithBinder` also

@@ -32,18 +32,18 @@ func TestSelectColumnsEntrypoints(t *testing.T) {
 	db := &DB{Dialect: dialect.Postgres}
 	table := db.NewTable("users")
 	oper := NewOper[struct{}]("users").WithDB(db).Where(id.Eq(7)).
-		WithSorter(id.Desc()).WithBindConfig(BindConfig{})
+		WithStructSorter(id.Desc()).WithBindConfig(BindConfig{})
 	checkSQL(t, SelectColumns(id).SetDialect(dialect.Postgres), `SELECT "id"`)
 	checkSQL(t, db.SelectColumns(id), `SELECT "id"`)
 	checkSQL(t, table.SelectColumns(id), `SELECT "id" FROM "users"`)
 
 	q := oper.SelectColumns(id)
-	checkSQL(t, q, `SELECT "id" FROM "users" WHERE ("id" = $1) ORDER BY "id" DESC`, 7)
+	checkSQL(t, q, `SELECT "id" FROM "users" WHERE ("id" = $1)`, 7)
 	if q.GetDB() != db || q.bconfig != oper.bindConfig {
 		t.Fatal("SelectColumns lost operation configuration")
 	}
 	checkSQL(t, oper.SelectColumns().Select("id"),
-		`SELECT "id" FROM "users" WHERE ("id" = $1) ORDER BY "id" DESC`, 7)
+		`SELECT "id" FROM "users" WHERE ("id" = $1)`, 7)
 }
 
 func TestSelectColumnsSliceExpansion(t *testing.T) {
