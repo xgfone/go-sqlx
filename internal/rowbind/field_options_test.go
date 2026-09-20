@@ -21,34 +21,44 @@ type limitedPointerValuer string
 
 func (*limitedPointerValuer) Value() (driver.Value, error) { panic("must not call Value") }
 
-func TestInsertOptions(t *testing.T) {
+func TestFieldOptions(t *testing.T) {
 	text := reflect.TypeFor[string]()
 	for _, tc := range []struct {
 		options string
-		omit    bool
-		want    *sqltype.StringLimit
+		want    fieldOptions
 	}{
-		{"", false, nil},
-		{"custom=thing", false, nil},
-		{"omitempty", true, nil},
-		{"omitzero,maxlen=0", true, &sqltype.StringLimit{}},
-		{"maxlen=2", false, &sqltype.StringLimit{Max: 2}},
+		{"", fieldOptions{}},
+		{"custom=thing", fieldOptions{}},
+		{"omitempty", fieldOptions{IgnoreZero: true}},
+		{"omitzero,maxlen=0", fieldOptions{IgnoreZero: true, StringLimit: &sqltype.StringLimit{}}},
+		{"maxlen=2", fieldOptions{StringLimit: &sqltype.StringLimit{Max: 2}}},
+		{"select=explicit", fieldOptions{SelectExplicit: true}},
 		{
 			"maxlen=2,overflow=truncate",
-			false, &sqltype.StringLimit{Max: 2, Overflow: sqltype.Truncate},
+			fieldOptions{StringLimit: &sqltype.StringLimit{Max: 2, Overflow: sqltype.Truncate}},
 		},
 		{
 			"lenunit=utf8bytes,maxlen=6,overflow=reject",
-			false, &sqltype.StringLimit{Max: 6, Unit: sqltype.UTF8Bytes},
+			fieldOptions{StringLimit: &sqltype.StringLimit{Max: 6, Unit: sqltype.UTF8Bytes}},
 		},
 		{
 			" maxlen = 2 , lenunit = runes , overflow = truncate , omitempty ",
-			true, &sqltype.StringLimit{Max: 2, Overflow: sqltype.Truncate},
+			fieldOptions{IgnoreZero: true, StringLimit: &sqltype.StringLimit{Max: 2, Overflow: sqltype.Truncate}},
+		},
+		{
+			" select = explicit , maxlen=8, omitempty, overflow=truncate, lenunit=utf8bytes ",
+			fieldOptions{IgnoreZero: true, SelectExplicit: true,
+				StringLimit: &sqltype.StringLimit{Max: 8, Overflow: sqltype.Truncate, Unit: sqltype.UTF8Bytes}},
+		},
+		{
+			"lenunit=utf8bytes,custom=thing,overflow=truncate,omitzero,maxlen=8,select=explicit",
+			fieldOptions{IgnoreZero: true, SelectExplicit: true,
+				StringLimit: &sqltype.StringLimit{Max: 8, Overflow: sqltype.Truncate, Unit: sqltype.UTF8Bytes}},
 		},
 	} {
-		omit, limit, err := parseInsertOptions(tc.options, text)
-		if err != nil || omit != tc.omit || !reflect.DeepEqual(limit, tc.want) {
-			t.Fatalf("%q: %v, %#v, %v", tc.options, omit, limit, err)
+		got, err := parseFieldOptions(tc.options, text)
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%q: got %#v, %v; want %#v", tc.options, got, err, tc.want)
 		}
 	}
 
@@ -59,8 +69,11 @@ func TestInsertOptions(t *testing.T) {
 		"maxlen=1,lenunit=runes,lenunit=runes", "maxlen=2,overflow",
 		"lenunit=runes", "maxlen=2,overflow=", "maxlen=2,overflow=ignore",
 		"maxlen=2,lenunit", "maxlen=2,lenunit=", "maxlen=2,lenunit=bytes",
+		"select", "select=", "select=false", "select=explicit,select=explicit",
+		"select=explicit,overflow=truncate", "maxlen=2,select=explicit,maxlen=3",
+		"select=explicit,maxlen=2,select=explicit", "maxlen=2,select=false",
 	} {
-		if _, _, err := parseInsertOptions(option, text); err == nil {
+		if _, err := parseFieldOptions(option, text); err == nil {
 			t.Fatalf("accepted invalid options: %q", option)
 		}
 	}

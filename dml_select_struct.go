@@ -13,14 +13,22 @@ import (
 type Namer struct{ Name, Alias string }
 
 // ColumnProvider can supply per-instance columns. Its result is never cached.
+// Returned columns are explicit selections, unaffected by select=explicit tags.
 type ColumnProvider interface {
 	Columns(qualifier string) []Namer
 }
 
 var columnProviderType = reflect.TypeFor[ColumnProvider]()
 
-// SelectStruct appends mapped columns. qualifier is optional and qualifies columns;
-// it never sets FROM. sql:"-" excludes fields; omission tags do not affect SELECT.
+// SelectStruct appends default mapped columns.
+//
+// qualifier is optional and qualifies columns; it never sets FROM.
+// sql:"-" excludes fields from mapping, while sql:"column,select=explicit"
+// only excludes them from inferred selections.
+//
+// Use [SelectBuilder.Select] to append those columns explicitly to this query.
+// INSERT omission tags do not affect SELECT. A [ColumnProvider] controls its
+// own columns.
 func (b *SelectBuilder) SelectStruct[T any](s T, qualifier ...string) *SelectBuilder {
 	b.mutate(func() {
 		q := selectQualifier(qualifier)
@@ -40,7 +48,8 @@ func (b *SelectBuilder) SelectStruct[T any](s T, qualifier ...string) *SelectBui
 	return b
 }
 
-// SelectType appends the mapped fields of T without requiring an instance.
+// SelectType appends the default mapped fields of T without requiring an instance,
+// skipping fields tagged select=explicit just like [SelectBuilder.SelectStruct].
 // It deliberately uses type metadata, not per-instance [ColumnProvider] output.
 // Use [SelectBuilder.SelectStruct](value) when the model supplies dynamic columns.
 func (b *SelectBuilder) SelectType[T any](qualifier ...string) *SelectBuilder {
@@ -75,11 +84,11 @@ func (b *SelectBuilder) selectStructType(t reflect.Type, qualifier string) {
 	// batches instead of allocating one expression and prefix slice per field.
 	prefix := strings.Split(qualifier, ".")
 	width := len(prefix) + 1
-	parts := make([]string, len(m.meta.Fields())*width)
-	exprs := make([]Expression, len(m.meta.Fields()))
+	parts := make([]string, len(m.columns)*width)
+	exprs := make([]Expression, len(m.columns))
 	identities := make([]expressionIdent, len(exprs))
-	b.columns = slices.Grow(b.columns, len(m.meta.Fields()))
-	for i, f := range m.meta.Fields() {
+	b.columns = slices.Grow(b.columns, len(m.columns))
+	for i, f := range m.columns {
 		names := parts[i*width : (i+1)*width : (i+1)*width]
 		copy(names, prefix)
 		names[len(prefix)] = f.Column

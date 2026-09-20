@@ -1028,9 +1028,9 @@ behind its internal API. The root package handles SQL expression caching,
 result ownership, binder registration and collection commits. SQL projection
 expressions are created only when a model is selected, not when it is only bound.
 
-`SelectStruct(model, qualifier)` only appends columns; qualifier does not set
+`SelectStruct(model, qualifier)` only appends default columns; qualifier does not set
 FROM. Its model type is inferred by the generic method. `SelectType[Model](qualifier)`
-selects mapped fields without a model value and deliberately ignores per-instance
+selects default mapped fields without a model value and deliberately ignores per-instance
 column providers; Table provides corresponding methods without a qualifier. Ordinary model
 projections share immutable cached identifier expressions, while each builder
 owns its column container. A typed nil pointer is also sufficient for selecting
@@ -1044,6 +1044,43 @@ selected fields by default. `NilNullNestedPointers` instead leaves/resets a
 nested parent to nil when all its selected mapped columns are NULL, which is
 useful for outer joins. Unselected fields are unchanged unless that policy resets
 their parent to nil. Nil struct destinations return errors.
+
+Tag a field with `select=explicit` to omit it from inferred SELECT columns while
+retaining its INSERT and scan mapping:
+
+```go
+type User struct {
+    ID       int64  `sql:"id"`
+    Name     string `sql:"name"`
+    Password string `sql:"password,select=explicit"`
+}
+
+query := db.Select().SelectType[User]().From("users")
+// SELECT id, name FROM users
+
+withPassword := query.Clone().Select("password")
+// SELECT id, name, password FROM users; query still selects only id and name.
+
+qualified := db.Select().SelectStruct(User{}, "u").
+    Select("u.password").FromAlias("users", "u")
+// SELECT u.id, u.name, u.password FROM users AS u
+```
+
+`SelectStruct`, `SelectType`, their Table entry points, and the default
+`Oper.Get`/`Gets`/`CountGets` queries honor this tag. On a nested or embedded
+struct, it applies to all flattened descendant fields. Appending a column
+explicitly with `Select`, `SelectColumns`, aliases, or expressions includes it
+regardless of whether the explicit selection comes before or after model expansion.
+WHERE and ORDER BY references do not add it to the output.
+
+`ColumnProvider` output remains an explicit selection and is not filtered by
+tags. Explicit `*`/`u.*` selections and raw SQL retain their normal meaning;
+this tag controls inferred projections, not database access. An empty inferred
+projection must have other columns appended before Build; it never falls back
+to `*`. The only supported `select` value is `explicit`; malformed or duplicate
+`select` options produce a model metadata error. This option can be combined
+with INSERT options such as `omitempty` and `maxlen` without changing their
+behavior.
 
 Without explicit `Columns`, `Struct` omits zero-valued leaf fields tagged
 `omitempty`/`omitzero`. `Structs` keeps all mapped columns and emits SQL `DEFAULT`

@@ -48,7 +48,8 @@ func (t Table) SelectStruct[T any](s T) *SelectBuilder {
 	return t.Select().SelectStruct(s)
 }
 
-// SelectType selects mapped model fields without constructing a model value.
+// SelectType selects default mapped model fields without constructing a model value.
+// Fields tagged select=explicit require an explicit selection on the returned builder.
 func (t Table) SelectType[T any]() *SelectBuilder {
 	return t.Select().SelectType[T]()
 }

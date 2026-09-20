@@ -13,16 +13,24 @@ import (
 	"github.com/xgfone/go-sqlx/sqltype"
 )
 
-// Parse fixed INSERT options once with the model. Unrelated options retain
-// their existing ignored semantics. Ordinary fields allocate no rule object.
-func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqltype.StringLimit, err error) {
+// fieldOptions contains every supported SQL tag option. Metadata consumers use
+// these parsed values without interpreting the tag again.
+type fieldOptions struct {
+	IgnoreZero     bool
+	SelectExplicit bool
+	StringLimit    *sqltype.StringLimit
+}
+
+// Parse all SQL tag options in one pass when compiling the model. Unrelated
+// options retain their ignored semantics. Ordinary fields allocate no rule object.
+func parseFieldOptions(options string, t reflect.Type) (result fieldOptions, err error) {
 	var seen uint8
 	for options != "" {
 		var option string
 		option, options, _ = strings.Cut(options, ",")
 		option = strings.TrimSpace(option)
 		if option == "omitempty" || option == "omitzero" {
-			omit = true
+			result.IgnoreZero = true
 			continue
 		}
 
@@ -30,6 +38,16 @@ func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqlty
 		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
 		var flag uint8
 		switch key {
+		case "select":
+			if result.SelectExplicit {
+				return fieldOptions{}, errors.New("duplicate select option")
+			}
+			if !hasValue || value != "explicit" {
+				return fieldOptions{}, errors.New("select requires explicit")
+			}
+			result.SelectExplicit = true
+			continue
+
 		case "maxlen":
 			flag = 1
 
@@ -44,19 +62,20 @@ func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqlty
 		}
 
 		if !hasValue || value == "" || seen&flag != 0 {
-			return false, nil, fmt.Errorf("invalid or duplicate %s option", key)
+			return fieldOptions{}, fmt.Errorf("invalid or duplicate %s option", key)
 		}
 
 		seen |= flag
-		if limit == nil {
-			limit = new(sqltype.StringLimit)
+		if result.StringLimit == nil {
+			result.StringLimit = new(sqltype.StringLimit)
 		}
+		limit := result.StringLimit
 
 		switch key {
 		case "maxlen":
 			limit.Max, err = strconv.Atoi(value)
 			if err != nil || limit.Max < 0 {
-				return false, nil, errors.New("maxlen requires a nonnegative integer")
+				return fieldOptions{}, errors.New("maxlen requires a nonnegative integer")
 			}
 
 		case "overflow":
@@ -68,7 +87,7 @@ func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqlty
 				limit.Overflow = sqltype.Truncate
 
 			default:
-				return false, nil, errors.New("overflow requires reject or truncate")
+				return fieldOptions{}, errors.New("overflow requires reject or truncate")
 			}
 
 		case "lenunit":
@@ -80,23 +99,23 @@ func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqlty
 				limit.Unit = sqltype.UTF8Bytes
 
 			default:
-				return false, nil, errors.New("lenunit requires runes or utf8bytes")
+				return fieldOptions{}, errors.New("lenunit requires runes or utf8bytes")
 			}
 		}
 	}
 
-	if limit == nil {
+	if result.StringLimit == nil {
 		return
 	}
 	if seen&1 == 0 {
-		return false, nil, errors.New("overflow and lenunit require maxlen")
+		return fieldOptions{}, errors.New("overflow and lenunit require maxlen")
 	}
 
 	// Explicit length tags operate on string data without invoking or bypassing
 	// a custom driver.Valuer. Pointer chains retain NULL semantics when nil.
 	for {
 		if t.Implements(_valuertype) || reflect.PointerTo(t).Implements(_valuertype) {
-			return false, nil, errors.New("maxlen does not support driver.Valuer fields")
+			return fieldOptions{}, errors.New("maxlen does not support driver.Valuer fields")
 		}
 
 		if t.Kind() != reflect.Pointer {
@@ -107,7 +126,7 @@ func parseInsertOptions(options string, t reflect.Type) (omit bool, limit *sqlty
 	}
 
 	if t.Kind() != reflect.String {
-		return false, nil, errors.New("maxlen requires a string or pointer to string")
+		return fieldOptions{}, errors.New("maxlen requires a string or pointer to string")
 	}
 	return
 }

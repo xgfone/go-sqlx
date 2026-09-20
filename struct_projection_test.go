@@ -72,8 +72,9 @@ func TestProjectionSharesBindingMetadata(t *testing.T) {
 		ID int64 `sql:"id"`
 	}
 	type record struct {
-		Child child  `sql:"child"`
-		Name  string `sql:"name,omitempty"`
+		Child  child  `sql:"child"`
+		Name   string `sql:"name,omitempty"`
+		Secret string `sql:"secret,select=explicit"`
 	}
 
 	typ := reflect.TypeFor[record]()
@@ -94,6 +95,9 @@ func TestProjectionSharesBindingMetadata(t *testing.T) {
 	meta, err := rowbind.Describe(typ)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(meta.Fields()) != 3 || meta.Field("secret") == nil {
+		t.Fatal("default projection must retain the full binding metadata")
 	}
 
 	const count = 16

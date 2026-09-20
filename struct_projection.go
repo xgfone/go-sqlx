@@ -56,11 +56,23 @@ func projectionFor(t reflect.Type) (*modelProjection, error) {
 // Projection expressions are private and immutable. Builders copy only the
 // selectedColumn entries, retaining independent append/reset/clone behavior.
 func structProjection(fields []rowbind.Field) []selectedColumn {
-	columns := make([]selectedColumn, len(fields))
-	exprs := make([]Expression, len(fields))
-	for i, f := range fields {
+	count := 0
+	for _, f := range fields {
+		if !f.SelectExplicit {
+			count++
+		}
+	}
+
+	columns := make([]selectedColumn, 0, count)
+	exprs := make([]Expression, count)
+	for _, f := range fields {
+		if f.SelectExplicit {
+			continue
+		}
+
+		i := len(columns)
 		exprs[i] = Ident(f.Column)
-		columns[i] = selectedColumn{Column: f.Column, Expr: &exprs[i]}
+		columns = append(columns, selectedColumn{Column: f.Column, Expr: &exprs[i]})
 	}
 	return columns
 }

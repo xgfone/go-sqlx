@@ -24,6 +24,10 @@ type Field struct {
 	Indexes    []int
 	IgnoreZero bool
 
+	// SelectExplicit excludes the field only from inferred SELECT projections.
+	// The field remains available for explicit selection, INSERT and scanning.
+	SelectExplicit bool
+
 	// PointerParent reports whether reaching the field crosses a pointer.
 	// It excludes the leaf field and the pointer wrapping the root model.
 	PointerParent bool
@@ -190,7 +194,7 @@ func collectFields(
 			continue
 		}
 
-		omit, limit, err := parseInsertOptions(options, f.Type)
+		opts, err := parseFieldOptions(options, f.Type)
 		if err != nil {
 			return nil, fmt.Errorf("sqlx: field %v.%s: %w", t, f.Name, err)
 		}
@@ -215,6 +219,11 @@ func collectFields(
 				return nil, e
 			}
 
+			if opts.SelectExplicit {
+				for i := range nested {
+					nested[i].SelectExplicit = true
+				}
+			}
 			fields = append(fields, nested...)
 			continue
 		}
@@ -231,10 +240,11 @@ func collectFields(
 			Type:       f.Type,
 			Column:     formatFieldName(prefix, name),
 			Indexes:    indexes,
-			IgnoreZero: omit,
+			IgnoreZero: opts.IgnoreZero,
 
-			StringLimit:   limit,
-			PointerParent: pointerParent,
+			StringLimit:    opts.StringLimit,
+			PointerParent:  pointerParent,
+			SelectExplicit: opts.SelectExplicit,
 
 			scanMode: fieldScanMode(f.Type),
 			setter:   compileFieldSetter(f.Type),
