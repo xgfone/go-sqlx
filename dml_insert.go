@@ -273,13 +273,18 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 	case b.source != nil:
 		source := b.source
 		if afterTarget && len(b.ctes) > 0 {
-			source = source.Clone()
-			source.ctes = append(slices.Clone(b.ctes), source.ctes...)
+			// Rendering only replaces the local CTE list; all other clauses
+			// can share the snapshotted source's read-only storage.
+			merged := *source
+			merged.ctes = slices.Concat(b.ctes, source.ctes)
+			source = &merged
 		}
 
 		if b.hasConflict() && c.Dialect().Grammar().InsertSelectNeedsWhere &&
 			(len(source.wheres) == 0 || len(source.unions) > 0) {
-			source = Select("*").FromSelect(source, "_sqlx_insert").Where(Expr("TRUE").Condition())
+			// This wrapper is local to rendering and cannot mutate its source.
+			source = Select("*").FromSource(Source{table: sqlTable{Query: source, Alias: "_sqlx_insert"}}).
+				Where(Expr("TRUE").Condition())
 		}
 		_ = s.WriteByte(' ')
 		source.writeTo(s, c)

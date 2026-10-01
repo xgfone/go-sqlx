@@ -984,6 +984,10 @@ their validation failures, while unrelated builder errors remain.
 
 Builders are mutable and must not be concurrently mutated. `Clone()` copies
 builder-owned slices; argument objects and custom clause implementations remain shallow.
+Internal read-only rendering can share existing snapshots. Immutable insert-plan
+columns and model field paths are shared; later builder column appends allocate
+independent storage. Caller-owned clause inputs and returned argument/label slices
+still use independent shallow containers.
 Build does not mutate the builder. QueryRow preserves offset and an explicit
 zero limit, restricting a positive/unset limit to at most one and disabling
 WITH TIES.

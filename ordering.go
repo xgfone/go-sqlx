@@ -48,21 +48,20 @@ type SortColumns []SortColumn
 
 func (s SortColumns) SortColumns() []SortColumn { return s }
 
-func cloneSorts(terms []SortColumn) []SortColumn {
-	out := slices.Clone(terms)
-	for i := range out {
-		if out[i].Expr != nil {
-			e := *out[i].Expr
-			out[i].Expr = &e
-		}
-	}
-	return out
-}
-
 func appendSorts(dst []SortColumn, sorters ...Sorter) []SortColumn {
 	for _, sorter := range sorters {
 		if sorter != nil {
-			dst = append(dst, cloneSorts(sorter.SortColumns())...)
+			terms := sorter.SortColumns()
+			dst = slices.Grow(dst, len(terms))
+			for _, term := range terms {
+				// Snapshot caller-owned expression handles directly into dst.
+				// Stored handles are immutable and need no further copies.
+				if term.Expr != nil {
+					e := *term.Expr
+					term.Expr = &e
+				}
+				dst = append(dst, term)
+			}
 		}
 	}
 	return dst

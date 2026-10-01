@@ -342,7 +342,8 @@ func structParents(t reflect.Type, fields []Field) (parents []structParent) {
 
 			if group < 0 {
 				group = len(parents)
-				parents = append(parents, structParent{path: slices.Clone(path)})
+				// Field indexes and parent paths share immutable model metadata.
+				parents = append(parents, structParent{path: path[:len(path):len(path)]})
 			}
 
 			parents[group].columns = append(parents[group].columns, field.Column)

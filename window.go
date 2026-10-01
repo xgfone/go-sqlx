@@ -30,16 +30,24 @@ func (w WindowSpec) BasedOn(name string) WindowSpec {
 
 // PartitionBy adds identifier paths to the partition key.
 func (w WindowSpec) PartitionBy(columns ...string) WindowSpec {
-	w.partitions = slices.Clone(w.partitions)
-	for _, s := range columns {
-		w.partitions = append(w.partitions, operand(s))
+	if len(columns) == 0 {
+		return w
 	}
+	partitions := make([]Expression, len(w.partitions)+len(columns))
+	copy(partitions, w.partitions)
+	for i, s := range columns {
+		partitions[len(w.partitions)+i] = operand(s)
+	}
+	w.partitions = partitions
 	return w
 }
 
 // PartitionByExpr adds expressions to the partition key.
 func (w WindowSpec) PartitionByExpr(exprs ...Expression) WindowSpec {
-	w.partitions = append(slices.Clone(w.partitions), exprs...)
+	if len(exprs) == 0 {
+		return w
+	}
+	w.partitions = slices.Concat(w.partitions, exprs)
 	return w
 }
 
@@ -55,7 +63,9 @@ func (w WindowSpec) OrderByExpr(e Expression, order Order) WindowSpec {
 
 // Sort appends ordering terms, including explicit NULL placement.
 func (w WindowSpec) Sort(sorters ...Sorter) WindowSpec {
-	w.orders = appendSorts(cloneSorts(w.orders), sorters...)
+	// Existing terms are immutable snapshots. Cap the shared slice so an
+	// append allocates independent storage without first cloning it.
+	w.orders = appendSorts(w.orders[:len(w.orders):len(w.orders)], sorters...)
 	return w
 }
 

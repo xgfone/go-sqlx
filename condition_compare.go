@@ -222,8 +222,12 @@ func NotLike[T Operand](left T, pattern any, escape ...string) Condition {
 
 func like[T Operand](left T, pattern any, op string, escape []string) Condition {
 	l := operand(left)
-	escape = slices.Clone(escape)
-	valid := len(escape) <= 1 && (len(escape) == 0 || utf8.RuneCountInString(escape[0]) == 1)
+	hasEscape := len(escape) == 1
+	var escapeValue string
+	if hasEscape {
+		escapeValue = escape[0]
+	}
+	valid := len(escape) <= 1 && (!hasEscape || utf8.RuneCountInString(escapeValue) == 1)
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
 		if !valid {
 			panic("LIKE requires one escape character")
@@ -236,9 +240,9 @@ func like[T Operand](left T, pattern any, op string, escape []string) Condition 
 		_, _ = s.WriteString(op)
 		_ = s.WriteByte(' ')
 		writeValue(s, c, pattern)
-		if len(escape) == 1 {
+		if hasEscape {
 			_, _ = s.WriteString(" ESCAPE ")
-			c.writeArg(s, escape[0])
+			c.writeArg(s, escapeValue)
 		}
 		_ = s.WriteByte(')')
 	})

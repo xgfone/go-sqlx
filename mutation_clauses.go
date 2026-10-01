@@ -5,6 +5,7 @@ package sqlx
 
 import (
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -17,7 +18,7 @@ type mutationLimit struct {
 }
 
 func (p mutationLimit) clone() mutationLimit {
-	p.terms = cloneSorts(p.terms)
+	p.terms = slices.Clone(p.terms)
 	return p
 }
 

@@ -182,7 +182,9 @@ func (p *InsertPlan[T]) AppendTo(b *InsertBuilder, rows []T) (err error) {
 	}
 
 	if len(b.columns) == 0 {
-		b.columns = slices.Clone(p.columns)
+		// Plan columns are immutable. A capped view makes later builder
+		// appends allocate without copying these names on every AppendTo.
+		b.columns = p.columns[:len(p.columns):len(p.columns)]
 	}
 
 	b.explicitColumns = explicit

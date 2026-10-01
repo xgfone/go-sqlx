@@ -94,7 +94,10 @@ func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 
 // Where returns an independent operation scope. Existing scope conditions remain.
 func (o Oper[T]) Where(cs ...Condition) Oper[T] {
-	o.conditions = append(slices.Clone(o.conditions), cs...)
+	if len(cs) == 0 {
+		return o
+	}
+	o.conditions = slices.Concat(o.conditions, cs)
 	return o
 }
 

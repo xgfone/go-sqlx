@@ -206,7 +206,7 @@ func (b *SelectBuilder) Clone() *SelectBuilder {
 	v.groups = slices.Clone(b.groups)
 	v.distinctOn = slices.Clone(b.distinctOn)
 	v.windows = slices.Clone(b.windows)
-	v.orderbys = cloneSorts(b.orderbys)
+	v.orderbys = slices.Clone(b.orderbys)
 	v.ctes = slices.Clone(b.ctes)
 	v.unions = slices.Clone(b.unions)
 	v.lockTables = slices.Clone(b.lockTables)

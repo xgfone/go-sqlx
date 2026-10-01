@@ -43,7 +43,10 @@ func ConflictConstraint(name string) ConflictTarget {
 // Where adds PostgreSQL/SQLite partial-index inference predicates to the target.
 // This is independent of [ConflictClause.Where], which limits updates.
 func (t ConflictTarget) Where(conditions ...Condition) ConflictTarget {
-	t.predicates = append(slices.Clone(t.predicates), conditions...)
+	if len(conditions) == 0 {
+		return t
+	}
+	t.predicates = slices.Concat(t.predicates, conditions)
 	return t
 }
 
@@ -68,7 +71,10 @@ func (t ConflictTarget) DoUpdate(setters ...Updater) ConflictClause {
 
 // Where limits PostgreSQL/SQLite conflict updates. It is invalid with DO NOTHING.
 func (a ConflictClause) Where(conditions ...Condition) ConflictClause {
-	a.wheres = append(slices.Clone(a.wheres), conditions...)
+	if len(conditions) == 0 {
+		return a
+	}
+	a.wheres = slices.Concat(a.wheres, conditions)
 	return a
 }
 
