@@ -33,8 +33,13 @@ func Set[C ~string](column C, value any) Updater {
 	})
 }
 
-// Batch combines assignments. An empty result is an error, including in upserts.
+// Batch combines assignments. It returns nil when no updaters are supplied.
+// A nonempty batch that emits no assignments is an error, including in upserts.
 func Batch(updaters ...Updater) Updater {
+	if len(updaters) == 0 {
+		return nil
+	}
+
 	updaters = slices.Clone(updaters)
 	return updaterWriterFunc(func(buf *strings.Builder, c *BuildContext) {
 		writeUpdaters(buf, c, updaters)

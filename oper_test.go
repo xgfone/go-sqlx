@@ -155,26 +155,41 @@ func TestOperUpdateNil(t *testing.T) {
 		return false, nil
 	})
 
-	for _, o := range []Oper[struct{}]{
-		{}, // A no-op does not require a configured table or database.
-		NewOper[struct{}]("t").WithDB(db).Where(condition),
+	for _, tc := range []struct {
+		name    string
+		updater Updater
+	}{
+		{"nil", nil},
+		{"batch without arguments", Batch()},
+		{"batch with nil slice", Batch([]Updater(nil)...)},
+		{"batch with empty slice", Batch([]Updater{}...)},
 	} {
-		for _, ctx := range []context.Context{context.Background(), ctx} {
-			if err := o.Update(ctx, nil, condition); err != nil {
-				t.Fatal(err)
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.updater != nil {
+				t.Fatal("expected nil updater")
 			}
+			for _, o := range []Oper[struct{}]{
+				{}, // A no-op does not require a configured table or database.
+				NewOper[struct{}]("t").WithDB(db).Where(condition),
+			} {
+				for _, ctx := range []context.Context{context.Background(), ctx} {
+					if err := o.Update(ctx, tc.updater, condition); err != nil {
+						t.Fatal(err)
+					}
 
-			result, err := o.UpdateResult(ctx, nil, condition)
-			if err != nil || result == nil {
-				t.Fatal(result, err)
+					result, err := o.UpdateResult(ctx, tc.updater, condition)
+					if err != nil || result == nil {
+						t.Fatal(result, err)
+					}
+					if n, err := result.LastInsertId(); err != nil || n != 0 {
+						t.Fatal(n, err)
+					}
+					if n, err := result.RowsAffected(); err != nil || n != 0 {
+						t.Fatal(n, err)
+					}
+				}
 			}
-			if n, err := result.LastInsertId(); err != nil || n != 0 {
-				t.Fatal(n, err)
-			}
-			if n, err := result.RowsAffected(); err != nil || n != 0 {
-				t.Fatal(n, err)
-			}
-		}
+		})
 	}
 }
 

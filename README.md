@@ -1275,6 +1275,8 @@ inherit `StructSorter`; use `oper.SelectStruct()` for model-query defaults.
 `Update(ctx, nil, ...)` skips SQL execution and returns nil.
 `UpdateResult(ctx, nil, ...)` also skips execution; both `LastInsertId()` and
 `RowsAffected()` on its result return `(0, nil)`.
+`Batch(updaters...)` returns nil when the slice is empty, so callers can directly
+`return oper.Update(ctx, sqlx.Batch(updaters...), conditions...)` without a length check.
 
 `Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;
