@@ -25,6 +25,12 @@ type txFixture struct {
 	rolled    int
 	committed int
 	query     string
+
+	beginContext context.Context
+	options      driver.TxOptions
+	beginErr     error
+	commitErr    error
+	rollbackErr  error
 }
 
 func (txDriver) Open(string) (driver.Conn, error) { return nil, errors.New("connector required") }
@@ -39,7 +45,19 @@ func (c *txConn) Prepare(string) (driver.Stmt, error) { return nil, errors.New("
 
 func (c *txConn) Close() error { return nil }
 
-func (c *txConn) Begin() (driver.Tx, error) { c.f.begun++; return &txState{c.f}, nil }
+func (c *txConn) Begin() (driver.Tx, error) {
+	c.f.begun++
+	if c.f.beginErr != nil {
+		return nil, c.f.beginErr
+	}
+	return &txState{c.f}, nil
+}
+
+func (c *txConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	c.f.beginContext = ctx
+	c.f.options = opts
+	return c.Begin()
+}
 
 func (c *txConn) ExecContext(_ context.Context, q string, _ []driver.NamedValue) (driver.Result, error) {
 	c.f.execs++
@@ -49,9 +67,9 @@ func (c *txConn) ExecContext(_ context.Context, q string, _ []driver.NamedValue)
 
 type txState struct{ f *txFixture }
 
-func (t *txState) Commit() error { t.f.committed++; return nil }
+func (t *txState) Commit() error { t.f.committed++; return t.f.commitErr }
 
-func (t *txState) Rollback() error { t.f.rolled++; return nil }
+func (t *txState) Rollback() error { t.f.rolled++; return t.f.rollbackErr }
 
 func TestTransactionExecutor(t *testing.T) {
 	f := &txFixture{}

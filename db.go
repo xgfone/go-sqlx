@@ -102,6 +102,33 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 	return nil, errors.New("sqlx: executor cannot begin transactions")
 }
 
+// Transaction starts a transaction with [DB.BeginTx] and calls f with a
+// transaction-bound copy of db, preserving its dialect and binding configuration
+// and applying the configured executor interceptor through [DB.WithExecutor].
+// A nil opts uses the driver's default transaction options.
+//
+// If f returns nil, Transaction commits and returns the commit error. Otherwise,
+// it attempts to roll back and returns f's error. If f panics, it attempts to
+// roll back and lets the panic propagate. Rollback errors are ignored.
+//
+// All transaction operations must use the DB passed to f; existing Table/Oper
+// values must be rebound to it. f must not commit or roll back the transaction
+// itself or use the transaction-bound DB after returning. Nested transactions
+// are not supported by *[sql.Tx]. Use [DB.BeginTx] for manual transaction control.
+func (db *DB) Transaction(ctx context.Context, opts *sql.TxOptions, f func(*DB) error) error {
+	tx, err := db.BeginTx(ctx, opts)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if err := f(db.WithExecutor(tx)); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // Close closes an owning database/connection. Transactions must use
 // [sql.Tx.Commit]/[sql.Tx.Rollback].
 // It uses the first [io.Closer] in the executor's Unwrap chain (see [AsExecutor]).

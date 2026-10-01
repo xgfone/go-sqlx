@@ -764,6 +764,34 @@ Use `db.WithExecutor(tx)` to bind a whole Table/Oper to a transaction, or
 `builder.SetExecutor(tx)` for one statement. `SetDialect` overrides rendering
 independently of execution; nested queries use their outer statement's dialect.
 
+Use `DB.Transaction(ctx, opts, f)` to manage a transaction around a callback.
+Pass nil for default transaction options, or a `*sql.TxOptions` to configure
+isolation and read-only mode. The callback receives a transaction-bound DB with
+the same dialect and binding configuration; the executor interceptor also applies
+to its SQL execution.
+
+```go
+return db.Transaction(ctx, nil, func(txdb *sqlx.DB) error {
+    var account Account
+    if err := txdb.Select("id", "balance").From("accounts").
+        Where(sqlx.Eq("id", accountID)).ForUpdate().
+        QueryRowContext(ctx).Scan(&account); err != nil {
+        return err
+    }
+    // Perform related updates through txdb, then return nil to commit.
+    return nil
+})
+```
+
+`Transaction` commits only when the callback returns nil and returns any commit
+error. On a callback error or panic, it attempts to roll back; the original error
+or panic is preserved and rollback errors are ignored. Use the callback's DB for
+all transaction operations, rebinding existing Table/Oper values with `WithDB`
+as needed. The callback must not commit or roll back manually or use its DB after
+returning. Nested transactions on a `*sql.Tx` executor are unsupported.
+
+Use `DB.BeginTx` for manual transaction control:
+
 ```go
 tx, err := db.BeginTx(ctx, nil)
 if err != nil { return err }
