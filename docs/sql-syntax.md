@@ -22,7 +22,8 @@ arguments, strings are data: use `Ident` to refer to a column.
 ## Conditions and expressions
 
 `Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,
-`In`, `NotIn`, `IsNull`, `IsNotNull`, and `Not` compose with `And` and `Or`.
+`In`, `NotIn`, `InSlice`, `NotInSlice`, `IsNull`, `IsNotNull`, and `Not` compose
+with `And` and `Or`.
 Except for `Not`, their left operand is constrained at compile time to `Operand`
 (`~string | Expression`): an identifier path or an explicit expression. Defined
 string types also name paths; use `Value(v)` for a literal on the left. `Not`
@@ -43,6 +44,25 @@ q := sqlx.Select("id").From("users").Where(
 `In(column)` is false and `NotIn(column)` is true. NULL elements in nonempty
 lists retain SQL's three-valued logic; `NotIn(column, 1, nil)` is not equivalent
 to `Ne(column, 1)`. Lists are variadic: expand `[]any` with `...`.
+
+`InSlice(column, values)` and `NotInSlice(column, values)` accept typed slices
+directly, including `[]int64`, `[]uint64`, `[]int`, `[]uint`, `[]string`, defined
+element types, and `[]Expression`. Matching `Column` methods are also available:
+
+```go
+ids := []int64{1, 2, 3}
+const id sqlx.Column = "id"
+q := sqlx.Select("id").From("users").Where(
+    sqlx.InSlice("id", ids),
+    id.NotInSlice([]int64{4, 5}),
+)
+```
+
+The slice container is copied when the condition is created; elements are not
+deep-cloned. Nil and empty slices have the same false/true semantics as empty
+`In`/`NotIn` lists. NULL elements and expressions follow the same rules as the
+variadic helpers. Pass a typed nil slice, such as `[]int64(nil)`, so the compiler
+can infer the element type.
 
 Use `Tuple(Ident("tenant"), Ident("id"))` for a row operand and `Tuple(7, 42)`
 for row values. Tuple membership checks equal widths and uses a VALUES query on

@@ -73,6 +73,11 @@ Dots in a `Column` separate identifier components; use `Ident("a.b")` for a
 single identifier whose literal name contains a dot. `Scope` builds a qualified
 path; whether it is valid in a particular SQL clause depends on the database.
 
+Use `InSlice("id", ids)` or `UserID.InSlice(ids)` for a typed slice such as
+`[]int64` or `[]string`; `NotInSlice` provides non-membership. These helpers copy
+the slice container and retain the SQL semantics of `In`/`NotIn`, including empty
+lists, NULL elements, and expressions.
+
 Column methods also cover `InQuery`/`NotInQuery`, `Count`, `CountDistinct`, `Sum`,
 `Min`, `Max`, `Avg`, `Cast`, `Coalesce`, and `NullIf`. Aggregate and scalar methods
 return `Expression`, usable with `SelectExpr` and other expression APIs.

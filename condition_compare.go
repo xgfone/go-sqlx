@@ -255,6 +255,20 @@ func NotIn[T Operand](left T, values ...any) Condition {
 	return inList(left, true, values)
 }
 
+// InSlice tests membership in a typed slice, using the same SQL semantics as [In].
+// The input slice is copied; its elements are not deep-cloned.
+// Nil and empty slices are false.
+func InSlice[L Operand, V any](left L, values []V) Condition {
+	return inSlice(left, false, values)
+}
+
+// NotInSlice tests non-membership in a typed slice, using the same SQL semantics
+// as [NotIn]. The input slice is copied; its elements are not deep-cloned.
+// Nil and empty slices are true; NULL elements are not removed.
+func NotInSlice[L Operand, V any](left L, values []V) Condition {
+	return inSlice(left, true, values)
+}
+
 type inCondition struct {
 	values []any
 	left   Expression
@@ -310,6 +324,19 @@ func (n inCondition) writeCondition(s *strings.Builder, c *BuildContext) {
 func inList[T Operand](left T, not bool, values []any) Condition {
 	return inCondition{
 		values: slices.Clone(values),
+		left:   operand(left),
+		not:    not,
+	}
+}
+
+func inSlice[L Operand, V any](left L, not bool, values []V) Condition {
+	args := make([]any, len(values))
+	for i, value := range values {
+		args[i] = value
+	}
+
+	return inCondition{
+		values: args,
 		left:   operand(left),
 		not:    not,
 	}

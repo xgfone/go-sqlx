@@ -77,6 +77,14 @@ func (c Column) In(values ...any) Condition { return In(string(c), values...) }
 // NotIn tests non-membership in a value list. An empty list is true.
 func (c Column) NotIn(values ...any) Condition { return NotIn(string(c), values...) }
 
+// InSlice tests membership in a typed slice, copied at this call.
+// Nil and empty slices are false; elements are not deep-cloned.
+func (c Column) InSlice[V any](values []V) Condition { return InSlice(string(c), values) }
+
+// NotInSlice tests non-membership in a typed slice, copied at this call.
+// Nil and empty slices are true; elements are not deep-cloned.
+func (c Column) NotInSlice[V any](values []V) Condition { return NotInSlice(string(c), values) }
+
 // Set assigns a bound value or [Expression] to the column.
 func (c Column) Set(v any) Updater { return Set(string(c), v) }
 
