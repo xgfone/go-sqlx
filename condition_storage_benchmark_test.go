@@ -17,7 +17,7 @@ var conditionBuilderSink SQLBuilder
 // allocations made by [Eq] and other condition constructors.
 func BenchmarkConditionStorage(b *testing.B) {
 	for _, shape := range []string{"flat", "nils", "groups"} {
-		for _, count := range []int{0, 1, 2, 3, 20, 100, 1000} {
+		for _, count := range []int{0, 1, 2, 3, 4, 8, 20, 100, 1000} {
 			// With no conditions, all shapes have the same empty input.
 			if count == 0 && shape != "flat" {
 				continue

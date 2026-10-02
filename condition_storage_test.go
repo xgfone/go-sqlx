@@ -16,6 +16,59 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
+func TestConditionStorageSmallAppendAllocations(t *testing.T) {
+	for _, shape := range []string{"flat", "nils", "groups"} {
+		for _, count := range []int{0, 1, 2, 3, 4} {
+			t.Run(fmt.Sprintf("%s/%d", shape, count), func(t *testing.T) {
+				conditions := make([]Condition, count)
+				batches := make([][]Condition, count)
+				for i := range conditions {
+					conditions[i] = Eq("id", i)
+					switch shape {
+					case "flat":
+						batches[i] = []Condition{conditions[i]}
+
+					case "nils":
+						batches[i] = []Condition{nil, conditions[i], nil}
+
+					case "groups":
+						batches[i] = []Condition{And(nil, And(conditions[i]), nil)}
+					}
+				}
+
+				// Empty appends must not reserve storage. Up to four effective
+				// terms should share one allocation across separate calls.
+				empty := []Condition{nil, And(), nil}
+				allocs := testing.AllocsPerRun(100, func() {
+					var dst []Condition
+					dst = appendWheres(dst, empty...)
+					for _, batch := range batches {
+						dst = appendWheres(dst, batch...)
+						dst = appendWheres(dst, empty...)
+					}
+					conditionStorageSink = dst
+				})
+
+				want := float64(0)
+				if count > 0 {
+					want = 1
+				}
+				if allocs != want || len(conditionStorageSink) != count {
+					t.Fatalf("got %g allocations and %d terms, want %g and %d",
+						allocs, len(conditionStorageSink), want, count)
+				}
+				if count == 0 {
+					if conditionStorageSink != nil {
+						t.Fatal("empty conditions allocated storage")
+					}
+				} else if !reflect.DeepEqual(conditionStorageSink, conditions) {
+					t.Fatal("conditions changed during append")
+				}
+			})
+		}
+	}
+}
+
 func TestConditionStorageSQLAndSnapshots(t *testing.T) {
 	for _, d := range []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite} {
 		for _, count := range []int{0, 1, 2, 3, 20, 100, 1000} {

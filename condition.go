@@ -26,7 +26,7 @@ type conditionGroup struct {
 // And combines conditions with AND. Nil conditions and empty native AND groups
 // are ignored. The input slice is copied; custom conditions are not deep-cloned.
 func And(conditions ...Condition) Condition {
-	return conditionGroup{appendWheres(nil, conditions...), " AND "}
+	return conditionGroup{appendConditions(nil, conditions, 0), " AND "}
 }
 
 // Or combines conditions with OR, preserving grouping when nested in AND.
@@ -123,6 +123,13 @@ func (g conditionGroup) writeConditions(buf *strings.Builder, c *BuildContext, c
 }
 
 func appendWheres(dst []Condition, conditions ...Condition) []Condition {
+	// Builders commonly add a few conditions in separate calls. Reserve four
+	// slots on the first effective append, then use Go's geometric growth.
+	// A fixed cap on later increments would make repeated appends quadratic.
+	return appendConditions(dst, conditions, 4)
+}
+
+func appendConditions(dst, conditions []Condition, initialCapacity int) []Condition {
 	if len(conditions) == 0 {
 		return dst
 	}
@@ -134,13 +141,15 @@ func appendWheres(dst []Condition, conditions ...Condition) []Condition {
 		}
 
 		if g, ok := condition.(conditionGroup); ok && g.separator == " AND " {
-			return appendWheres(dst, g.conditions...)
+			return appendConditions(dst, g.conditions, initialCapacity)
 		}
+		dst = reserveConditions(dst, 1, initialCapacity)
 		return append(dst, condition)
 	}
 
 	count, flat := countWheres(conditions)
 	if flat {
+		dst = reserveConditions(dst, count, initialCapacity)
 		return append(dst, conditions...)
 	}
 	if count == 0 {
@@ -148,8 +157,15 @@ func appendWheres(dst []Condition, conditions ...Condition) []Condition {
 	}
 
 	start := len(dst)
-	dst = slices.Grow(dst, count)[:start+count]
+	dst = slices.Grow(reserveConditions(dst, count, initialCapacity), count)[:start+count]
 	copyWheres(dst[start:], conditions)
+	return dst
+}
+
+func reserveConditions(dst []Condition, count, initialCapacity int) []Condition {
+	if cap(dst) == 0 && count < initialCapacity {
+		return make([]Condition, 0, initialCapacity)
+	}
 	return dst
 }
 
