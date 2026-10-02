@@ -15,6 +15,8 @@ import (
 // Oper is an optional struct-aware operation layer. It has no default ordering,
 // primary-key convention or implicit filtering. Builders remain independently usable.
 // Configure [Oper.SetDB] before concurrent use, just as for [Table].
+// [Oper.AppendWhere] must not run concurrently with access to the operation.
+// Use [Oper.Clone] before independently appending to a copied operation.
 type Oper[T any] struct {
 	Table Table
 
@@ -94,6 +96,8 @@ func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 
 // Where clones the condition slice and returns an independent operation scope,
 // retaining existing conditions. Use it to preconfigure a reusable Oper.
+// With no conditions it returns o unchanged; use [Oper.Clone] to copy its
+// condition storage. Condition implementations are not deep-cloned.
 // For conditions specific to a SELECT, UPDATE, or DELETE, prefer
 // [SelectBuilder.Where], [UpdateBuilder.Where], or [DeleteBuilder.Where].
 func (o Oper[T]) Where(cs ...Condition) Oper[T] {
@@ -101,6 +105,26 @@ func (o Oper[T]) Where(cs ...Condition) Oper[T] {
 		return o
 	}
 	o.conditions = slices.Concat(o.conditions, cs)
+	return o
+}
+
+// AppendWhere appends conditions in place and returns o. Successive calls are
+// combined with AND. Nil conditions and empty native AND groups are ignored.
+// The input slice is copied; condition implementations are not deep-cloned.
+// Storage is reused when possible; growth can allocate.
+// Ordinary Oper value copies share condition storage. Use [Oper.Clone] before
+// independently appending to a copy. Do not call AppendWhere concurrently with
+// access to the operation.
+func (o *Oper[T]) AppendWhere(cs ...Condition) *Oper[T] {
+	o.conditions = appendWheres(o.conditions, cs...)
+	return o
+}
+
+// Clone returns a copy with independent condition-slice storage, preserving
+// the operation's configuration. Condition implementations, the database,
+// binders, sorters, and callbacks are not deep-cloned.
+func (o Oper[T]) Clone() Oper[T] {
+	o.conditions = slices.Clone(o.conditions)
 	return o
 }
 

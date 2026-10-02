@@ -1282,7 +1282,30 @@ inherit `StructSorter`; use `oper.SelectStruct()` for model-query defaults.
 `Batch(updaters...)` returns nil when the slice is empty, so callers can directly
 `return oper.Update(ctx, sqlx.Batch(updaters...), conditions...)` without a length check.
 
-`Where` creates a copy with appended scope conditions. `Active()` and `Deleted()`
+`Where` creates a copy with appended scope conditions; `Where()` with no arguments
+returns the operation unchanged. For query-specific conditions, prefer the
+SELECT, UPDATE, or DELETE builder's `Where` method.
+
+`AppendWhere` appends scope conditions in place and returns the same operation
+pointer. It ignores nil conditions and empty native AND groups, combines
+successive calls with AND, and reuses condition storage when possible. Growth
+can still allocate. Use `Clone()` to copy the condition slice once before
+repeated appends to an independent scope; condition implementations and other
+configured components remain shared. Ordinary assignments and `With...` methods
+do not separate condition storage. Do not call `AppendWhere` concurrently with
+access to the operation.
+
+```go
+base := sqlx.NewOper[User]("users").WithDB(db).
+    Where(sqlx.Eq("tenant_id", tenantID))
+active := base.Where(sqlx.Eq("enabled", true))
+
+local := base.Clone()
+local.AppendWhere(sqlx.Eq("enabled", true)).
+    AppendWhere(sqlx.Eq("region", region))
+```
+
+`Active()` and `Deleted()` continue to return independent scopes. They
 use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;
 `SoftDelete` uses a configurable `func() Updater`, defaulting to the current time.
 For request-specific update fields, use `Active().Update(ctx, updater, ...)`.
