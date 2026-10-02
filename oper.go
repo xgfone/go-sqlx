@@ -96,6 +96,7 @@ func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 
 // Where clones the condition slice and returns an independent operation scope,
 // retaining existing conditions. Use it to preconfigure a reusable Oper.
+// The copy reserves room for a few subsequent [Oper.AppendWhere] conditions.
 // With no conditions it returns o unchanged; use [Oper.Clone] to copy its
 // condition storage. Condition implementations are not deep-cloned.
 // For conditions specific to a SELECT, UPDATE, or DELETE, prefer
@@ -104,7 +105,7 @@ func (o Oper[T]) Where(cs ...Condition) Oper[T] {
 	if len(cs) == 0 {
 		return o
 	}
-	o.conditions = slices.Concat(o.conditions, cs)
+	o.conditions = cloneOperConditions(o.conditions, cs)
 	return o
 }
 
@@ -123,9 +124,33 @@ func (o *Oper[T]) AppendWhere(cs ...Condition) *Oper[T] {
 // Clone returns a copy with independent condition-slice storage, preserving
 // the operation's configuration. Condition implementations, the database,
 // binders, sorters, and callbacks are not deep-cloned.
+//
+// Nonempty copies reserve room for a few subsequent [Oper.AppendWhere] conditions;
+// empty copies do not reserve storage.
 func (o Oper[T]) Clone() Oper[T] {
-	o.conditions = slices.Clone(o.conditions)
+	o.conditions = cloneOperConditions(o.conditions, nil)
 	return o
+}
+
+func cloneOperConditions(prefix, suffix []Condition) []Condition {
+	const maxInt = int(^uint(0) >> 1)
+	if len(suffix) > maxInt-len(prefix) {
+		panic("Oper condition count overflows int")
+	}
+
+	count := len(prefix) + len(suffix)
+	if count == 0 {
+		return slices.Clone(prefix)
+	}
+
+	// A derived scope often adds request conditions next. Reserve four spare
+	// slots during the independent copy, with one allocation in race builds too.
+	// Later appends retain Go's geometric growth rather than fixed increments.
+	const spareConditions = 4
+	cloned := make([]Condition, count, count+min(spareConditions, maxInt-count))
+	copy(cloned, prefix)
+	copy(cloned[len(prefix):], suffix)
+	return cloned
 }
 
 func (o Oper[T]) ClearWhere() Oper[T] { o.conditions = nil; return o }

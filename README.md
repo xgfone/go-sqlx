@@ -1286,6 +1286,10 @@ inherit `StructSorter`; use `oper.SelectStruct()` for model-query defaults.
 returns the operation unchanged. For query-specific conditions, prefer the
 SELECT, UPDATE, or DELETE builder's `Where` method.
 
+`Where` and `Clone` reserve a small amount of extra capacity when copying a
+nonempty condition slice, so a few subsequent `AppendWhere` conditions can reuse
+the first allocation. Empty clones preserve nilness and do not reserve storage.
+
 `AppendWhere` appends scope conditions in place and returns the same operation
 pointer. It ignores nil conditions and empty native AND groups, combines
 successive calls with AND, and reuses condition storage when possible. Growth
@@ -1310,6 +1314,14 @@ use configurable conditions, defaulting to deleted_at IS NULL / IS NOT NULL;
 `SoftDelete` uses a configurable `func() Updater`, defaulting to the current time.
 For request-specific update fields, use `Active().Update(ctx, updater, ...)`.
 These defaults no longer depend on go-op's zero-date constants.
+The returned scopes also reserve capacity for subsequent `AppendWhere` calls;
+use them directly without an additional `Clone()`:
+
+```go
+local := base.Active()
+local.AppendWhere(sqlx.Eq("enabled", true)).
+    AppendWhere(sqlx.Eq("region", region))
+```
 
 ```go
 oper := sqlx.NewOper[User]("users").

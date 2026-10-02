@@ -4,6 +4,7 @@
 package sqlx
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -97,5 +98,62 @@ func TestOperCloneEmptyConditions(t *testing.T) {
 		clone.AppendWhere(Eq("clone", 2))
 		checkSQL(t, base.Select("id"), `SELECT "id" FROM "t" WHERE ("base" = $1)`, 1)
 		checkSQL(t, clone.Select("id"), `SELECT "id" FROM "t" WHERE ("clone" = $1)`, 2)
+	}
+}
+
+func TestOperScopeAppendAllocations(t *testing.T) {
+	for _, prefix := range []int{0, 1, 3} {
+		initial := make([]Condition, prefix)
+		for i := range initial {
+			initial[i] = Eq("tenant", i)
+		}
+
+		base := NewOper[struct{}]("t").Where(initial...)
+		whereCondition := Eq("scope", 7)
+		conditions := []Condition{Eq("a", 1), Eq("b", 2), Eq("c", 3), Eq("d", 4)}
+		for _, entry := range []string{"where", "clone", "active", "deleted"} {
+			var scope func() Oper[struct{}]
+			retained := prefix
+			switch entry {
+			case "where":
+				scope = func() Oper[struct{}] { return base.Where(whereCondition) }
+				retained++
+
+			case "clone":
+				scope = base.Clone
+
+			case "active":
+				scope = base.Active
+				retained++
+
+			case "deleted":
+				scope = base.Deleted
+				retained++
+			}
+
+			for _, mode := range []string{"bulk", "incremental"} {
+				t.Run(fmt.Sprintf("prefix%d/%s/%s", prefix, entry, mode), func(t *testing.T) {
+					// Scope construction and four appended terms should share one
+					// allocation, including when an empty Clone starts unallocated.
+					allocs := testing.AllocsPerRun(100, func() {
+						o := scope()
+						if mode == "bulk" {
+							o.AppendWhere(conditions...)
+						} else {
+							for _, condition := range conditions {
+								o.AppendWhere(condition)
+							}
+						}
+						operScopeSink = o
+					})
+					if allocs != 1 ||
+						len(operScopeSink.conditions) != retained+len(conditions) ||
+						len(base.conditions) != prefix {
+						t.Fatalf("got %g allocations and %d terms, want 1 and %d",
+							allocs, len(operScopeSink.conditions), retained+len(conditions))
+					}
+				})
+			}
+		}
 	}
 }
