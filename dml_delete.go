@@ -177,6 +177,7 @@ func (b *DeleteBuilder) QueryRowContext(ctx context.Context) Row {
 	return b.binding().row(b.queryStatement(ctx, b))
 }
 
+// Where appends conditions to this builder, combining successive calls with AND.
 func (b *DeleteBuilder) Where(conds ...Condition) *DeleteBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b

@@ -380,6 +380,7 @@ func (b *SelectBuilder) Build() (string, []any, error) { return b.buildStatement
 
 func (b *SelectBuilder) MustBuild() (string, []any) { return mustBuild(b) }
 
+// Where appends conditions to this builder, combining successive calls with AND.
 func (b *SelectBuilder) Where(conds ...Condition) *SelectBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b

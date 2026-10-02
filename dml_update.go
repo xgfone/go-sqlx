@@ -201,6 +201,7 @@ func (b *UpdateBuilder) QueryRowContext(ctx context.Context) Row {
 	return b.binding().row(b.queryStatement(ctx, b))
 }
 
+// Where appends conditions to this builder, combining successive calls with AND.
 func (b *UpdateBuilder) Where(conds ...Condition) *UpdateBuilder {
 	b.mutate(func() { b.wheres = appendWheres(b.wheres, conds...) })
 	return b

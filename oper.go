@@ -92,7 +92,10 @@ func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 	return o
 }
 
-// Where returns an independent operation scope. Existing scope conditions remain.
+// Where clones the condition slice and returns an independent operation scope,
+// retaining existing conditions. Use it to preconfigure a reusable Oper.
+// For conditions specific to a SELECT, UPDATE, or DELETE, prefer
+// [SelectBuilder.Where], [UpdateBuilder.Where], or [DeleteBuilder.Where].
 func (o Oper[T]) Where(cs ...Condition) Oper[T] {
 	if len(cs) == 0 {
 		return o
