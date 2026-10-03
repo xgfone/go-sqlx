@@ -190,6 +190,26 @@ func (o Oper[T]) InsertResult(ctx context.Context, v T) (sql.Result, error) {
 	return o.Table.Insert().Struct(v).ExecContext(ctx)
 }
 
+// InsertBatch inserts rows in one statement, discarding the execution result.
+// It uses [InsertBuilder.Structs] mapping and DEFAULT semantics, even for one row.
+// Empty input does nothing and returns nil.
+// Use [Oper.InsertBatchResult] to retrieve the execution result.
+func (o Oper[T]) InsertBatch(ctx context.Context, rows []T) error {
+	_, err := o.InsertBatchResult(ctx, rows)
+	return err
+}
+
+// InsertBatchResult inserts rows in one statement and returns the execution result.
+// It uses [InsertBuilder.Structs] mapping and DEFAULT semantics, even for one row.
+// Empty input skips execution and returns a result whose [sql.Result.LastInsertId]
+// and [sql.Result.RowsAffected] both return zero without an error.
+func (o Oper[T]) InsertBatchResult(ctx context.Context, rows []T) (sql.Result, error) {
+	if len(rows) == 0 {
+		return zeroResult{}, nil
+	}
+	return o.Table.Insert().Structs(rows).ExecContext(ctx)
+}
+
 type zeroResult struct{}
 
 func (zeroResult) LastInsertId() (int64, error) { return 0, nil }

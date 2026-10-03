@@ -215,6 +215,17 @@ func TestOperMutations(t *testing.T) {
 			runResult: func(o Oper[model]) (sql.Result, error) { return o.InsertResult(ctx, model{3}) },
 		},
 		{
+			name:  "InsertBatch",
+			query: `INSERT INTO "t" ("value") VALUES (?), (?)`,
+			args:  []any{3, 4},
+			run: func(o Oper[model]) error {
+				return o.InsertBatch(ctx, []model{{3}, {4}})
+			},
+			runResult: func(o Oper[model]) (sql.Result, error) {
+				return o.InsertBatchResult(ctx, []model{{3}, {4}})
+			},
+		},
+		{
 			name:  "Update",
 			query: `UPDATE "t" SET "value"=? WHERE (("tenant" = ?) AND ("id" = ?))`,
 			args:  []any{3, 7, 9},

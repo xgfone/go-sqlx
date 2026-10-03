@@ -1257,14 +1257,32 @@ For an existing table, use `table.NewOper[T]()` or
 `table.NewRegisteredOper[T]()`; both preserve its database.
 
 `Oper[T]` has no implicit id column or default ordering. It exposes typed
-Get/Gets, Insert/Update/Delete/SoftDelete, Count/CountGets, Exist, Aggregate, and
-AggregateValue. Insert/Update/Delete/SoftDelete return only error, allowing business
-methods to directly `return oper.Insert(ctx, model)`. Use `InsertResult`, `UpdateResult`,
-`DeleteResult`, or `SoftDeleteResult` for `(sql.Result, error)` when execution
+Get/Gets, Insert/InsertBatch/Update/Delete/SoftDelete, Count/CountGets, Exist, Aggregate,
+and AggregateValue. Insert/InsertBatch/Update/Delete/SoftDelete return only error,
+allowing business methods to directly `return oper.Insert(ctx, model)`.
+Use `InsertResult`, `InsertBatchResult`, `UpdateResult`, `DeleteResult`, or
+`SoftDeleteResult` for `(sql.Result, error)` when execution
 metadata is needed. Count returns int64. CountGets queries the count first,
 then fetches a page if it is positive. It validates pagination before
 querying and does not promise a shared database snapshot without an appropriate
 transaction.
+
+`InsertBatch(ctx, rows)` accepts `[]T` and executes one multi-row INSERT using
+`Structs`; `Oper[User]` accepts `[]User`, while `Oper[*User]` accepts `[]*User`.
+It keeps Structs' DEFAULT semantics for omission-tagged zero values, including
+when the batch has only one row. Nil model pointers and unsupported dialect
+features fail before execution. Like Insert, it does not apply the operation's
+WHERE conditions. Empty or nil slices skip execution and return nil;
+`InsertBatchResult` returns a zero result in that case, without requiring a
+configured database, even with a canceled context. For nonempty input,
+`InsertBatchResult` returns the executor's result unchanged. Batches are not split
+automatically; callers can split large inputs and use a transaction-bound Oper
+when all batches must commit together.
+
+```go
+oper := sqlx.NewOper[User]("users").WithDB(db)
+err := oper.InsertBatch(ctx, []User{{Name: "A"}, {Name: "B"}})
+```
 
 Use `WithStructSorter(sqlx.Column("id").Desc())` to configure model-query ordering.
 `StructSorter` is applied only by `Oper.SelectStruct()` and, through it, `Get`,
