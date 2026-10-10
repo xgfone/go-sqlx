@@ -32,6 +32,10 @@ func (b *SelectBuilder) QueryRowContext(ctx context.Context) Row {
 }
 
 func (c BindConfig) row(rows *sql.Rows, columns []string, err error) Row {
+	if err == nil {
+		c = c.resolved()
+	}
+
 	return Row{
 		err:     err,
 		rows:    rows,

@@ -49,6 +49,10 @@ func (b *SelectBuilder) QueryRowsContext(ctx context.Context) *Rows {
 }
 
 func (c BindConfig) rows(rows *sql.Rows, columns []string, err error) *Rows {
+	if err == nil {
+		c = c.resolved()
+	}
+
 	return &Rows{err: err, config: c, rows: rows, columns: slices.Clone(columns)}
 }
 
@@ -129,12 +133,13 @@ func (r *Rows) SetColumns(columns ...string) *Rows {
 func (r *Rows) hasLabels() bool { return r != nil && r.labels != nil }
 
 // SetBindConfig replaces this result's configuration and returns r.
+// A non-nil ScanOptionsFunc is evaluated immediately and its options are copied.
 func (r *Rows) SetBindConfig(config BindConfig) *Rows {
 	if r.inRawVisit() {
 		return r
 	}
 
-	r.config = config.clone()
+	r.config = config.resolved()
 	r.revision++
 	r.scan.Reset()
 	return r
@@ -147,6 +152,7 @@ func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
 	}
 
 	r.config.ScanOptions = cloneScanOptions(options)
+	r.config.ScanOptionsFunc = nil
 	r.revision++
 	r.scan.Reset()
 	return r

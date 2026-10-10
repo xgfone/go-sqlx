@@ -458,6 +458,32 @@ cursor. `SetBindConfig` copies `TimeLayouts`; `SetBinder` preserves other option
 and nil restores the default registry. `SetExecutor` does not close the previous
 executor. Use `WithExecutor(tx)` for a transaction-specific DB.
 
+For scan policies that become available after package initialization, supply
+`BindConfig.ScanOptionsFunc` alongside or instead of static `ScanOptions`:
+
+```go
+db = db.WithBindConfig(sqlx.BindConfig{
+    ScanOptionsFunc: func() sqlx.ScanOptions {
+        return sqlx.ScanOptions{
+            Location:      time.Local,
+            AllowZeroDate: true,
+        }
+    },
+})
+```
+
+The function replaces the entire static `ScanOptions`, including when it returns
+the zero value. Existing DB, Oper and builder overrides still select the whole
+configuration before resolving the function; scan fields are not merged across
+configuration levels. Configuring or copying these objects does not call the
+function. Each successful query evaluates it once when creating its Row or Rows,
+copies `TimeLayouts`, and keeps that snapshot throughout scanning, binding and
+`NextResultSet`. Queries that fail before creating a usable result do not call it.
+`Rows.SetBindConfig` evaluates a new function immediately and resets scan caches;
+`Rows.SetScanOptions` and `Row.WithScanOptions` replace the snapshot directly.
+The callback is shared and must support concurrent calls. Read an in-memory
+configuration snapshot and synchronize any runtime changes to that configuration.
+
 An explicit positive `Capacity` takes precedence and is not capped. When it is
 zero, a SELECT builder's positive LIMIT (including Pagination/Paginate) supplies
 an initial capacity of `min(Limit, 100)`. Without such a limit, binding uses

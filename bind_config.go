@@ -80,6 +80,18 @@ func (o BindOptions) capacity() int {
 // [RowsBinder]
 // implementations must be safe to share.
 type BindConfig struct {
+	// ScanOptionsFunc supplies the complete scan policy for each successful
+	// query result. When non-nil, it replaces ScanOptions, including with a
+	// zero value.
+	//
+	// Configuring or copying a DB, Oper or builder does not call it. Row and
+	// Rows evaluate it once, copy mutable options, and retain that snapshot.
+	// Setting a result's BindConfig evaluates it immediately.
+	//
+	// The function is shared and must be safe for concurrent calls;
+	// query errors do not invoke it.
+	ScanOptionsFunc func() ScanOptions
+
 	ScanOptions ScanOptions
 	RowsBinder  RowsBinder
 
@@ -92,6 +104,18 @@ type BindConfig struct {
 
 func (c BindConfig) clone() BindConfig {
 	c.ScanOptions = cloneScanOptions(c.ScanOptions)
+	return c
+}
+
+// resolved takes ownership of the effective scan policy for one result.
+// Configuration setters on DBs, operations and builders must use clone instead.
+func (c BindConfig) resolved() BindConfig {
+	if get := c.ScanOptionsFunc; get != nil {
+		c.ScanOptions = get()
+	}
+
+	c.ScanOptions = cloneScanOptions(c.ScanOptions)
+	c.ScanOptionsFunc = nil
 	return c
 }
 
