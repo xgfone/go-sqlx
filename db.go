@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync/atomic"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -56,11 +57,57 @@ type DB struct {
 }
 
 // Open opens a database specified by its database driver name
-// and a driver-specific data source name,
+// and a driver-specific data source name.
+//
+// If driverName is empty, dataSourceName may have the form
+// "[dialect+]driver://dsn". Open removes this prefix and passes dsn unchanged
+// to [DefaultOpener]. Without a dialect prefix, driver also names the registered
+// dialect. With a dialect prefix, only dialect must be registered in this
+// package; driver names the driver used by DefaultOpener.
+//
+// With no driverName or data source prefix, Open uses [dialect.Default] and its
+// Name as the driver name, passing dataSourceName unchanged to DefaultOpener.
+// An empty default driver name returns an error.
+//
+// The remaining dsn must use the driver's native format, including any scheme
+// it requires. For example, "postgres+pgx://postgres://user:pass@host/db" selects
+// the postgres dialect and pgx driver with "postgres://user:pass@host/db" as dsn.
+// A nonempty driverName bypasses prefix parsing.
 func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
-	d := dialect.Get(driverName)
+	var d Dialect
+	dialectName := driverName
+	if driverName == "" {
+		prefix, dsn, ok := strings.Cut(dataSourceName, "://")
+		// A delimiter inside native credentials, paths, or options is not a
+		// metadata prefix. Do not parse or rewrite the native DSN.
+		if ok && !strings.ContainsAny(prefix, ":/@?=()\\") {
+			dialectName, driverName, ok = strings.Cut(prefix, "+")
+			if !ok {
+				driverName = dialectName
+			}
+
+			if dialectName == "" || driverName == "" ||
+				strings.Contains(driverName, "+") ||
+				driverName != strings.TrimSpace(driverName) ||
+				dialectName != strings.TrimSpace(dialectName) {
+				return nil, errors.New("sqlx: invalid [dialect+]driver://dsn prefix")
+			}
+
+			dataSourceName = dsn
+		} else {
+			d = dialect.Default()
+			driverName = d.Name()
+			if strings.TrimSpace(driverName) == "" {
+				return nil, errors.New("sqlx: default dialect has an empty driver name")
+			}
+		}
+	}
+
 	if d == nil {
-		return nil, fmt.Errorf("the dialect '%s' has not been registered", driverName)
+		d = dialect.Get(dialectName)
+		if d == nil {
+			return nil, fmt.Errorf("the dialect '%s' has not been registered", dialectName)
+		}
 	}
 
 	db, err := DefaultOpener(driverName, dataSourceName)

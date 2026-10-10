@@ -801,6 +801,51 @@ bound to a DB retain that DB. Changing the default binder affects subsequent
 bindings without an explicit binder. Prepared bindings and registrations in the
 previous registry remain intact; registrations are not copied to its replacement.
 
+## Opening a database
+
+`Open(driverName, dataSourceName, configs...)` uses the registered dialect for
+`driverName` and passes the driver-specific DSN to `DefaultOpener` (by default,
+`sql.Open`). Import the SQL driver in your application to register it with
+`database/sql`.
+
+When `driverName` is empty, you can prepend `[dialect+]driver://` to the native DSN:
+
+```go
+db, err := sqlx.Open("", "mysql://user:pass@tcp(localhost:3306)/app")
+db, err = sqlx.Open("", "postgres+pgx://host=localhost user=alice dbname=app")
+db, err = sqlx.Open("", "sqlite3://file:app.db?mode=rwc")
+```
+
+`driver://` uses that name for both dialect lookup and the opener's driver.
+`dialect+driver://` looks up the dialect separately, so the driver name need not
+be registered with `dialect`. The dialect controls SQL rendering, including
+placeholders, identifier quoting, pagination, and supported syntax; the driver
+is passed to `DefaultOpener` to open the connection and interpret the native DSN.
+With the default opener, the driver must be registered with `database/sql`.
+Names are case-sensitive registration names; the built-in names are `mysql`,
+`postgres`, `pgx`, `sqlite3`, and `sqlite`.
+
+If neither a driver name nor a metadata prefix is specified, Open uses
+`dialect.Default()`, initially `dialect.MySQL`, and its `Name()` as the driver name.
+The native DSN is passed unchanged, including an empty DSN when supported by the
+driver. Use `dialect.SetDefault` to change the default:
+
+```go
+dialect.SetDefault(dialect.SQLite)
+db, err := sqlx.Open("", "file:app.db?mode=rwc") // Driver: sqlite3.
+```
+
+Calling `dialect.SetDefault` affects subsequent calls to Open that omit both
+driver and prefix; opened DBs keep their explicit dialect. An empty default
+driver name returns an error.
+
+Open strips this metadata prefix and passes the remaining DSN unchanged,
+without parsing or converting credentials, paths, or query parameters. If the
+native DSN is a URL, retain its scheme inside the prefixed string, for example
+`postgres+pgx://postgres://user:pass@localhost:5432/app`. An empty native DSN is
+allowed when the driver supports it. Malformed prefixes and unknown
+dialects return an error. A nonempty `driverName` bypasses prefix parsing.
+
 ## Tables and transactions
 
 `Table` contains a name and a private DB reference. It exposes only table-bound
