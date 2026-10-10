@@ -13,10 +13,12 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// DefaultDB is the default global [DB].
-var DefaultDB = &DB{Dialect: dialect.MySQL}
+// DefaultDB is the default global [DB]. Its nil Dialect uses [dialect.Default]
+// at build time, unless an explicit dialect is assigned.
+var DefaultDB = &DB{}
 
 // DB is the wrapper of the [sql.DB].
+// A nil Dialect uses [dialect.Default] at build time.
 //
 // Set methods mutate the same [DB]; configure it before concurrent use
 // or synchronize changes with all users.
@@ -61,7 +63,7 @@ func getDB(db *DB) *DB {
 }
 
 func getDialect(db *DB) Dialect {
-	if db != nil {
+	if db = getDB(db); db != nil {
 		return resolveDialect(db.Dialect)
 	}
 	return resolveDialect(nil)

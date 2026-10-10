@@ -42,16 +42,8 @@ func Register(name string, d Dialect) error {
 		return fmt.Errorf("dialect: invalid registration name %q", name)
 	}
 
-	if d == nil {
+	if isNilDialect(d) {
 		return errors.New("dialect: nil dialect")
-	}
-
-	switch v := reflect.ValueOf(d); v.Kind() {
-	case reflect.Pointer, reflect.Interface, reflect.Map,
-		reflect.Slice, reflect.Func, reflect.Chan:
-		if v.IsNil() {
-			return errors.New("dialect: nil dialect")
-		}
 	}
 
 	registry.Lock()
@@ -80,4 +72,19 @@ func Get(name string) Dialect {
 	d := registry.values[name]
 	registry.RUnlock()
 	return d
+}
+
+func isNilDialect(d Dialect) bool {
+	if d == nil {
+		return true
+	}
+
+	switch v := reflect.ValueOf(d); v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map,
+		reflect.Slice, reflect.Func, reflect.Chan:
+		return v.IsNil()
+
+	default:
+		return false
+	}
 }

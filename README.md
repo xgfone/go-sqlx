@@ -748,6 +748,30 @@ forces the safe side to allocate per row. Named wrappers and unknown raw cursor
 implementations retain conservative behavior. Implementing `sql.Scanner` alone
 does not promise that receiver addresses or buffers can be reused.
 
+## Default dialect
+
+`dialect.Default()` returns the current default dialect, initially
+`dialect.MySQL`. Use `dialect.SetDefault(d)` to change it:
+
+```go
+dialect.SetDefault(dialect.SQLite)
+q := sqlx.DefaultDB.Select("id").From("users")
+```
+
+`Default()` and `SetDefault(d)` are safe for concurrent use. `SetDefault` panics
+for nil or typed nil and leaves the previous value intact, so `Default()` always
+returns a non-nil dialect. The selected instance is retained, including version
+and capability overrides; it does not need a dialect registration.
+
+`DefaultDB` starts with a nil `Dialect`, which inherits `dialect.Default()` at
+build time. All builders and DBs without an explicit dialect use this same
+default. Changing the default affects their next build, including builders
+created before the change. A builder's `SetDialect` takes precedence over its
+DB's dialect; an unbound builder uses `DefaultDB`. An explicitly configured DB
+dialect takes precedence over the default. Existing build contexts and compiled
+templates retain the dialect captured when they were created. Each build uses
+one dialect snapshot, including while the default changes concurrently.
+
 ## Tables and transactions
 
 `Table` contains a name and a private DB reference. It exposes only table-bound

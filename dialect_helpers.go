@@ -17,11 +17,7 @@ func resolveDialect(d Dialect) Dialect {
 		return d
 	}
 
-	if DefaultDB != nil && DefaultDB.Dialect != nil {
-		return DefaultDB.Dialect
-	}
-
-	return dialect.MySQL
+	return dialect.Default()
 }
 
 func quotePath(d Dialect, name string) string {
