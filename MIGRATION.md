@@ -3,6 +3,30 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## Default configuration accessors
+
+`DefaultConfigs`, `DefaultDB`, and `DefaultMixRowsBinder` are now getter functions.
+Replace variable reads with calls and assignments with the corresponding setters:
+
+| Previous usage                         | Replacement                              |
+| -------------------------------------- | ---------------------------------------- |
+| `sqlx.DefaultConfigs`                  | `sqlx.DefaultConfigs()`                  |
+| `sqlx.DefaultConfigs = configs`        | `sqlx.SetDefaultConfigs(configs...)`     |
+| `sqlx.DefaultDB`                       | `sqlx.DefaultDB()`                       |
+| `sqlx.DefaultDB = db`                  | `sqlx.SetDefaultDB(db)`                  |
+| `sqlx.DefaultMixRowsBinder`            | `sqlx.DefaultMixRowsBinder()`            |
+| `sqlx.DefaultMixRowsBinder = registry` | `sqlx.SetDefaultMixRowsBinder(registry)` |
+
+For example, register a binder with
+`sqlx.DefaultMixRowsBinder().RegisterType[*[]Model](binder)`.
+All getter/setter pairs support concurrent use. DB and binder setters reject nil
+without changing the current default, and both getters always return non-nil
+pointers. Config slices are copied on input and output; nil/empty lists disable
+default configuration, but nil config functions panic and retain the previous
+defaults. Use `sqlx.SetDefaultDB(&sqlx.DB{})` for a DB that inherits the default dialect.
+Replacing a registry does not copy its registrations or alter prepared bindings.
+Shared DB fields still require synchronization when mutated.
+
 ## String limits in SQL struct tags
 
 `Struct`, `Structs` and `InsertPlan.AppendTo` recognize `maxlen=N`,
@@ -471,7 +495,7 @@ accesses to use the following names:
 keep the same types, defaults, and behavior. `SetBinder` and `WithBinder` also
 retain their names.
 
-`DefaultMixRowsBinder`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
+`DefaultMixRowsBinder()`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
 or independent concurrent registry. Register the exact pointer destination type
 with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar
 slices and the following maps are registered in the default registry:

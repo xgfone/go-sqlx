@@ -49,7 +49,7 @@ func NewOper[T any](name string) Oper[T] {
 // binder in [DefaultMixRowsBinder] unless that destination is already registered.
 // The registration is shared by all queries using the default registry.
 func NewRegisteredOper[T any](name string) Oper[T] {
-	DefaultMixRowsBinder.registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
+	DefaultMixRowsBinder().registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
 	return NewOper[T](name)
 }
 

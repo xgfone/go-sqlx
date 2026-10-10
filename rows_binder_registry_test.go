@@ -55,7 +55,7 @@ func TestDefaultMapRegistrations(t *testing.T) {
 			}
 
 			for _, value := range []any{reflect.Zero(reflect.TypeOf(want)).Interface(), want} {
-				_, err := DefaultMixRowsBinder.Prepare(value, BindOptions{})
+				_, err := DefaultMixRowsBinder().Prepare(value, BindOptions{})
 				if !IsUnsupportedTypeError(err) {
 					t.Fatalf("map by value must be unsupported: %v", err)
 				}
@@ -245,12 +245,12 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	}
 
 	global, local, late := newBinder(), newBinder(), newBinder()
-	previous := DefaultMixRowsBinder.RegisterType[*[]model](global)
+	previous := DefaultMixRowsBinder().RegisterType[*[]model](global)
 	t.Cleanup(func() {
 		if previous == nil {
-			DefaultMixRowsBinder.Unregister(dstType)
+			DefaultMixRowsBinder().Unregister(dstType)
 		} else {
-			DefaultMixRowsBinder.Register(dstType, previous)
+			DefaultMixRowsBinder().Register(dstType, previous)
 		}
 	})
 
@@ -263,7 +263,7 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	})
 
 	o := NewRegisteredOper[model]("t").WithDB(db)
-	if DefaultMixRowsBinder.Get(dstType) != global {
+	if DefaultMixRowsBinder().Get(dstType) != global {
 		t.Fatal("NewRegisteredOper overwrote a user registration")
 	}
 
@@ -295,7 +295,7 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	}
 
 	var got []model
-	DefaultMixRowsBinder.RegisterType[*[]model](late)
+	DefaultMixRowsBinder().RegisterType[*[]model](late)
 	err := o.SelectStruct().QueryRowsContext(ctx).Bind(&got)
 	if err != nil || late.calls.Load() != 1 {
 		t.Fatal("existing Oper did not observe subsequent registration", err)

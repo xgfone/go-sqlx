@@ -9,13 +9,37 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// DefaultDB is the default global [DB]. Its nil Dialect uses [dialect.Default]
-// at build time, unless an explicit dialect is assigned.
-var DefaultDB = &DB{}
+var defaultDB atomic.Value
+
+func init() {
+	SetDefaultDB(&DB{})
+}
+
+// DefaultDB returns the default global [DB], initially an empty DB whose nil
+// Dialect uses [dialect.Default] at build time. It is never nil.
+//
+// DefaultDB and [SetDefaultDB] are safe for concurrent use. The returned DB is
+// shared; see [DB] for synchronization requirements when changing its fields.
+func DefaultDB() *DB {
+	return defaultDB.Load().(*DB)
+}
+
+// SetDefaultDB sets the DB returned by [DefaultDB]. It panics if db is nil,
+// leaving the default unchanged. Existing builders bound to a DB retain it;
+// unbound builders use the current default on their next lookup.
+//
+// SetDefaultDB and [DefaultDB] are safe for concurrent use.
+func SetDefaultDB(db *DB) {
+	if db == nil {
+		panic("sqlx: nil default DB")
+	}
+	defaultDB.Store(db)
+}
 
 // DB is the wrapper of the [sql.DB].
 // A nil Dialect uses [dialect.Default] at build time.
@@ -45,7 +69,7 @@ func Open(driverName, dataSourceName string, configs ...Config) (*DB, error) {
 	}
 
 	if configs == nil {
-		configs = DefaultConfigs
+		configs = DefaultConfigs()
 	}
 	for _, c := range configs {
 		c(db)
@@ -59,7 +83,7 @@ func getDB(db *DB) *DB {
 	if db != nil {
 		return db
 	}
-	return DefaultDB
+	return DefaultDB()
 }
 
 func getDialect(db *DB) Dialect {

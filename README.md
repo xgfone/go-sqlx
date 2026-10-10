@@ -397,7 +397,7 @@ Pairs and indexes reject duplicate keys by default. `DuplicateKeyFirst` and
 `DuplicateKeyLast` select which value survives. The policy also applies to
 collisions with existing entries during `Merge`.
 
-The shared `DefaultMixRowsBinder` is used when no binder is explicitly selected.
+The shared `DefaultMixRowsBinder()` is used when no binder is explicitly selected.
 It registers common scalar slices and the maps listed above at initialization;
 `NewRegisteredOper[T]` registers the typed `[]T` binder once unless a registration
 already exists. Other slices use the reflection fallback. Applications can register
@@ -405,7 +405,7 @@ a reusable binder for the exact destination type, including named slice and map 
 
 ```go
 func init() {
-    sqlx.DefaultMixRowsBinder.RegisterType[*map[int64]User](usersBinder)
+    sqlx.DefaultMixRowsBinder().RegisterType[*map[int64]User](usersBinder)
 }
 
 // Subsequent queries can use the registration without a local override.
@@ -755,7 +755,7 @@ does not promise that receiver addresses or buffers can be reused.
 
 ```go
 dialect.SetDefault(dialect.SQLite)
-q := sqlx.DefaultDB.Select("id").From("users")
+q := sqlx.DefaultDB().Select("id").From("users")
 ```
 
 `Default()` and `SetDefault(d)` are safe for concurrent use. `SetDefault` panics
@@ -763,22 +763,52 @@ for nil or typed nil and leaves the previous value intact, so `Default()` always
 returns a non-nil dialect. The selected instance is retained, including version
 and capability overrides; it does not need a dialect registration.
 
-`DefaultDB` starts with a nil `Dialect`, which inherits `dialect.Default()` at
-build time. All builders and DBs without an explicit dialect use this same
+`DefaultDB()` initially returns a DB with a nil `Dialect`, which inherits
+`dialect.Default()` at build time. All builders and DBs without an explicit dialect use this same
 default. Changing the default affects their next build, including builders
 created before the change. A builder's `SetDialect` takes precedence over its
-DB's dialect; an unbound builder uses `DefaultDB`. An explicitly configured DB
+DB's dialect; an unbound builder uses `DefaultDB()`. An explicitly configured DB
 dialect takes precedence over the default. Existing build contexts and compiled
 templates retain the dialect captured when they were created. Each build uses
 one dialect snapshot, including while the default changes concurrently.
+
+## Default configuration
+
+`DefaultConfigs()`, `DefaultDB()`, and `DefaultMixRowsBinder()` return the current
+defaults. Replace them through their corresponding setters:
+
+```go
+sqlx.SetDefaultConfigs(sqlx.MaxOpenConns(16), sqlx.MaxIdleConns(4))
+sqlx.SetDefaultDB(db)
+sqlx.SetDefaultMixRowsBinder(registry)
+```
+
+All three getter/setter pairs are safe for concurrent use. `DefaultDB()` and
+`DefaultMixRowsBinder()` return shared, non-nil pointers. Their setters reject
+nil with a panic and retain the previous value. Configure DB fields before
+concurrent use, or synchronize changes with its users; binder registrations can
+be changed concurrently through the registry methods.
+
+`DefaultConfigs()` returns a copy of the configuration slice, and
+`SetDefaultConfigs(configs...)` copies its input. Config functions themselves are
+shared and must support concurrent calls on different databases. A nil config
+function panics without changing the defaults. `SetDefaultConfigs()` (or an
+expanded nil/empty slice) disables default configuration. The initial configs
+are `MaxOpenConns(0)` and `ConnMaxIdleTime(5 * time.Minute)`.
+
+Changing the default DB affects subsequent default lookups; builders already
+bound to a DB retain that DB. Changing the default binder affects subsequent
+bindings without an explicit binder. Prepared bindings and registrations in the
+previous registry remain intact; registrations are not copied to its replacement.
 
 ## Tables and transactions
 
 `Table` contains a name and a private DB reference. It exposes only table-bound
 `Insert`, `Update`, `Delete`, `Select`, `SelectStruct`, and `SelectType` entry points.
 `SetDB` supports initializing predeclared tables/operations; `WithDB` returns a
-copy. `GetDB` returns the effective DB, falling back to `DefaultDB`.
-Configure mutable defaults and DB references before concurrent use.
+copy. `GetDB` returns the effective DB, falling back to `DefaultDB()`.
+Configure DB fields and Table/Oper DB references before concurrent use, or
+synchronize changes with their users.
 
 `DB` combines a dialect with an `Executor`, which accepts `*sql.DB`, `*sql.Tx`,
 and `*sql.Conn`. Table retains `*DB` to access both. There is no combined Database

@@ -30,7 +30,7 @@ func TestBuildersUseCurrentDefaultDialect(t *testing.T) {
 			"UPDATE `users` SET `id`=?", `UPDATE "users" SET "id"=$1`},
 		{"delete", Delete().From("users").Where(Eq("id", 7)),
 			"DELETE FROM `users` WHERE (`id` = ?)", `DELETE FROM "users" WHERE ("id" = $1)`},
-		{"DefaultDB", DefaultDB.Select("id").From("users").Where(Eq("id", 7)), mysqlSelect, postgresSelect},
+		{"DefaultDB", DefaultDB().Select("id").From("users").Where(Eq("id", 7)), mysqlSelect, postgresSelect},
 		{"zero DB", new(DB).Select("id").From("users").Where(Eq("id", 7)), mysqlSelect, postgresSelect},
 		{"table", NewTable("users").Select("id").Where(Eq("id", 7)), mysqlSelect, postgresSelect},
 		{"oper", NewOper[struct{}]("users").Select("id").Where(Eq("id", 7)), mysqlSelect, postgresSelect},
@@ -51,13 +51,13 @@ func TestBuildersUseCurrentDefaultDialect(t *testing.T) {
 }
 
 func TestDefaultDialectPrecedence(t *testing.T) {
-	previous, previousDB := dialect.Default(), DefaultDB
+	previous, previousDB := dialect.Default(), DefaultDB()
 	t.Cleanup(func() {
 		dialect.SetDefault(previous)
-		DefaultDB = previousDB
+		SetDefaultDB(previousDB)
 	})
 	dialect.SetDefault(dialect.Postgres)
-	DefaultDB = &DB{Dialect: dialect.MySQL}
+	SetDefaultDB(&DB{Dialect: dialect.MySQL})
 
 	// Unbound builders use the global DB's explicit dialect. A bound DB with
 	// no dialect inherits dialect.Default rather than another DB's dialect.
@@ -65,13 +65,13 @@ func TestDefaultDialectPrecedence(t *testing.T) {
 	checkSQL(t, new(DB).Select("id").Where(Eq("id", 7)), `SELECT "id" WHERE ("id" = $1)`, 7)
 	checkSQL(t, (&DB{Dialect: dialect.SQLite}).Select("id").Where(Eq("id", 7)),
 		`SELECT "id" WHERE ("id" = ?)`, 7)
-	checkSQL(t, DefaultDB.Select("id").Where(Eq("id", 7)).SetDialect(dialect.Postgres),
+	checkSQL(t, DefaultDB().Select("id").Where(Eq("id", 7)).SetDialect(dialect.Postgres),
 		`SELECT "id" WHERE ("id" = $1)`, 7)
 	if got := NewBuildContext(nil).Dialect(); got != dialect.Postgres {
 		t.Fatal("a standalone context did not use dialect.Default", got)
 	}
 
-	DefaultDB = nil
+	SetDefaultDB(&DB{})
 	checkSQL(t, Select("id").Where(Eq("id", 7)), `SELECT "id" WHERE ("id" = $1)`, 7)
 }
 
@@ -102,16 +102,16 @@ func TestCapturedDefaultDialect(t *testing.T) {
 }
 
 func TestBuildersConcurrentDefaultDialect(t *testing.T) {
-	previous, previousDB := dialect.Default(), DefaultDB
+	previous, previousDB := dialect.Default(), DefaultDB()
 	t.Cleanup(func() {
 		dialect.SetDefault(previous)
-		DefaultDB = previousDB
+		SetDefaultDB(previousDB)
 	})
-	DefaultDB = &DB{}
+	SetDefaultDB(&DB{})
 	dialect.SetDefault(dialect.MySQL)
 	queries := []SQLBuilder{
 		Select("id").From("users").Where(Eq("id", 7)),
-		DefaultDB.Select("id").From("users").Where(Eq("id", 7)),
+		DefaultDB().Select("id").From("users").Where(Eq("id", 7)),
 		new(DB).Select("id").From("users").Where(Eq("id", 7)),
 	}
 	dialects := []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite,

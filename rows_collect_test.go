@@ -74,9 +74,9 @@ func TestCollectHonorsBinderSelection(t *testing.T) {
 			rows.SetBinder(binder)
 
 		case "default":
-			old := DefaultMixRowsBinder
-			DefaultMixRowsBinder = registry
-			defer func() { DefaultMixRowsBinder = old }()
+			old := DefaultMixRowsBinder()
+			SetDefaultMixRowsBinder(registry)
+			defer SetDefaultMixRowsBinder(old)
 			rows.SetBinder(nil)
 		}
 

@@ -216,7 +216,7 @@ func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 
 	binder := r.config.RowsBinder
 	if binder == nil {
-		binder = DefaultMixRowsBinder
+		binder = DefaultMixRowsBinder()
 	}
 
 	if nilBindingValue(binder) {

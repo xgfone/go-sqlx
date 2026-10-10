@@ -22,7 +22,7 @@ func TestOperConstructorRegistration(t *testing.T) {
 	}
 
 	dstType := reflect.TypeFor[*[]model]()
-	t.Cleanup(func() { DefaultMixRowsBinder.Unregister(dstType) })
+	t.Cleanup(func() { DefaultMixRowsBinder().Unregister(dstType) })
 	db := bindTestDB(t, &bindFixture{
 		columns: []string{"id"},
 		values:  [][]driver.Value{{int64(7)}},
@@ -40,7 +40,7 @@ func TestOperConstructorRegistration(t *testing.T) {
 	}
 	for _, constructor := range constructors {
 		t.Run(constructor.name, func(t *testing.T) {
-			DefaultMixRowsBinder.Unregister(dstType)
+			DefaultMixRowsBinder().Unregister(dstType)
 			o := constructor.create()
 			if o.Table != table || o.GetDB() != db {
 				t.Fatal("constructor lost table or database")
@@ -48,12 +48,12 @@ func TestOperConstructorRegistration(t *testing.T) {
 			if o.SoftCondition == nil || o.DeletedCondition == nil || o.SoftDeleteUpdater == nil {
 				t.Fatal("constructor lost soft-delete defaults")
 			}
-			if binder := DefaultMixRowsBinder.Get(dstType); constructor.register {
+			if binder := DefaultMixRowsBinder().Get(dstType); constructor.register {
 				if _, ok := binder.(typedSliceRowsBinder[[]model, model]); !ok {
 					t.Fatal("missing typed model binder")
 				}
 				constructor.create()
-				if DefaultMixRowsBinder.Get(dstType) != binder {
+				if DefaultMixRowsBinder().Get(dstType) != binder {
 					t.Fatal("constructor replaced existing binder")
 				}
 			} else if binder != nil {
@@ -64,14 +64,14 @@ func TestOperConstructorRegistration(t *testing.T) {
 			if err != nil || len(got) != 1 || got[0].ID != 7 {
 				t.Fatal("model query failed", got, err)
 			}
-			if !constructor.register && DefaultMixRowsBinder.Get(dstType) != nil {
+			if !constructor.register && DefaultMixRowsBinder().Get(dstType) != nil {
 				t.Fatal("query registered a binder")
 			}
 
 			custom := &countingRowsBinder{delegate: NewSliceRowsBinder[[]model]()}
-			DefaultMixRowsBinder.Register(dstType, custom)
+			DefaultMixRowsBinder().Register(dstType, custom)
 			constructor.create()
-			if DefaultMixRowsBinder.Get(dstType) != custom {
+			if DefaultMixRowsBinder().Get(dstType) != custom {
 				t.Fatal("constructor overwrote a user registration")
 			}
 		})

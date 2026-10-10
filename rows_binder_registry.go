@@ -6,6 +6,7 @@ package sqlx
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,15 +20,36 @@ type MixRowsBinder struct{ types sync.Map }
 
 func NewMixRowsBinder() *MixRowsBinder { return &MixRowsBinder{} }
 
-// DefaultMixRowsBinder is the shared default for collection binding.
+var defaultMixRowsBinder atomic.Value
+
+func init() {
+	SetDefaultMixRowsBinder(newDefaultMixRowsBinder())
+}
+
+// DefaultMixRowsBinder returns the shared default for collection binding.
+// It is never nil.
 //
 // Common scalar slices, two-column maps and map sets are registered at
 // initialization; [NewRegisteredOper] registers its model slice unless the exact
 // destination is already registered. Use [MixRowsBinder.Register] for custom map semantics.
 //
-// Configure this variable before use; use the registry methods for concurrent
-// changes rather than reassigning it.
-var DefaultMixRowsBinder = newDefaultMixRowsBinder()
+// DefaultMixRowsBinder and [SetDefaultMixRowsBinder] are safe for concurrent use.
+func DefaultMixRowsBinder() *MixRowsBinder {
+	return defaultMixRowsBinder.Load().(*MixRowsBinder)
+}
+
+// SetDefaultMixRowsBinder sets the registry returned by [DefaultMixRowsBinder].
+// It panics if binder is nil, leaving the default unchanged. Changes affect
+// subsequent bindings without an explicit binder, not bindings already prepared.
+// Existing registrations stay with their registry and are not copied.
+//
+// SetDefaultMixRowsBinder and [DefaultMixRowsBinder] are safe for concurrent use.
+func SetDefaultMixRowsBinder(binder *MixRowsBinder) {
+	if binder == nil {
+		panic("sqlx: nil default mix rows binder")
+	}
+	defaultMixRowsBinder.Store(binder)
+}
 
 var builtinSliceBinders = map[reflect.Type]RowsBinder{
 	reflect.TypeFor[*[]int]():           NewSliceRowsBinder[[]int](),
