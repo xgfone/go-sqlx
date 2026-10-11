@@ -5,7 +5,6 @@ package sqlx
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"testing"
 )
@@ -18,12 +17,9 @@ func BenchmarkCollect(b *testing.B) {
 		b.Run(mode, func(b *testing.B) {
 			for _, count := range []int{0, 1, 20, 100, 1000} {
 				b.Run(fmt.Sprintf("rows_%d", count), func(b *testing.B) {
-					f := &bindFixture{columns: []string{"id", "a", "b", "c", "d", "e", "f", "g"}}
+					f := &bindFixture{columns: performanceColumns}
 					for i := range count {
-						f.values = append(f.values, []driver.Value{
-							int64(i), int64(1), int64(2), int64(3),
-							int64(4), int64(5), int64(6), int64(7),
-						})
+						f.values = append(f.values, performanceValues(i))
 					}
 
 					config := BindConfig{Capacity: count}

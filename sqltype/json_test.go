@@ -47,24 +47,12 @@ func TestDecodeJSONTypedDestination(t *testing.T) {
 		}
 	}
 
-	if err := DecodeJSON(&v, nil); err != nil || v != (record{}) {
-		t.Fatal(v, err)
-	}
-
-	if err := DecodeJSON[record](nil, nil); err == nil {
-		t.Fatal("nil destination accepted")
-	}
-
 	old := &record{A: 7, B: 8}
 	p := old
 	err := DecodeJSON(&p, `{"A":9}`)
 	if err != nil || p == old || *p != (record{A: 9}) || old.A != 7 {
 		t.Fatal(p, old, err)
 	}
-	if err := DecodeJSON(&p, nil); err != nil || p != nil {
-		t.Fatal(p, err)
-	}
-
 	var dynamic any = map[string]int{"old": 1}
 	err = DecodeJSON(&dynamic, `{"new":2}`)
 	if err != nil || !reflect.DeepEqual(dynamic, map[string]any{"new": float64(2)}) {

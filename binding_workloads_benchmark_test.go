@@ -24,6 +24,16 @@ type performanceRecord struct {
 	G  int64 `sql:"g"`
 }
 
+// Shared wide-row fixtures keep binding and collection benchmarks comparable.
+var performanceColumns = []string{"id", "a", "b", "c", "d", "e", "f", "g"}
+
+func performanceValues(i int) []driver.Value {
+	return []driver.Value{
+		int64(i), int64(1), int64(2), int64(3),
+		int64(4), int64(5), int64(6), int64(7),
+	}
+}
+
 // Each query uses [database/sql] and fresh output storage. Fixtures are built
 // outside the timed loop. The configured binders are shared across queries.
 func BenchmarkBindingWorkloads(b *testing.B) {
@@ -44,19 +54,15 @@ func BenchmarkBindingWorkloads(b *testing.B) {
 	}{
 		{
 			"wide",
-			[]string{"id", "a", "b", "c", "d", "e", "f", "g"},
-			func(i int) []driver.Value {
-				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
-			},
+			performanceColumns,
+			performanceValues,
 			BindConfig{RowsBinder: SliceRowsBinder{}},
 			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
 		{
 			"wide_typed",
-			[]string{"id", "a", "b", "c", "d", "e", "f", "g"},
-			func(i int) []driver.Value {
-				return []driver.Value{int64(i), int64(1), int64(2), int64(3), int64(4), int64(5), int64(6), int64(7)}
-			},
+			performanceColumns,
+			performanceValues,
 			BindConfig{RowsBinder: NewSliceRowsBinder[[]performanceRecord]()},
 			func(r *Rows) error { var v []performanceRecord; return r.Bind(&v) },
 		},
@@ -177,13 +183,13 @@ func BenchmarkBindingSetup(b *testing.B) {
 		}
 	})
 
-	b.Run("manual", func(b *testing.B) {
-		f := &bindFixture{columns: []string{"id", "a"}}
-		for i := range 1000 {
-			f.values = append(f.values, []driver.Value{int64(i), int64(i)})
-		}
+	f := &bindFixture{columns: []string{"id", "a"}}
+	for i := range 1000 {
+		f.values = append(f.values, []driver.Value{int64(i), int64(i)})
+	}
+	db := bindTestDB(b, f)
 
-		db := bindTestDB(b, f)
+	b.Run("manual", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			var v performanceRecord
@@ -203,12 +209,6 @@ func BenchmarkBindingSetup(b *testing.B) {
 	})
 
 	b.Run("with_scan", func(b *testing.B) {
-		f := &bindFixture{columns: []string{"id", "a"}}
-		for i := range 1000 {
-			f.values = append(f.values, []driver.Value{int64(i), int64(i)})
-		}
-
-		db := bindTestDB(b, f)
 		b.ReportAllocs()
 		for b.Loop() {
 			var v performanceRecord

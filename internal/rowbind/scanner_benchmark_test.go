@@ -9,15 +9,10 @@ import (
 	"testing"
 )
 
-type benchmarkScanCloser interface {
-	Scan(...any) error
-	Close() error
-}
-
 // Keep the production [Mapping.Scanner] factory opaque to measure interface dispatch.
 //
 //go:noinline
-func benchmarkScanInterface(m Mapping, source RowScanFunc) benchmarkScanCloser {
+func benchmarkScanInterface(m Mapping, source RowScanFunc) testScanCloser {
 	s, err := m.Scanner(source)
 	if err != nil {
 		panic(err)
@@ -29,7 +24,7 @@ func benchmarkScanInterface(m Mapping, source RowScanFunc) benchmarkScanCloser {
 // function path.
 //
 //go:noinline
-func benchmarkSourceScanInterface(m Mapping, source ScanSource) benchmarkScanCloser {
+func benchmarkSourceScanInterface(m Mapping, source ScanSource) testScanCloser {
 	return m.sourceScanner(source)
 }
 
@@ -50,7 +45,7 @@ func BenchmarkCursorScannerRowScan(b *testing.B) {
 			args := []any{dst}
 			for _, mode := range []string{"scan_only", "cursor", "source"} {
 				b.Run(mode, func(b *testing.B) {
-					var scanner benchmarkScanCloser
+					var scanner testScanCloser
 					switch mode {
 					case "scan_only":
 						scanner = benchmarkSourceScanInterface(mapping, &mappingScanSource{source: cursor.source})

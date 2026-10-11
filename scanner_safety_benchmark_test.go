@@ -198,11 +198,11 @@ func BenchmarkScannerSafety(b *testing.B) {
 
 	b.Run("custom_bytes", func(b *testing.B) {
 		for _, count := range []int{1, 1000} {
-			benchmarkScannerSafety[consumeOwnedBytes](b, make([]byte, 256), count)
+			benchmarkScannerSafety[ownedBytesScanner](b, make([]byte, 256), count)
 		}
 	})
 
 	b.Run("custom_large_bytes", func(b *testing.B) {
-		benchmarkScannerSafety[consumeOwnedBytes](b, make([]byte, 1<<20), 20)
+		benchmarkScannerSafety[ownedBytesScanner](b, make([]byte, 1<<20), 20)
 	})
 }

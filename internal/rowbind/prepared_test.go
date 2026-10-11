@@ -15,6 +15,11 @@ import (
 // This source deliberately has no Next or Err methods.
 type mappingScanSource struct{ source RowScanFunc }
 
+type testScanCloser interface {
+	Scan(...any) error
+	Close() error
+}
+
 func (s *mappingScanSource) Scan(dst ...any) error {
 	return s.source(dst...)
 }
@@ -325,6 +330,13 @@ func TestCheckedScanRejectsInvalidScopeBeforeCallback(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatal("scope error precedence changed", err)
 			}
+			if tc.run != nil {
+				// Scanner must reject the same invalid mapping/source combinations.
+				scanner, err := tc.mapping.Scanner(tc.source)
+				if scanner != nil || err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatal("invalid scanner scope accepted", scanner, err)
+				}
+			}
 		})
 	}
 }
@@ -368,142 +380,90 @@ func TestCheckedCursorRejectsInvalidScopeBeforeCallback(t *testing.T) {
 	}
 }
 
-func TestScannerRejectsInvalidScope(t *testing.T) {
-	mapping, err := Prepare([]string{"value"}, []reflect.Type{reflect.TypeFor[*int64]()}, ScanOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := func(...any) error { t.Fatal("invalid scope reached source"); return nil }
-	for _, tc := range []struct {
-		name    string
-		mapping Mapping
-		source  RowScanFunc
-	}{
-		{"nil_source", mapping, nil},
-		{"zero_mapping", Mapping{}, source},
-		{"all_invalid", Mapping{}, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			scanner, err := tc.mapping.Scanner(tc.source)
-			if scanner != nil || err == nil {
-				t.Fatal("invalid scanner scope accepted", scanner, err)
-			}
-		})
-	}
-}
-
 func TestScannerCloseReleasesReferencesAfterFailure(t *testing.T) {
 	mapping, err := Prepare([]string{"value"}, []reflect.Type{reflect.TypeFor[*int64]()}, ScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, panicValue := range []bool{false, true} {
-		cause := errors.New("source failure")
-		scanner, err := mapping.Scanner(func(...any) error {
-			if panicValue {
-				panic(cause)
-			}
-			return cause
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		var dst int64
-		func() {
-			defer func() {
-				got := recover()
-				if (panicValue && got != cause) || (!panicValue && got != nil) {
-					t.Error(got)
-				}
-			}()
-			defer scanner.Close() //nolint:errcheck
-			if err := scanner.Scan(&dst); !errors.Is(err, cause) {
-				t.Error(err)
-			}
-		}()
-
-		if scanner.plan != nil || scanner.source != nil {
-			t.Fatal("closed scanner retained execution references")
-		}
-
-		// Both failure modes leave subsequent pool borrowers functional.
-		next, err := mapping.Scanner(scanCacheSource(int64(42)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := scanner.Scan(&dst); err == nil {
-			t.Fatal("closed scanner became usable after another preparation")
-		}
-		if err := next.Scan(&dst); err != nil || dst != 42 {
-			t.Fatal(dst, err)
-		}
-		if err := next.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestSourceScannerCloseReleasesReferencesAfterFailure(t *testing.T) {
-	mapping, err := Prepare([]string{"value"}, []reflect.Type{reflect.TypeFor[*int64]()}, ScanOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, mode := range []string{"error", "panic"} {
-		t.Run(mode, func(t *testing.T) {
-			calls := 0
-			cause := errors.New("source failed")
-			source := &mappingScanSource{source: func(...any) error {
-				calls++
-				if mode == "panic" {
-					panic(cause)
-				}
-				return cause
-			}}
-			scanner := mapping.sourceScanner(source)
-			saved := scanner.Scan
-			var got int64
-			var caught any
-			var err error
-			func() {
-				defer func() { caught = recover() }()
-				defer scanner.Close() //nolint:errcheck
-				err = saved(&got)
-			}()
-
-			if (mode == "panic" && caught != cause) ||
-				(mode == "error" && (caught != nil || err != cause)) {
-				t.Fatal("source failure lost", err, caught)
-			}
-			if calls != 1 || scanner.plan != nil || scanner.source != nil {
-				t.Fatal("closed scanner retained execution references", calls)
-			}
-
-			// A second Close cannot release scratch owned by a subsequent scope.
-			next := mapping.sourceScanner(&mappingScanSource{source: scanCacheSource(int64(42))})
-			defer next.Close() //nolint:errcheck
-			if err := scanner.Close(); err != nil {
+	for _, entry := range []struct {
+		name string
+		open func(*testing.T, RowScanFunc) testScanCloser
+	}{
+		{"function", func(t *testing.T, source RowScanFunc) testScanCloser {
+			t.Helper()
+			scanner, err := mapping.Scanner(source)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := saved(&got); err == nil || calls != 1 || got != 0 {
-				t.Fatal("expired scanner revived", err, calls, got)
-			}
-			if err := next.Scan(&got); err != nil || got != 42 {
-				t.Fatal("later scope failed", got, err)
-			}
-		})
+			return scanner
+		}},
+		{"source", func(_ *testing.T, source RowScanFunc) testScanCloser {
+			return mapping.sourceScanner(&mappingScanSource{source: source})
+		}},
+	} {
+		for _, mode := range []string{"error", "panic"} {
+			t.Run(entry.name+"/"+mode, func(t *testing.T) {
+				calls := 0
+				cause := errors.New("source failed")
+				scanner := entry.open(t, func(...any) error {
+					calls++
+					if mode == "panic" {
+						panic(cause)
+					}
+					return cause
+				})
+				saved := scanner.Scan
+				var dst int64
+				var caught any
+				var err error
+				func() {
+					defer func() { caught = recover() }()
+					defer scanner.Close() //nolint:errcheck
+					err = saved(&dst)
+				}()
+
+				if (mode == "panic" && caught != cause) ||
+					(mode == "error" && (caught != nil || err != cause)) || calls != 1 {
+					t.Fatal("source failure lost", err, caught, calls)
+				}
+
+				var released bool
+				switch scanner := scanner.(type) {
+				case *PreparedScanner:
+					released = scanner.plan == nil && scanner.source == nil
+				case *preparedSourceScanner:
+					released = scanner.plan == nil && scanner.source == nil
+				}
+				if !released {
+					t.Fatal("closed scanner retained execution references")
+				}
+
+				// Repeated Close and retained method values cannot disturb a new borrower.
+				next := entry.open(t, scanCacheSource(int64(42)))
+				defer next.Close() //nolint:errcheck
+				if err := scanner.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := saved(&dst); err == nil || calls != 1 || dst != 0 {
+					t.Fatal("expired scanner revived", err, calls, dst)
+				}
+				if err := next.Scan(&dst); err != nil || dst != 42 {
+					t.Fatal("later scope failed", dst, err)
+				}
+				if err := next.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
 	}
 
-	var closed *preparedSourceScanner
-	if err := closed.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := closed.Scan(new(int64)); err == nil {
-		t.Fatal("nil source scanner is not closed")
-	}
-	if err := new(preparedSourceScanner).Scan(new(int64)); err == nil {
-		t.Fatal("zero source scanner is not closed")
+	for _, closed := range []testScanCloser{(*preparedSourceScanner)(nil), new(preparedSourceScanner)} {
+		if err := closed.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := closed.Scan(new(int64)); err == nil {
+			t.Fatal("nil or zero source scanner is not closed")
+		}
 	}
 }

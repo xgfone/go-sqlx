@@ -89,13 +89,8 @@ func benchmarkRowConsumption[T any](
 func BenchmarkRowConsumption(b *testing.B) {
 	b.Run("wide", func(b *testing.B) {
 		benchmarkRowConsumption(b,
-			[]string{"id", "a", "b", "c", "d", "e", "f", "g"},
-			func(i int) []driver.Value {
-				return []driver.Value{
-					int64(i), int64(1), int64(2), int64(3),
-					int64(4), int64(5), int64(6), int64(7),
-				}
-			},
+			performanceColumns,
+			performanceValues,
 			func(v performanceRecord) int64 { return v.ID },
 		)
 	})

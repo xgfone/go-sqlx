@@ -21,33 +21,18 @@ func (v *selfRetainingScanner) Scan(src any) error {
 	return nil
 }
 
-func TestMapScannerDestinationsRemainIndependent(t *testing.T) {
-	for _, pairs := range []bool{false, true} {
-		var binder RowsBinder
-		var rows *Rows
-		if pairs {
-			binder = NewMapPairsBinder[map[int64]selfRetainingScanner]()
-			rows = bindTestDB(t, &bindFixture{
-				columns: []string{"id", "value"},
-				values: [][]driver.Value{
-					{int64(1), int64(1)},
-					{int64(2), int64(2)},
-				},
-			}).QueryRowsContext(context.Background(), "q")
-		} else {
-			binder = NewMapIndexBinder[map[int64]selfRetainingScanner](func(v selfRetainingScanner) int64 {
-				return v.Value
-			})
-			rows, _ = bindTestRows(t, int64(1), int64(2))
-		}
+func TestMapIndexScannerDestinationsRemainIndependent(t *testing.T) {
+	binder := NewMapIndexBinder[map[int64]selfRetainingScanner](func(v selfRetainingScanner) int64 {
+		return v.Value
+	})
 
-		var got map[int64]selfRetainingScanner
-		if err := rows.SetBinder(binder).Bind(&got); err != nil {
-			t.Fatal(err)
-		}
-		if got[1].Self == got[2].Self || got[1].Self.Value != 1 || got[2].Self.Value != 2 {
-			t.Fatalf("scanner destinations reused: %+v", got)
-		}
+	var got map[int64]selfRetainingScanner
+	rows, _ := bindTestRows(t, int64(1), int64(2))
+	if err := rows.SetBinder(binder).Bind(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got[1].Self == got[2].Self || got[1].Self.Value != 1 || got[2].Self.Value != 2 {
+		t.Fatalf("scanner destinations reused: %+v", got)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"testing"
 )
@@ -230,82 +231,54 @@ func TestSliceReplaceAppendAndFailureAtomicity(t *testing.T) {
 }
 
 func TestMapModesAndDuplicatePolicies(t *testing.T) {
-	for _, policy := range []DuplicateKeyPolicy{
-		DuplicateKeyReject,
-		DuplicateKeyFirst,
-		DuplicateKeyLast,
+	for _, mode := range []struct {
+		name      string
+		bind      func(*Rows, any) error
+		values    [][]driver.Value
+		initial   map[string]int
+		wantFirst map[string]int
+		wantLast  map[string]int
+	}{
+		{"replace", (*Rows).Bind, [][]driver.Value{{"a", int64(1)}, {"a", int64(2)}},
+			map[string]int{"old": 9}, map[string]int{"a": 1}, map[string]int{"a": 2}},
+		{"merge", (*Rows).Merge, [][]driver.Value{{"a", int64(1)}, {"b", int64(2)}},
+			map[string]int{"a": 7}, map[string]int{"a": 7, "b": 2}, map[string]int{"a": 1, "b": 2}},
 	} {
-		f := &bindFixture{
-			columns: []string{"key", "value"},
-			values: [][]driver.Value{
-				{"a", int64(1)},
-				{"a", int64(2)},
-			},
-		}
+		for _, policy := range []DuplicateKeyPolicy{
+			DuplicateKeyReject,
+			DuplicateKeyFirst,
+			DuplicateKeyLast,
+		} {
+			t.Run(fmt.Sprintf("%s/policy_%d", mode.name, policy), func(t *testing.T) {
+				f := &bindFixture{columns: []string{"key", "value"}, values: mode.values}
+				rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
+					SetBindConfig(BindConfig{
+						RowsBinder:    NewMapPairsBinder[map[string]int](),
+						DuplicateKeys: policy,
+					})
 
-		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-			SetBindConfig(BindConfig{
-				RowsBinder:    NewMapPairsBinder[map[string]int](),
-				DuplicateKeys: policy,
+				original := maps.Clone(mode.initial)
+				got := original
+				err := mode.bind(rows, &got)
+				if policy == DuplicateKeyReject {
+					collision, ok := errors.AsType[*DuplicateKeyError](err)
+					if !ok || collision.Key != "a" || !reflect.DeepEqual(got, mode.initial) {
+						t.Fatal(got, err)
+					}
+				} else {
+					want := mode.wantFirst
+					if policy == DuplicateKeyLast {
+						want = mode.wantLast
+					}
+					if err != nil || !reflect.DeepEqual(got, want) {
+						t.Fatal(got, err)
+					}
+				}
+				// The original map remains unchanged even after a successful commit.
+				if !reflect.DeepEqual(original, mode.initial) {
+					t.Fatal("modified aliased map", original)
+				}
 			})
-
-		got := map[string]int{"old": 9}
-		alias := got
-		err := rows.Bind(&got)
-		if policy == DuplicateKeyReject {
-			collision, ok := errors.AsType[*DuplicateKeyError](err)
-			if !ok || collision.Key != "a" || !reflect.DeepEqual(got, alias) {
-				t.Fatal(got, err)
-			}
-		} else {
-			want := 1
-			if policy == DuplicateKeyLast {
-				want = 2
-			}
-			if err != nil || !reflect.DeepEqual(got, map[string]int{"a": want}) {
-				t.Fatal(got, err)
-			}
-		}
-
-		if !reflect.DeepEqual(alias, map[string]int{"old": 9}) {
-			t.Fatal("modified aliased map")
-		}
-	}
-
-	for _, policy := range []DuplicateKeyPolicy{
-		DuplicateKeyReject,
-		DuplicateKeyFirst,
-		DuplicateKeyLast,
-	} {
-		f := &bindFixture{
-			columns: []string{"key", "value"},
-			values:  [][]driver.Value{{"a", int64(1)}, {"b", int64(2)}},
-		}
-		rows := bindTestDB(t, f).QueryRowsContext(context.Background(), "q").
-			SetBindConfig(BindConfig{
-				RowsBinder:    NewMapPairsBinder[map[string]int](),
-				DuplicateKeys: policy,
-			})
-
-		original := map[string]int{"a": 7}
-		got := original
-		err := rows.Merge(&got)
-		if policy == DuplicateKeyReject {
-			if err == nil || len(got) != 1 {
-				t.Fatal(got, err)
-			}
-		} else {
-			want := 7
-			if policy == DuplicateKeyLast {
-				want = 1
-			}
-			if err != nil || !reflect.DeepEqual(got, map[string]int{"a": want, "b": 2}) {
-				t.Fatal(got, err)
-			}
-		}
-
-		if !reflect.DeepEqual(original, map[string]int{"a": 7}) {
-			t.Fatal(original)
 		}
 	}
 

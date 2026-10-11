@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -110,4 +111,16 @@ func bindTestRows(t testing.TB, values ...driver.Value) (*Rows, *bindFixture) {
 		f.values = append(f.values, []driver.Value{value})
 	}
 	return bindTestDB(t, f).QueryRowsContext(context.Background(), "SELECT value"), f
+}
+
+// A retaining Scanner owns its copy under database/sql's borrowing contract.
+type ownedBytesScanner []byte
+
+func (v *ownedBytesScanner) Scan(src any) error {
+	if src == nil {
+		*v = nil
+	} else {
+		*v = slices.Clone(src.([]byte))
+	}
+	return nil
 }

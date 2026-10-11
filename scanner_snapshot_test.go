@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"reflect"
-	"slices"
 	"testing"
 	"time"
 
@@ -18,18 +17,6 @@ type snapshotScanFunc func(any) error
 
 func (f snapshotScanFunc) Scan(src any) error { return f(src) }
 
-// A retaining [sql.Scanner] owns its copy under the [database/sql] borrowing contract.
-type snapshotRetainedBytes []byte
-
-func (v *snapshotRetainedBytes) Scan(src any) error {
-	if src == nil {
-		*v = nil
-	} else {
-		*v = slices.Clone(src.([]byte))
-	}
-	return nil
-}
-
 func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 	for _, mode := range []string{
 		"Row", "Pointer", "Struct", "NullableParent", "WithScanRaw", "ScanRow",
@@ -38,14 +25,14 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 			r, f := bindTestRows(t, []byte("snapshot"))
 			defer r.Close() //nolint:errcheck
 
-			var got snapshotRetainedBytes
+			var got ownedBytesScanner
 			var err error
 			switch mode {
 			case "Row":
 				err = NewRow(r.rows, nil, nil).Scan(&got)
 
 			case "Pointer":
-				var v *snapshotRetainedBytes
+				var v *ownedBytesScanner
 				err = NewRow(r.rows, nil, nil).Scan(&v)
 				if v != nil {
 					got = *v
@@ -53,7 +40,7 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 
 			case "Struct":
 				var v struct {
-					Value snapshotRetainedBytes `sql:"value"`
+					Value ownedBytesScanner `sql:"value"`
 				}
 				err = NewRow(r.rows, nil, nil).Scan(&v)
 				got = v.Value
@@ -61,7 +48,7 @@ func TestScannerOwnedBytesScalarEntryPoints(t *testing.T) {
 			case "NullableParent":
 				var v struct {
 					Child *struct {
-						Value snapshotRetainedBytes `sql:"value"`
+						Value ownedBytesScanner `sql:"value"`
 					} `sql:"child"`
 				}
 				err = NewRow(r.rows, nil, nil).WithColumns("child_value").
@@ -154,7 +141,7 @@ func TestBorrowedScannerBytesSurviveCancellationDuringScan(t *testing.T) {
 
 func TestScannerOwnedBytesNullableParentAcrossRows(t *testing.T) {
 	type child struct {
-		Value snapshotRetainedBytes `sql:"value"`
+		Value ownedBytesScanner `sql:"value"`
 	}
 	type record struct {
 		Child *child `sql:"child"`
@@ -215,7 +202,7 @@ func TestScannerOwnedBytesAndDecodedResultsSurviveReuse(t *testing.T) {
 		Strings sqltype.JSON[[]string] `sql:"strings"`
 		Number  sqltype.JSON[int]      `sql:"number"`
 		Float   sqltype.JSON[float64]  `sql:"float"`
-		Bytes   snapshotRetainedBytes  `sql:"bytes"`
+		Bytes   ownedBytesScanner      `sql:"bytes"`
 	}
 	want := []record{
 		{
@@ -223,14 +210,14 @@ func TestScannerOwnedBytesAndDecodedResultsSurviveReuse(t *testing.T) {
 			sqltype.JSON[[]string]{V: []string{"one", "two"}},
 			sqltype.JSON[int]{V: 42},
 			sqltype.JSON[float64]{V: 1.25},
-			snapshotRetainedBytes("first"),
+			ownedBytesScanner("first"),
 		},
 		{
 			sqltype.JSON[string]{V: "other"},
 			sqltype.JSON[[]string]{V: []string{"six", "ten"}},
 			sqltype.JSON[int]{V: 17},
 			sqltype.JSON[float64]{V: 2.5},
-			snapshotRetainedBytes("other"),
+			ownedBytesScanner("other"),
 		},
 	}
 

@@ -39,11 +39,14 @@ func TestMapPairsRetainingKeyAndValue(t *testing.T) {
 		case "value":
 			var got map[int64]selfRetainingScanner
 			err := rows.SetBinder(NewMapPairsBinder[map[int64]selfRetainingScanner]()).Bind(&got)
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || len(got) != 2 {
+				t.Fatal(got, err)
 			}
 			for k, v := range got {
 				check(v, k*11)
+			}
+			if got[1].Self == got[2].Self {
+				t.Fatal("scanner destinations reused")
 			}
 
 		case "both":

@@ -17,29 +17,18 @@ import (
 
 type consumePanicValue struct{ Data []byte }
 
-type consumeOwnedBytes []byte
-
-func (v *consumeOwnedBytes) Scan(src any) error {
-	if src == nil {
-		*v = nil
-	} else {
-		*v = slices.Clone(src.([]byte))
-	}
-	return nil
-}
-
 func TestConsumeRowsCapturedResultsOwnTheirBytes(t *testing.T) {
 	type model struct {
 		ID       int64             `sql:"id"`
-		First    consumeOwnedBytes `sql:"first"`
 		Ordinary []byte            `sql:"ordinary"`
-		Last     consumeOwnedBytes `sql:"last"`
+		First    ownedBytesScanner `sql:"first"`
+		Last     ownedBytesScanner `sql:"last"`
 	}
 
 	for _, count := range []int{0, 1, 20, 100, 1000} {
 		for _, mode := range []string{"into", "visit", "visit_stop"} {
 			t.Run(fmt.Sprintf("%s/rows_%d", mode, count), func(t *testing.T) {
-				f := &bindFixture{columns: []string{"id", "first", "ordinary", "last"}}
+				f := &bindFixture{columns: []string{"id", "ordinary", "first", "last"}}
 
 				var want []model
 				for i := range count {
@@ -111,7 +100,7 @@ func TestConsumeRowsCustomBytesConcurrentQueries(t *testing.T) {
 	for range 8 {
 		wg.Go(func() {
 			for range 4 {
-				got, err := db.QueryRowsContext(context.Background(), "q").CollectInto([]consumeOwnedBytes(nil))
+				got, err := db.QueryRowsContext(context.Background(), "q").CollectInto([]ownedBytesScanner(nil))
 				if err != nil || len(got) != 2 || string(got[0]) != "first" || string(got[1]) != "last" {
 					t.Error("query capture storage was shared", got, err)
 				}
@@ -344,8 +333,8 @@ func TestVisitCancellationOnEarlyStop(t *testing.T) {
 func TestConsumeRowsCustomCancellationPreservesOwnedResults(t *testing.T) {
 	type model struct {
 		Trigger consumeCancelValue `sql:"trigger"`
+		Custom  ownedBytesScanner  `sql:"custom"`
 		Data    []byte             `sql:"data"`
-		Custom  consumeOwnedBytes  `sql:"custom"`
 	}
 	for _, mode := range []string{"into", "visit"} {
 		t.Run(mode, func(t *testing.T) {

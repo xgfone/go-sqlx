@@ -10,6 +10,16 @@ import (
 )
 
 func TestBatchEmptyComposition(t *testing.T) {
+	for _, empty := range []Updater{
+		Batch(),
+		Batch([]Updater(nil)...),
+		Batch([]Updater{}...),
+	} {
+		if empty != nil {
+			t.Fatal("empty batch must return nil")
+		}
+	}
+
 	empty := Batch()
 	checkSQL(t, Update().Table("t").Set(empty, Set("a", 1), empty),
 		"UPDATE `t` SET `a`=?", 1)
