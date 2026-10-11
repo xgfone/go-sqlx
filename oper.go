@@ -66,7 +66,6 @@ func (o Oper[T]) WithStructSorter(s Sorter) Oper[T] { o.StructSorter = s; return
 
 // WithBindConfig overrides the [DB] binding configuration for this operation.
 func (o Oper[T]) WithBindConfig(config BindConfig) Oper[T] {
-	config = config.clone()
 	o.bindConfig = &config
 	return o
 }

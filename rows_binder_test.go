@@ -70,13 +70,15 @@ func TestUnsupportedTypeError(t *testing.T) {
 }
 
 func TestComposeRowsBinders(t *testing.T) {
-	binder := ComposeRowsBinders(
+	binders := []RowsBinder{
 		NewSliceRowsBinder[[]int8](),
 		NewMapIndexBinder[map[string]int8](func(v int8) string {
 			return fmt.Sprint(v)
 		}),
 		SliceRowsBinder{},
-	)
+	}
+	binder := ComposeRowsBinders(binders...)
+	binders[1] = nil // The composition owns its candidate list.
 
 	var got map[string]int8
 	rows, _ := bindTestRows(t, int64(1), int64(2), int64(3))

@@ -44,7 +44,7 @@ func (b chunkedSliceRowsBinder[S, T]) Prepare(dst any, options BindOptions) (Row
 		return nil, errors.New("sqlx: chunked slices require mapped struct elements")
 	}
 
-	mapping, err := rowbind.Prepare(options.Columns, []reflect.Type{reflect.TypeFor[*T]()}, options.ScanOptions)
+	mapping, err := options.prepareMapping([]reflect.Type{reflect.TypeFor[*T]()})
 	if err != nil {
 		return nil, err
 	}

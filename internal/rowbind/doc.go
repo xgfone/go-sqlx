@@ -17,19 +17,21 @@
 // [Mapping.WithScan] lends private scan plans to trusted synchronous operations.
 // [Mapping.WithCheckedScan] adds per-call type and lifetime checks for public
 // callbacks, using a [PreparedScanner] internally to own and release its scratch.
-// [ScanState] reuses private preparation and scratch until the owner resets or
-// closes its result; [ScanStruct] and [ScanColumnsToStruct] borrow scratch for a
-// single call. Scanning clears
-// destination references even on failure or panic; pooled plans also release
-// configuration. [Metadata] and mappings may be shared concurrently and must not
-// be modified.
+// [Mapping.WithCheckedCursor] keeps the cursor's [ScanSource] directly in a
+// private scope handle.
+// [Mapping.WithPreparedScan] and [Mapping.WithPreparedSource] skip entry checks
+// for callers that have already validated the scope; both retain per-call type
+// and lifetime checks. [ScanState] reuses private preparation and scratch until
+// the owner resets or closes its result; [ScanStruct] and [ScanColumnsToStruct]
+// borrow scratch for a single call. Scanning clears destination references even
+// on failure or panic; pooled plans also release configuration. [Metadata] and
+// mappings may be shared concurrently and must not be modified.
 //
-// Every Scan(dst ...any) error method (see [Cursor.Scan]) and matching callback borrows its
-// destination
-// slice only for the call. Retaining that slice or a subslice requires a clone.
-// Cloning the slice does not extend the lifetime of temporary scanner adapters
-// or driver-owned buffers. Prepared scanners still own their plans until
-// [PreparedScanner.Close].
+// Every Scan(dst ...any) error method (see [Cursor.Scan]) and matching callback
+// borrows its destination slice only for the call. Retaining that slice or a
+// subslice requires a clone. Cloning the slice does not extend the lifetime of
+// temporary scanner adapters or driver-owned buffers. Prepared scanners still
+// own their plans until [PreparedScanner.Close].
 //
 // Scalar and struct scans use the same conversion rules. [ScanOptions] and
 // [GeneralScanner] are aliased by the root package to preserve its public entry

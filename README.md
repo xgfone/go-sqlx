@@ -445,7 +445,7 @@ db = db.WithBindConfig(sqlx.BindConfig{
 
 Use `SetBindConfig` on a builder or Rows, `WithBindConfig` on an Oper,
 `Rows.SetScanOptions`, or `Row.WithScanOptions` for a local override. Configurations replace the
-whole prior configuration and copy `TimeLayouts`. Capacity and scan policies
+whole prior configuration by value and share immutable `TimeLayouts`. Capacity and scan policies
 remain per-configuration; the binder registry is shared. `WithExecutor` preserves
 the DB configuration. Builder `Clone` and `Reset` preserve its explicit override.
 
@@ -454,9 +454,29 @@ return its pointer. Their `With...` counterparts return a copy. Configure a shar
 DB before concurrent use, or synchronize changes with all users. Existing
 builders without explicit overrides use the DB's current configuration and
 executor when executed; existing Row/Rows results retain their configuration and
-cursor. `SetBindConfig` copies `TimeLayouts`; `SetBinder` preserves other options,
+cursor. `SetBindConfig` shares immutable `TimeLayouts`; `SetBinder` preserves other options,
 and nil restores the default registry. `SetExecutor` does not close the previous
 executor. Use `WithExecutor(tx)` for a transaction-specific DB.
+
+`ScanOptions.TimeLayouts` is shared without copying by configuration setters and
+getters, query results, binders, and prepared mappings. Once supplied to sqlx,
+its backing array must remain immutable while any of these retains it. This
+applies to every holder, including the original caller and custom wrappers.
+Do not assign elements, copy into, clear, sort, or append to the shared slice.
+Make a private copy before changing layouts, including after `Prepare` returns
+or before an unsupported candidate returns an error:
+
+```go
+config := db.BindConfig() // Option values copy; TimeLayouts shares immutable storage.
+config.ScanOptions.TimeLayouts = slices.Clone(config.ScanOptions.TimeLayouts)
+config.ScanOptions.TimeLayouts = append(config.ScanOptions.TimeLayouts, "02/01/2006")
+db.SetBindConfig(config)
+```
+
+Replacing a field or slice header on a local `ScanOptions` or `BindConfig` value
+does not modify earlier values. Publish a new array when layouts change;
+existing results and mappings continue to use the earlier immutable array.
+`Columns` and destination type lists still retain their snapshot-copy contracts.
 
 For scan policies that become available after package initialization, supply
 `BindConfig.ScanOptionsFunc` alongside or instead of static `ScanOptions`:
@@ -477,12 +497,16 @@ the zero value. Existing DB, Oper and builder overrides still select the whole
 configuration before resolving the function; scan fields are not merged across
 configuration levels. Configuring or copying these objects does not call the
 function. Each successful query evaluates it once when creating its Row or Rows,
-copies `TimeLayouts`, and keeps that snapshot throughout scanning, binding and
+captures the option values, shares immutable `TimeLayouts`, and keeps that
+policy throughout scanning, binding and
 `NextResultSet`. Queries that fail before creating a usable result do not call it.
 `Rows.SetBindConfig` evaluates a new function immediately and resets scan caches;
 `Rows.SetScanOptions` and `Row.WithScanOptions` replace the snapshot directly.
 The callback is shared and must support concurrent calls. Read an in-memory
 configuration snapshot and synchronize any runtime changes to that configuration.
+The provider may return the same immutable layouts for multiple queries, but must
+never overwrite an array returned earlier, including during a later or concurrent
+call. Allocate or copy new layout storage when publishing a changed policy.
 
 An explicit positive `Capacity` takes precedence and is not capped. When it is
 zero, a SELECT builder's positive LIMIT (including Pagination/Paginate) supplies
@@ -692,8 +716,11 @@ methods. `BindOptions.Columns` supplies ordered binding labels, including overri
 `BindOptions.ScanOptions` supplies conversion policies. Direct callers of Prepare must
 supply the result columns themselves. Built-in binders prepare an immutable mapping
 without accessing a cursor, borrowing execution scratch, or changing the destination.
-Mappings snapshot mutable input slices. Shape errors occur during Prepare and do
-not trigger fallback after a destination is recognized.
+Mappings snapshot columns and destination types, and share immutable `TimeLayouts`.
+Custom binders and their delegates must copy layouts before modifying them; this
+also applies to `RowsBinderFunc`. All binders use the same `Prepare` path. Shape
+errors occur during Prepare and do not trigger fallback after a destination is
+recognized.
 
 `RowCursor` requires only `Next`, raw `Scan`, and `Err`. `Rows.Bind` passes its
 underlying `*sql.Rows`. The raw Scan must write positional source values into the

@@ -359,11 +359,14 @@ func TestTemplateExecutionAndConfiguration(t *testing.T) {
 		})
 	}
 
-	// Frozen explicit policies own their mutable layouts, even after builder reuse.
+	// Frozen explicit policies share immutable layouts and survive builder reuse.
 	options := BindConfig{ScanOptions: ScanOptions{TimeLayouts: []string{"2006-01-02"}}}
 	b := db.Select("id").SetBindConfig(options)
 	q := mustCompileTemplate(t, b)
-	b.bconfig.ScanOptions.TimeLayouts[0] = "changed"
+	if &q.config.ScanOptions.TimeLayouts[0] != &options.ScanOptions.TimeLayouts[0] {
+		t.Fatal("template copied immutable time layouts")
+	}
+	b.SetBindConfig(BindConfig{ScanOptions: ScanOptions{TimeLayouts: []string{"changed"}}})
 	if q.config.ScanOptions.TimeLayouts[0] != "2006-01-02" {
 		t.Fatal("configuration snapshot aliases builder")
 	}

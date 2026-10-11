@@ -35,9 +35,19 @@ func (s *ScanState) Scan(source RowScanFunc, columns []string, dst []any, option
 
 	s.Reset()
 	p := scanPlanPool.Get().(*scanPlan)
-	types := reuseScanStorage(p.types, len(dst))
-	for i, d := range dst {
-		types[i] = reflect.TypeOf(d)
+	var types []reflect.Type
+	if len(dst) == 1 {
+		// Struct plans store their type in structDstType, so keep this signature
+		// on the stack instead of allocating and retaining unused type scratch.
+		single := [1]reflect.Type{reflect.TypeOf(dst[0])}
+		types = single[:]
+	} else {
+		// Own wider signature growth before initialization, including on failure.
+		p.types = reuseScanStorage(p.types, len(dst))
+		types = p.types
+		for i, d := range dst {
+			types[i] = reflect.TypeOf(d)
+		}
 	}
 
 	if _, err := initRowScanPlan(p, columns, types, options); err != nil {

@@ -238,8 +238,7 @@ func (p *scanPlan) Scan(scan RowScanFunc, dst []any) error {
 // The scan function must be non-nil. Use Scan when types can change between rows.
 func (p *scanPlan) scanValues(scan RowScanFunc, dst []any) error {
 	if p.layout != nil {
-		defer p.releaseDestinations()
-		return p.scanStruct(scan, dst[0])
+		return p.scanStruct(scan, nil, dst[0])
 	}
 	defer p.releaseScalarDestinations()
 
@@ -247,16 +246,36 @@ func (p *scanPlan) scanValues(scan RowScanFunc, dst []any) error {
 		if nilBindingValue(v) {
 			return fmt.Errorf("sqlx: nil destination at column %d", i)
 		}
-
-		if p.wrapped[i] {
-			p.scanners[i].Value = v
-			p.values[i] = &p.scanners[i]
-		} else {
-			p.values[i] = v
-		}
+		p.bindScalarDestination(i, v)
 	}
 
 	return scan(p.values...)
+}
+
+// scanSourceValues scans a validated signature with a non-nil source. Scalar
+// and ordinary struct scans call the source without a temporary Scan method value.
+func (p *scanPlan) scanSourceValues(source ScanSource, dst []any) error {
+	if p.layout != nil {
+		return p.scanStruct(nil, source, dst[0])
+	}
+	defer p.releaseScalarDestinations()
+
+	for i, v := range dst {
+		if nilBindingValue(v) {
+			return fmt.Errorf("sqlx: nil destination at column %d", i)
+		}
+		p.bindScalarDestination(i, v)
+	}
+	return source.Scan(p.values...)
+}
+
+// bindScalarDestination requires a non-nil destination with a validated type.
+func (p *scanPlan) bindScalarDestination(i int, v any) {
+	if p.wrapped[i] {
+		p.scanners[i].Value = v
+		v = &p.scanners[i]
+	}
+	p.values[i] = v
 }
 
 // Validated positional plans have equally sized vectors. Keep this cleanup

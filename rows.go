@@ -133,7 +133,8 @@ func (r *Rows) SetColumns(columns ...string) *Rows {
 func (r *Rows) hasLabels() bool { return r != nil && r.labels != nil }
 
 // SetBindConfig replaces this result's configuration and returns r.
-// A non-nil ScanOptionsFunc is evaluated immediately and its options are copied.
+// A non-nil ScanOptionsFunc is evaluated immediately. Option values are copied;
+// TimeLayouts shares immutable storage as described by [ScanOptions].
 func (r *Rows) SetBindConfig(config BindConfig) *Rows {
 	if r.inRawVisit() {
 		return r
@@ -146,12 +147,14 @@ func (r *Rows) SetBindConfig(config BindConfig) *Rows {
 }
 
 // SetScanOptions replaces this result's conversion options and returns r.
+// Option values are copied; TimeLayouts shares immutable storage as described
+// by [ScanOptions].
 func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
 	if r.inRawVisit() {
 		return r
 	}
 
-	r.config.ScanOptions = cloneScanOptions(options)
+	r.config.ScanOptions = options
 	r.config.ScanOptionsFunc = nil
 	r.revision++
 	r.scan.Reset()
@@ -284,7 +287,7 @@ func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 
 	// This single-use operation can transfer its already-owned labels. Every
 	// result snapshots driver/override columns, and Close drops our reference.
-	// Configuration layouts still need a copy because they can be shared by DBs.
+	// All binders share immutable TimeLayouts through value copies of the options.
 	if err = options.validate(); err != nil {
 		return options, err
 	}

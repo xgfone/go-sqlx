@@ -5,7 +5,6 @@ package rowbind
 
 import (
 	"errors"
-	"slices"
 	"time"
 )
 
@@ -39,7 +38,12 @@ const (
 // their own resources. [github.com/xgfone/go-sqlx] does not recover application [sql.Scanner]
 // panics.
 type ScanOptions struct {
-	Location      *time.Location
+	Location *time.Location
+	// TimeLayouts shares immutable storage with configurations, results and
+	// prepared mappings. All holders, including the original caller and option
+	// providers, must leave its backing array unchanged while it is retained.
+	// Copy before assigning elements, copying into, clearing, sorting or appending.
+	// Assigning a new slice to a local ScanOptions value is allowed.
 	TimeLayouts   []string
 	DurationUnit  time.Duration
 	AllowZeroDate bool
@@ -48,11 +52,6 @@ type ScanOptions struct {
 
 	NestedPointers NestedPointerPolicy
 	Nulls          NullPolicy
-}
-
-func (o ScanOptions) clone() ScanOptions {
-	o.TimeLayouts = slices.Clone(o.TimeLayouts)
-	return o
 }
 
 func (o ScanOptions) validate() error {
@@ -79,9 +78,6 @@ func (o ScanOptions) scanner(v any) GeneralScanner {
 		AllowZeroDate: o.AllowZeroDate,
 	}
 }
-
-// CloneOptions takes ownership of mutable configuration slices.
-func CloneOptions(o ScanOptions) ScanOptions { return o.clone() }
 
 // ValidateOptions rejects unknown policies and invalid conversion settings.
 func ValidateOptions(o ScanOptions) error { return o.validate() }

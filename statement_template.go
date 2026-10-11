@@ -150,7 +150,7 @@ func (b *builderBase) compileStatement(s statementWriter, returnsRows bool, hint
 	}
 
 	if b.bconfig != nil {
-		config := b.bconfig.clone()
+		config := *b.bconfig
 		q.config = &config
 	}
 

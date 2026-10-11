@@ -31,14 +31,20 @@ func IsUnsupportedTypeError(err error) bool {
 }
 
 // RowsBinder prepares an immutable mapping from the supplied columns and scan
-// options without accessing a cursor or borrowing execution scratch. It must not
-// mutate dst. Once it succeeds, no fallback is attempted, whatever [RowsBinding.Scan] returns.
-// Implementations may be shared by concurrent queries; each prepared binding
-// must own its state and scratch storage.
+// options without accessing a cursor or borrowing execution scratch. It must
+// not mutate dst. Once it succeeds, no fallback is attempted, whatever
+// [RowsBinding.Scan] returns. Implementations may be shared by concurrent
+// queries; each prepared binding must own its state and scratch storage.
+//
+// options.ScanOptions.TimeLayouts is shared immutable storage. Implementations
+// and their delegates must copy it before modifying or appending to it, including
+// after Prepare returns or when rejecting a candidate with UnsupportedTypeError.
 type RowsBinder interface {
 	Prepare(dst any, options BindOptions) (RowsBinding, error)
 }
 
+// RowsBinderFunc adapts a function to [RowsBinder], including its immutable
+// TimeLayouts and independent binding-state requirements.
 type RowsBinderFunc func(any, BindOptions) (RowsBinding, error)
 
 func (f RowsBinderFunc) Prepare(dst any, options BindOptions) (RowsBinding, error) {
@@ -48,20 +54,21 @@ func (f RowsBinderFunc) Prepare(dst any, options BindOptions) (RowsBinding, erro
 	return f(dst, options)
 }
 
-// RowsBinding is a single-use staged operation. [RowsBinding.Scan] reads into independent
-// storage using a raw cursor matching the prepared column order and returns
-// iteration errors. [BindOptions] supplies conversion policies. [RowsBinding.Commit] publishes
-// it and must not fail or perform I/O. Call [RowsBinding.Commit] only after [RowsBinding.Scan]
-// and any owning
-// result's [Rows.Close] have succeeded. Custom side effects are the binder's responsibility.
+// RowsBinding is a single-use staged operation. [RowsBinding.Scan] reads into
+// independent storage using a raw cursor matching the prepared column order
+// and returns iteration errors. [BindOptions] supplies conversion policies.
+// [RowsBinding.Commit] publishes it and must not fail or perform I/O. Call
+// [RowsBinding.Commit] only after [RowsBinding.Scan] and any owning result's
+// [Rows.Close] have succeeded. Custom side effects are the binder's responsibility.
 type RowsBinding interface {
 	Scan(RowCursor) error
 	Commit()
 }
 
-// RowsBindingFuncs adapts callbacks to a [RowsBinding]. [RowsBindingFuncs.Scan] rejects missing
-// callbacks before consuming rows. [RowsBindingFuncs.Commit] may be called only after
-// [RowsBindingFuncs.Scan] succeeds.
+// RowsBindingFuncs adapts callbacks to a [RowsBinding]. [RowsBindingFuncs.Scan]
+// rejects missing callbacks before consuming rows. [RowsBindingFuncs.Commit]
+// may be called only after [RowsBindingFuncs.Scan] succeeds.
+//
 // For allocation-sensitive binders, let the per-result state implement
 // [RowsBinding] directly instead of creating method-value callbacks.
 type RowsBindingFuncs struct {
@@ -104,23 +111,26 @@ func unsupportedBinder(name string, dst any) (RowsBinding, error) {
 // through; validation errors stop selection. Empty/all-nil chains return an
 // [UnsupportedTypeError]. Put [SliceRowsBinder] last when a general fallback is wanted.
 func ComposeRowsBinders(binders ...RowsBinder) RowsBinder {
-	binders = slices.Clone(binders)
-	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
-		if err := options.validate(); err != nil {
-			return nil, err
+	return composedRowsBinder{binders: slices.Clone(binders)}
+}
+
+type composedRowsBinder struct{ binders []RowsBinder }
+
+func (b composedRowsBinder) Prepare(dst any, options BindOptions) (binding RowsBinding, err error) {
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
+
+	for _, binder := range b.binders {
+		if nilBindingValue(binder) {
+			continue
 		}
 
-		for _, binder := range binders {
-			if nilBindingValue(binder) {
-				continue
-			}
-
-			binding, err := binder.Prepare(dst, options)
-			if err == nil || !IsUnsupportedTypeError(err) {
-				return binding, err
-			}
+		binding, err = binder.Prepare(dst, options)
+		if err == nil || !IsUnsupportedTypeError(err) {
+			return
 		}
+	}
 
-		return unsupportedBinder("sqlx.ComposeRowsBinders", dst)
-	})
+	return unsupportedBinder("sqlx.ComposeRowsBinders", dst)
 }

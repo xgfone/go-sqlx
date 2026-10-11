@@ -25,6 +25,55 @@ func benchmarkScanInterface(m Mapping, source RowScanFunc) benchmarkScanCloser {
 	return s
 }
 
+// Keep the direct-source factory opaque for the same dispatch cost as the
+// function path.
+//
+//go:noinline
+func benchmarkSourceScanInterface(m Mapping, source ScanSource) benchmarkScanCloser {
+	return m.sourceScanner(source)
+}
+
+// Measure per-row checks, dispatch and cleanup separately from scope creation.
+func BenchmarkCursorScannerRowScan(b *testing.B) {
+	type record struct {
+		Value int64 `sql:"value"`
+	}
+
+	for _, dst := range []any{new(int64), new(record)} {
+		b.Run(reflect.TypeOf(dst).Elem().Name(), func(b *testing.B) {
+			mapping, err := Prepare([]string{"value"}, []reflect.Type{reflect.TypeOf(dst)}, ScanOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			cursor := &mappingCursor{source: scanCacheSource(int64(42))}
+			args := []any{dst}
+			for _, mode := range []string{"scan_only", "cursor", "source"} {
+				b.Run(mode, func(b *testing.B) {
+					var scanner benchmarkScanCloser
+					switch mode {
+					case "scan_only":
+						scanner = benchmarkSourceScanInterface(mapping, &mappingScanSource{source: cursor.source})
+					case "cursor":
+						scanner = benchmarkSourceScanInterface(mapping, cursor)
+					default:
+						// Keep the existing function-source control for comparison.
+						scanner = benchmarkScanInterface(mapping, cursor.Scan)
+					}
+					defer scanner.Close() //nolint:errcheck
+
+					b.ReportAllocs()
+					for b.Loop() {
+						if err := scanner.Scan(args...); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkScannerLifetime(b *testing.B) {
 	type record struct {
 		Value int64 `sql:"value"`

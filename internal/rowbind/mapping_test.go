@@ -34,7 +34,7 @@ func TestMappingSharesOnlyImmutablePreparation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	columns[0], types[0], layouts[0] = "changed", reflect.TypeFor[*int](), "bad"
+	columns[0], types[0] = "changed", reflect.TypeFor[*int]()
 	var wg sync.WaitGroup
 	for i := range 8 {
 		wg.Go(func() {
@@ -146,7 +146,7 @@ func TestMappingExecutionFailureDoesNotCorruptPreparedMapping(t *testing.T) {
 }
 
 func TestScalarMappingOwnsSignaturesAndSeparatesScanners(t *testing.T) {
-	for _, count := range []int{0, 1, 2, 3, 8} {
+	for _, count := range []int{0, 1, 2, 3, 8, 63, 64, 65} {
 		columns := make([]string, count)
 		types := make([]reflect.Type, count)
 		source := make([]any, count)
@@ -201,5 +201,107 @@ func TestScalarMappingOwnsSignaturesAndSeparatesScanners(t *testing.T) {
 		if err := scan.Scan(append(dst, new(int64))...); err == nil {
 			t.Fatal("changed destination count accepted")
 		}
+	}
+}
+
+func TestTrustedMappingScanCallbackAndConversionCleanup(t *testing.T) {
+	options := ScanOptions{Location: time.UTC, TimeLayouts: []string{time.DateOnly}}
+	mapping, err := Prepare([]string{"value", "nullable"}, []reflect.Type{
+		reflect.TypeFor[*int64](),
+		reflect.TypeFor[*sql.NullInt64](),
+	}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mode := range []string{
+		"empty", "success", "conversion_error",
+		"callback_error", "callback_panic",
+	} {
+		t.Run(mode, func(t *testing.T) {
+			cause := errors.New(mode)
+			var args []any
+			var adapter *GeneralScanner
+			calls := 0
+			cursor := &mappingCursor{source: func(dst ...any) error {
+				calls++
+				args, adapter = dst, dst[0].(*GeneralScanner)
+				if adapter.Location != options.Location || len(adapter.TimeLayouts) != 1 {
+					t.Fatal("conversion snapshot lost")
+				}
+				if mode == "conversion_error" {
+					return adapter.Scan("invalid integer")
+				}
+				return scanCacheSource(int64(7), int64(8))(dst...)
+			}}
+
+			var caught any
+			func() {
+				defer func() { caught = recover() }()
+				err = mapping.WithScan(cursor, func(scan RowScanFunc, _ Reuse) error {
+					if mode == "empty" {
+						return nil
+					}
+
+					var value int64
+					var nullable sql.NullInt64
+					if err := scan(&value, (*sql.NullInt64)(nil)); err == nil || calls != 0 {
+						t.Fatal("nil target reached custom source", err, calls)
+					}
+					if err := scan(&value, &nullable); err != nil {
+						return err
+					}
+					if value != 7 || !nullable.Valid || nullable.Int64 != 8 || adapter.Value != nil {
+						t.Fatal("custom dispatch or per-call cleanup failed", value, nullable)
+					}
+
+					for _, arg := range args {
+						if arg != nil {
+							t.Fatal("scalar target retained after scan")
+						}
+					}
+
+					switch mode {
+					case "callback_error":
+						return cause
+					case "callback_panic":
+						panic(cause)
+					}
+					return nil
+				})
+			}()
+
+			switch mode {
+			case "callback_panic":
+				if caught != cause {
+					t.Fatal("callback panic lost", caught)
+				}
+			case "callback_error":
+				if caught != nil || err != cause {
+					t.Fatal("callback error lost", err, caught)
+				}
+			case "conversion_error":
+				if caught != nil || err == nil {
+					t.Fatal("conversion error lost", err, caught)
+				}
+			default:
+				if caught != nil || err != nil {
+					t.Fatal(err, caught)
+				}
+			}
+
+			if mode == "empty" && calls != 0 || mode != "empty" && calls != 1 {
+				t.Fatal("unexpected source calls", calls)
+			}
+			if adapter != nil && (adapter.Value != nil ||
+				adapter.Location != nil || adapter.TimeLayouts != nil) {
+				t.Fatal("operation retained target or conversion options")
+			}
+			for _, arg := range args {
+				if arg != nil {
+					t.Fatal("failed operation retained scan arguments")
+				}
+			}
+		})
 	}
 }

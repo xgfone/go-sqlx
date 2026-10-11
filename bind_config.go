@@ -37,9 +37,10 @@ const maxLimitRowsCapacity = 100
 // destination unchanged until [RowsBinding.Commit], including its shared backing storage.
 // [BindOptions.Columns] is the ordered binding-label snapshot for the current result set.
 // [BindOptions.ScanOptions] supplies the conversion policy; it is not inferred from the raw
-// cursor.
-// Built-in binders prepare the mapping here, so supply [BindOptions.Columns] before
-// [RowsBinder.Prepare].
+// cursor. Its TimeLayouts backing array is shared and immutable for the lifetime
+// of the configuration, result and prepared binding. Custom implementations must
+// make a private copy before modifying it. Built-in binders prepare the mapping
+// here, so supply [BindOptions.Columns] before [RowsBinder.Prepare].
 type BindOptions struct {
 	// Capacity hints at the number of incoming rows to reserve, not a row limit.
 	// Zero uses [DefaultRowsCapacity]. SELECT results fill an unspecified capacity
@@ -51,7 +52,7 @@ type BindOptions struct {
 	Mode          BindMode
 }
 
-func (o BindOptions) validate() error {
+func (o *BindOptions) validate() error {
 	if o.Mode > BindMerge {
 		return errors.New("sqlx: invalid collection bind mode")
 	}
@@ -64,7 +65,7 @@ func (o BindOptions) validate() error {
 	return validateScanOptions(o.ScanOptions)
 }
 
-func (o BindOptions) capacity() int {
+func (o *BindOptions) capacity() int {
 	if o.Capacity == 0 {
 		return DefaultRowsCapacity
 	}
@@ -76,16 +77,18 @@ func (o BindOptions) capacity() int {
 // A nil [BindConfig.RowsBinder] uses [DefaultMixRowsBinder]; map types without a default
 // registration require an explicit binder or registration. Configure a [DB]
 // with [DB.SetBindConfig] or [DB.WithBindConfig], override a builder/[Oper], or customize
-// an individual result. Configurations copy [rowbind.ScanOptions.TimeLayouts]; custom
-// [RowsBinder]
-// implementations must be safe to share.
+// an individual result. Configurations copy option values and share immutable
+// [ScanOptions.TimeLayouts] storage; custom [RowsBinder] implementations must
+// be safe to share.
 type BindConfig struct {
 	// ScanOptionsFunc supplies the complete scan policy for each successful
 	// query result. When non-nil, it replaces ScanOptions, including with a
 	// zero value.
 	//
 	// Configuring or copying a DB, Oper or builder does not call it. Row and
-	// Rows evaluate it once, copy mutable options, and retain that snapshot.
+	// Rows evaluate it once and retain the returned option values, sharing
+	// immutable TimeLayouts. The provider must not overwrite an array returned
+	// earlier, even during a later call. Publish new storage when layouts change.
 	// Setting a result's BindConfig evaluates it immediately.
 	//
 	// The function is shared and must be safe for concurrent calls;
@@ -102,26 +105,21 @@ type BindConfig struct {
 	Capacity int
 }
 
-func (c BindConfig) clone() BindConfig {
-	c.ScanOptions = cloneScanOptions(c.ScanOptions)
-	return c
-}
-
-// resolved takes ownership of the effective scan policy for one result.
-// Configuration setters on DBs, operations and builders must use clone instead.
+// resolved captures the effective scan policy for one result. Option values are
+// copied; the immutable TimeLayouts backing array is shared.
 func (c BindConfig) resolved() BindConfig {
 	if get := c.ScanOptionsFunc; get != nil {
 		c.ScanOptions = get()
 	}
 
-	c.ScanOptions = cloneScanOptions(c.ScanOptions)
 	c.ScanOptionsFunc = nil
 	return c
 }
 
-func (c BindConfig) options(mode BindMode) BindOptions {
+// options copies result policies by value and shares immutable TimeLayouts.
+func (c *BindConfig) options(mode BindMode) BindOptions {
 	return BindOptions{
-		ScanOptions:   cloneScanOptions(c.ScanOptions),
+		ScanOptions:   c.ScanOptions,
 		Mode:          mode,
 		Capacity:      c.Capacity,
 		DuplicateKeys: c.DuplicateKeys,
@@ -135,12 +133,12 @@ func (db *DB) WithBindConfig(config BindConfig) *DB {
 }
 
 // SetBindConfig replaces this [DB]'s binding configuration and returns db.
-// [rowbind.ScanOptions.TimeLayouts] is copied; [BindConfig.RowsBinder] is shared. Existing
-// builders without an override
+// Option values are copied; immutable [ScanOptions.TimeLayouts] storage and
+// [BindConfig.RowsBinder] are shared. Existing builders without an override
 // inherit the new configuration on execution; existing results keep theirs.
 // See [DB] for synchronization requirements.
 func (db *DB) SetBindConfig(config BindConfig) *DB {
-	db.config = config.clone()
+	db.config = config
 	return db
 }
 
@@ -159,9 +157,11 @@ func (db *DB) SetBinder(binder RowsBinder) *DB {
 	return db
 }
 
-// BindConfig returns a copy of the database's binding configuration.
+// BindConfig returns a value copy of the database's binding configuration.
+// TimeLayouts shares immutable storage; copy it before modifying its elements
+// or appending. Replacing fields on the returned value does not change the DB.
 func (db *DB) BindConfig() BindConfig {
-	return db.binding().clone()
+	return db.binding()
 }
 
 func (db *DB) binding() BindConfig {
@@ -182,25 +182,21 @@ func (b *builderBase) binding() BindConfig {
 }
 
 func (b *SelectBuilder) SetBindConfig(c BindConfig) *SelectBuilder {
-	c = c.clone()
 	b.bconfig = &c
 	return b
 }
 
 func (b *InsertBuilder) SetBindConfig(c BindConfig) *InsertBuilder {
-	c = c.clone()
 	b.bconfig = &c
 	return b
 }
 
 func (b *UpdateBuilder) SetBindConfig(c BindConfig) *UpdateBuilder {
-	c = c.clone()
 	b.bconfig = &c
 	return b
 }
 
 func (b *DeleteBuilder) SetBindConfig(c BindConfig) *DeleteBuilder {
-	c = c.clone()
 	b.bconfig = &c
 	return b
 }

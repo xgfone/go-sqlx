@@ -175,9 +175,13 @@ func (p *scanPlan) mapStruct(v reflect.Value, adapt bool) error {
 	return nil
 }
 
-func (p *scanPlan) scanStruct(scan RowScanFunc, dst any) error {
-	v := reflect.ValueOf(dst)
-	if v.IsNil() {
+// scanStruct requires the prepared struct destination type and exactly one
+// non-nil scan or source. Both entries share target preparation and per-row
+// cleanup; only nullable-parent source scans construct a Scan method value.
+func (p *scanPlan) scanStruct(scan RowScanFunc, source ScanSource, dst any) error {
+	defer p.releaseDestinations()
+	v := reflect.ValueOf(dst).Elem()
+	if !v.IsValid() {
 		return errors.New("sqlx: expected non-nil pointer to struct")
 	}
 
@@ -192,9 +196,16 @@ func (p *scanPlan) scanStruct(scan RowScanFunc, dst any) error {
 		if err := p.mapStruct(v, true); err != nil {
 			return err
 		}
+		if source != nil {
+			return source.Scan(p.values...)
+		}
 		return scan(p.values...)
 	}
 
+	// Nullable parents map their fields after capturing the entire row.
+	if source != nil {
+		scan = source.Scan
+	}
 	return p.scanNullableStruct(scan, v)
 }
 

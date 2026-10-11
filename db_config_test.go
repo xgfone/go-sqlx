@@ -48,9 +48,8 @@ func TestDBSetBindConfigInheritance(t *testing.T) {
 		t.Fatal("setter changed DB identity")
 	}
 
-	layouts[0] = "invalid"
-	if db.BindConfig().ScanOptions.TimeLayouts[0] != time.DateOnly {
-		t.Fatal("setter retained caller-owned time layouts")
+	if &db.BindConfig().ScanOptions.TimeLayouts[0] != &layouts[0] {
+		t.Fatal("setter copied immutable time layouts")
 	}
 
 	for _, tc := range []struct {

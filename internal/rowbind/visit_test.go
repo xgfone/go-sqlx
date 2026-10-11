@@ -67,7 +67,7 @@ func TestVisitStableFieldEligibility(t *testing.T) {
 	}
 }
 
-func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
+func TestVisitScanCustomCursorCleansDestinations(t *testing.T) {
 	type record struct {
 		ID      int64            `sql:"id"`
 		Legacy  sql.NullInt64    `sql:"legacy"`
@@ -85,7 +85,7 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 
 	for _, mode := range []string{
 		"success", "source_error", "source_panic", "conversion_error",
-		"callback_error", "callback_panic", "empty", "invalid", "nil",
+		"callback_error", "callback_panic", "empty", "nil",
 	} {
 		t.Run(mode, func(t *testing.T) {
 			cause := errors.New(mode)
@@ -125,15 +125,12 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 			var recovered any
 			func() {
 				defer func() { recovered = recover() }()
-				err = m.withBoundVisitScan(source, func(scan RowScanFunc, reusable Reuse) error {
-					if !reusable[0] {
-						t.Fatal("stable target is not reusable")
+				err = m.WithVisitScan(&mappingCursor{source: source}, func(scan RowScanFunc, reusable Reuse) error {
+					if reusable[0] || reusable[1] {
+						t.Fatal("custom cursor allowed destination reuse")
 					}
 					if mode == "empty" {
 						return nil
-					}
-					if mode == "invalid" {
-						return scan(new(int64))
 					}
 					if mode == "nil" {
 						return scan((*record)(nil))
@@ -145,8 +142,8 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 							return err
 						}
 
-						if !adapter.value.IsValid() || adapter.value.Addr().Interface() != &dst.ID {
-							t.Fatal("binding released between rows")
+						if adapter.value.IsValid() || args[1] != nil || args[2] != nil {
+							t.Fatal("custom cursor retained destinations between rows")
 						}
 
 						saved = append(saved, dst)
@@ -172,7 +169,7 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 					t.Fatal(err)
 				}
 
-			case "conversion_error", "invalid", "nil":
+			case "conversion_error", "nil":
 				if err == nil {
 					t.Fatal("missing error")
 				}
@@ -193,7 +190,7 @@ func TestBoundVisitScanOwnsDestinationsUntilOperationEnds(t *testing.T) {
 					t.Fatal(saved)
 				}
 			}
-			if mode == "empty" || mode == "invalid" || mode == "nil" {
+			if mode == "empty" || mode == "nil" {
 				if calls != 0 {
 					t.Fatal("invalid or empty operation scanned")
 				}
@@ -262,6 +259,97 @@ func TestVisitScanUnknownCursorKeepsPerCallCleanup(t *testing.T) {
 		}
 		if err := mapping.WithVisitScan(cursor, nil); err == nil {
 			t.Fatal("nil operation accepted")
+		}
+	}
+}
+
+type visitWrappedCursor struct {
+	*sql.Rows
+	source RowScanFunc
+}
+
+func (c *visitWrappedCursor) Scan(dst ...any) error { return c.source(dst...) }
+
+type visitFuncCursor RowScanFunc
+
+func (c visitFuncCursor) Scan(dst ...any) error { return c(dst...) }
+func (visitFuncCursor) Next() bool              { panic("mapping scope must not iterate") }
+func (visitFuncCursor) Err() error              { panic("mapping scope must not inspect cursor errors") }
+
+func TestVisitCustomSourceScopeValidationAndWrappedDispatch(t *testing.T) {
+	type record struct {
+		Value  int64         `sql:"value"`
+		Legacy sql.NullInt64 `sql:"legacy"`
+	}
+
+	mapping, err := Prepare(
+		[]string{"value", "legacy"},
+		[]reflect.Type{reflect.TypeFor[*record]()},
+		ScanOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+	var args []any
+	wrapped := &visitWrappedCursor{source: func(dst ...any) error {
+		calls++
+		args = dst
+		return scanCacheSource(int64(7), int64(8))(dst...)
+	}}
+
+	for _, cursor := range []Cursor{
+		wrapped,
+		visitFuncCursor(wrapped.source),
+	} {
+		err := mapping.WithVisitScan(cursor, func(scan RowScanFunc, reusable Reuse) error {
+			if reusable != (Reuse{}) {
+				t.Fatal("custom source received raw cursor reuse permissions")
+			}
+
+			for range 2 {
+				var dst record
+				if err := scan(&dst); err != nil {
+					return err
+				}
+				if dst.Value != 7 || !dst.Legacy.Valid || dst.Legacy.Int64 != 8 ||
+					args[0].(*fieldScanner).value.IsValid() || args[1] != nil {
+					t.Fatal("custom dispatch or per-row cleanup changed", dst)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 4 {
+		t.Fatal("wrapped Scan was bypassed", calls)
+	}
+
+	for _, m := range []Mapping{{}, mapping} {
+		for _, cursor := range []Cursor{
+			nil,
+			(*sql.Rows)(nil),
+			(*visitWrappedCursor)(nil),
+			visitFuncCursor(nil),
+			wrapped,
+		} {
+			before := calls
+			if cursor != wrapped {
+				err := m.WithVisitScan(cursor, func(RowScanFunc, Reuse) error {
+					t.Fatal("invalid scope reached callback")
+					return nil
+				})
+				if err == nil || err.Error() != "sqlx: expected a prepared mapping, cursor and scan operation" {
+					t.Fatal("invalid source validation changed", err)
+				}
+			}
+			if err := m.WithVisitScan(cursor, nil); err == nil || calls != before ||
+				err.Error() != "sqlx: expected a prepared mapping, cursor and scan operation" {
+				t.Fatal("invalid scope validation changed", err, calls)
+			}
 		}
 	}
 }

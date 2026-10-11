@@ -8,14 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 )
 
 // Cursor scans raw current-row destinations positionally, honoring [sql.Scanner].
-// [Cursor.Scan] must not apply another [github.com/xgfone/go-sqlx] mapping or conversion layer.
-// It borrows dst
-// for the call; retaining the slice or a subslice requires a clone. Adapter
-// scanners must be consumed synchronously even if the slice is cloned. Columns
-// and policies come from [Prepare]. The caller owns iteration and cursor closing.
+// [Cursor.Scan] must not apply another [github.com/xgfone/go-sqlx] mapping or
+// conversion layer. It borrows dst for the call; retaining the slice or a
+// subslice requires a clone. Adapter scanners must be consumed synchronously
+// even if the slice is cloned. Columns and policies come from [Prepare].
+// The caller owns iteration and cursor closing.
 type Cursor interface {
 	Scan(...any) error
 	Next() bool
@@ -33,8 +34,10 @@ type RowScanFunc func(...any) error
 // signature. Copies may be shared concurrently; each execution owns its scratch.
 // Its zero value is not prepared.
 type Mapping struct {
-	options *ScanOptions
-	layout  *structScanLayout
+	// Common time policies stay inline; other conversions use an optional snapshot.
+	location *time.Location
+	options  *ScanOptions
+	layout   *structScanLayout
 
 	// Most bindings scan one element or a key/value pair. Keep those signatures
 	// inline; wider positional mappings own a single combined descriptor slice.
@@ -57,22 +60,20 @@ const (
 	mappingReusableSecond
 	mappingWrappedFirst
 	mappingWrappedSecond
+	mappingAllowZeroDate
 )
 
 // Prepare validates a mapping without borrowing scratch or touching a cursor or
-// destination. It takes snapshots of mutable input slices.
+// destination. It snapshots option values, columns and types, sharing immutable
+// TimeLayouts.
 func Prepare(columns []string, types []reflect.Type, options ScanOptions) (Mapping, error) {
 	if err := options.validate(); err != nil {
 		return Mapping{}, err
 	}
 
-	m := Mapping{flags: mappingPrepared}
-	// Mapping policies are captured by the layout. Only nonzero conversion
-	// options need a private snapshot, including caller-owned time layouts.
-	if options.Location != nil || len(options.TimeLayouts) != 0 || options.DurationUnit != 0 ||
-		options.AllowZeroDate || options.Nulls != 0 {
-		owned := options.clone()
-		m.options = &owned
+	m := Mapping{flags: mappingPrepared, location: options.Location}
+	if options.AllowZeroDate {
+		m.flags |= mappingAllowZeroDate
 	}
 
 	t, err := structScanType(types)
@@ -91,6 +92,7 @@ func Prepare(columns []string, types []reflect.Type, options ScanOptions) (Mappi
 			m.flags |= mappingReusableFirst
 		}
 
+		m.captureOptions(options)
 		return m, nil
 	}
 
@@ -122,11 +124,24 @@ func Prepare(columns []string, types []reflect.Type, options ScanOptions) (Mappi
 		}
 	}
 
+	m.captureOptions(options)
 	return m, nil
 }
 
+// Only successful mappings need a conversion snapshot. Layouts already capture
+// mapping policies, and TimeLayouts shares its immutable backing array.
+func (m *Mapping) captureOptions(options ScanOptions) {
+	if len(options.TimeLayouts) != 0 || options.DurationUnit != 0 || options.Nulls != 0 {
+		captured := options
+		m.options = &captured
+	}
+}
+
 func (m Mapping) init(p *scanPlan) {
-	var options ScanOptions
+	options := ScanOptions{
+		Location:      m.location,
+		AllowZeroDate: m.flags&mappingAllowZeroDate != 0,
+	}
 	if m.options != nil {
 		options = *m.options
 	}
@@ -137,7 +152,10 @@ func (m Mapping) init(p *scanPlan) {
 
 	types := m.types[:0]
 	if m.extra != nil {
-		types = reuseScanStorage(p.types, len(m.extra))
+		// Own the grown scratch before initialization so initStorage reuses it.
+		// Do not store types itself: the inline branch borrows m.types.
+		p.types = reuseScanStorage(p.types, len(m.extra))
+		types = p.types
 		for i, dst := range m.extra {
 			types[i] = dst.typeOf
 		}
@@ -167,9 +185,9 @@ func (m Mapping) init(p *scanPlan) {
 // callback must not retain it. Destination types must match the prepared types.
 // Scratch is cleared and returned on success, error and panic. reusable reports
 // whether map temporaries may safely be reused with this mapping and cursor.
-// Application [sql.Scanner] implementations receive borrowed inputs synchronously; they must
-// copy
-// bytes they retain. Nullable-parent layouts own their deferred input storage.
+// Application [sql.Scanner] implementations receive borrowed inputs synchronously;
+// they must copy bytes they retain. Nullable-parent layouts own their deferred
+// input storage.
 func (m Mapping) WithScan(cursor Cursor, run func(scan RowScanFunc, reusable Reuse) error) error {
 	if m.flags&mappingPrepared == 0 || nilBindingValue(cursor) || run == nil {
 		return errors.New("sqlx: expected a prepared mapping, cursor and scan operation")
@@ -179,16 +197,37 @@ func (m Mapping) WithScan(cursor Cursor, run func(scan RowScanFunc, reusable Reu
 	defer releasePlan(p)
 	m.init(p)
 
-	var reusable Reuse
-	if _, raw := cursor.(*sql.Rows); raw {
-		reusable = Reuse{
+	if rows, raw := cursor.(*sql.Rows); raw {
+		reusable := Reuse{
 			m.flags&mappingReusableFirst != 0,
 			m.flags&mappingReusableSecond != 0,
 		}
+
+		// Reuse the concrete source already identified for the reuse policy.
+		// Its ScanSource conversion is static and the callback captures one pointer.
+		return run(func(dst ...any) error {
+			return p.scanSourceValues(rows, dst)
+		}, reusable)
 	}
 
-	source := cursor.Scan
-	return run(func(dst ...any) error {
-		return p.scanValues(source, dst)
-	}, reusable)
+	// Narrow the custom cursor once per operation, outside the row callback.
+	return run(p.sourceScan(ScanSource(cursor)), Reuse{})
+}
+
+// withSourceScan requires a prepared mapping, non-nil source (including its
+// concrete value) and callback. Callers have already excluded raw *sql.Rows;
+// custom cursors never receive destination reuse permissions.
+func (m *Mapping) withSourceScan(source ScanSource, run func(RowScanFunc, Reuse) error) error {
+	p := scanPlanPool.Get().(*scanPlan)
+	defer releasePlan(p)
+
+	m.init(p)
+	return run(p.sourceScan(source), Reuse{})
+}
+
+// Share callback construction without adding another scope call to WithScan.
+func (p *scanPlan) sourceScan(source ScanSource) RowScanFunc {
+	return func(dst ...any) error {
+		return p.scanSourceValues(source, dst)
+	}
 }

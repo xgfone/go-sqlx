@@ -33,7 +33,7 @@ func (SliceRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding, error
 	}
 
 	types := []reflect.Type{reflect.PointerTo(v.Type().Elem().Elem())}
-	mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
+	mapping, err := options.prepareMapping(types)
 	if err != nil {
 		return nil, err
 	}
@@ -136,15 +136,7 @@ func NewSliceRowsBinder[S ~[]T, T any]() RowsBinder { return typedSliceRowsBinde
 
 type typedSliceRowsBinder[S ~[]T, T any] struct{}
 
-func (b typedSliceRowsBinder[S, T]) Prepare(dst any, options BindOptions) (RowsBinding, error) {
-	state, err := b.prepare(dst, options)
-	if err != nil {
-		return nil, err
-	}
-	return state, nil
-}
-
-func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedSliceBinding[S, T], error) {
+func (typedSliceRowsBinder[S, T]) Prepare(dst any, options BindOptions) (RowsBinding, error) {
 	pointer, ok := dst.(*S)
 	if !ok {
 		return nil, UnsupportedTypeError{Name: "sqlx.NewSliceRowsBinder", Type: gettype(dst)}
@@ -157,7 +149,7 @@ func (typedSliceRowsBinder[S, T]) prepare(dst any, options BindOptions) (*typedS
 	}
 
 	types := []reflect.Type{reflect.TypeFor[*T]()}
-	mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
+	mapping, err := options.prepareMapping(types)
 	if err != nil {
 		return nil, err
 	}

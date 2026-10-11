@@ -80,8 +80,10 @@ func (r Row) WithColumns(columns ...string) Row {
 	return r
 }
 
+// WithScanOptions returns a Row with the supplied conversion option values.
+// TimeLayouts shares immutable storage as described by [ScanOptions].
 func (r Row) WithScanOptions(options ScanOptions) Row {
-	r.options = cloneScanOptions(options)
+	r.options = options
 	return r
 }
 

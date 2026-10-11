@@ -9,6 +9,7 @@ import (
 	"errors"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -166,6 +167,8 @@ func TestWithScanRejectsInvalidPreparation(t *testing.T) {
 	types := []reflect.Type{reflect.TypeFor[*int64]()}
 	for _, scanner := range []RowScanner{
 		nil,
+		(*withScanTestScanner)(nil),
+		(*withScanTestCursor)(nil),
 		(*Rows)(nil),
 		(*sql.Rows)(nil),
 		Row{},
@@ -212,6 +215,340 @@ func TestWithScanRejectsInvalidPreparation(t *testing.T) {
 	rows.SetScanOptions(ScanOptions{Nulls: 99})
 	if err := WithScan(rows, types, unreachable); err == nil {
 		t.Fatal("invalid options accepted")
+	}
+}
+
+func TestWithScanNilCallbackPrecedesPreparation(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		scanner RowScanner
+	}{
+		{"nil_scanner", nil},
+		{"typed_nil_scanner", (*withScanTestScanner)(nil)},
+		{"typed_nil_cursor", (*withScanTestCursor)(nil)},
+		{"typed_nil_rows", (*Rows)(nil)},
+		{"single_use_row", Row{}},
+		{"columns_error", &withScanTestScanner{columnsErr: errors.New("columns unavailable")}},
+		{"shape_error", &withScanTestScanner{columns: []string{"value"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := WithScan(tc.scanner, nil, nil)
+			if err == nil || !strings.Contains(err.Error(), "nil scan callback") {
+				t.Fatal("callback error precedence changed", err)
+			}
+		})
+	}
+}
+
+type withScanTestScanner struct {
+	columns    []string
+	columnsErr error
+	scan       RowScanFunc
+}
+
+func (s *withScanTestScanner) Columns() ([]string, error) {
+	return s.columns, s.columnsErr
+}
+
+func (*withScanTestScanner) Close() error {
+	panic("WithScan must not close its source")
+}
+
+func (s *withScanTestScanner) Scan(dst ...any) error {
+	if s.scan == nil {
+		panic("preparation failure must not scan")
+	}
+	return s.scan(dst...)
+}
+
+// WithScan borrows scanning only; iteration and error reporting stay with callers.
+type withScanTestCursor struct{ *withScanTestScanner }
+
+func (*withScanTestCursor) Next() bool { panic("WithScan must not advance the cursor") }
+func (*withScanTestCursor) Err() error { panic("WithScan must not check raw cursor errors") }
+
+func TestWithScanCustomScannerPreparation(t *testing.T) {
+	cause := errors.New("columns unavailable")
+	types := []reflect.Type{reflect.TypeFor[*int64]()}
+	for _, tc := range []struct {
+		name    string
+		columns []string
+		err     error
+		cursor  bool
+	}{
+		{"scanner/columns_error", []string{"value"}, cause, false},
+		{"scanner/shape_error", []string{"first", "second"}, nil, false},
+		{"cursor/columns_error", []string{"value"}, cause, true},
+		{"cursor/shape_error", []string{"first", "second"}, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &withScanTestScanner{columns: tc.columns, columnsErr: tc.err}
+			var source RowScanner = scanner
+			if tc.cursor {
+				source = &withScanTestCursor{scanner}
+			}
+			err := WithScan(source, types, func(RowScanFunc) error {
+				t.Fatal("preparation failure reached callback")
+				return nil
+			})
+			if err == nil || (tc.err != nil && !errors.Is(err, tc.err)) {
+				t.Fatal("preparation error lost", err)
+			}
+
+			// Preparation failure leaves the scanner usable for a later scope.
+			scanner.columns, scanner.columnsErr = []string{"value"}, nil
+			calls := 0
+			scanner.scan = func(dst ...any) error {
+				calls++
+				return dst[0].(sql.Scanner).Scan(int64(7))
+			}
+			var saved RowScanFunc
+			var got int64
+			err = WithScan(source, types, func(scan RowScanFunc) error {
+				saved = scan
+				return scan(&got)
+			})
+			if err != nil || got != 7 || calls != 1 {
+				t.Fatal("custom scan method was not used", got, calls, err)
+			}
+			if err := saved(&got); err == nil || calls != 1 {
+				t.Fatal("expired callback reached the scanner", calls, err)
+			}
+		})
+	}
+}
+
+func TestWithScanColumnsErrorDoesNotAllocate(t *testing.T) {
+	cause := errors.New("columns unavailable")
+	scanner := &withScanTestScanner{columnsErr: cause}
+	types := []reflect.Type{reflect.TypeFor[*int64]()}
+	run := func(RowScanFunc) error {
+		t.Fatal("preparation failure reached callback")
+		return nil
+	}
+	for _, source := range []RowScanner{scanner, &withScanTestCursor{scanner}} {
+		allocs := testing.AllocsPerRun(100, func() {
+			if err := WithScan(source, types, run); err != cause {
+				t.Fatal("columns error lost", err)
+			}
+		})
+		if allocs != 0 {
+			t.Fatalf("%T: columns error allocated %g times", source, allocs)
+		}
+	}
+}
+
+func TestWithScanCustomScannerScope(t *testing.T) {
+	types := []reflect.Type{reflect.TypeFor[*int64]()}
+	for _, kind := range []string{"scanner", "value_scanner", "cursor"} {
+		for _, mode := range []string{
+			"success", "source_error", "source_panic", "conversion_error", "callback_error", "callback_panic",
+		} {
+			t.Run(kind+"/"+mode, func(t *testing.T) {
+				cause := errors.New(mode)
+				calls := 0
+				var adapter *GeneralScanner
+				scanner := &withScanTestScanner{
+					columns: []string{"value"},
+					scan: func(dst ...any) error {
+						calls++
+						adapter = dst[0].(*GeneralScanner)
+						switch mode {
+						case "source_error":
+							return cause
+						case "source_panic":
+							panic(cause)
+						case "conversion_error":
+							return adapter.Scan("invalid integer")
+						}
+						return adapter.Scan(int64(7))
+					},
+				}
+				var source RowScanner = scanner
+				switch kind {
+				case "cursor":
+					source = &withScanTestCursor{scanner}
+				case "value_scanner":
+					source = struct{ *withScanTestScanner }{scanner}
+				}
+				var saved RowScanFunc
+				var err error
+				var caught any
+				func() {
+					defer func() { caught = recover() }()
+					err = WithScan(source, types, func(scan RowScanFunc) error {
+						saved = scan
+						for _, dst := range [][]any{nil, {new(int)}, {nil}, {(*int64)(nil)}, {new(int64), new(int64)}} {
+							if err := scan(dst...); err == nil || calls != 0 {
+								t.Fatal("invalid destination reached source", err, calls)
+							}
+						}
+						var got int64
+						if err := scan(&got); err != nil {
+							return err
+						}
+						if got != 7 {
+							t.Fatal("custom Scan was not used", got)
+						}
+						switch mode {
+						case "callback_error":
+							return cause
+						case "callback_panic":
+							panic(cause)
+						}
+						return nil
+					})
+				}()
+				switch mode {
+				case "source_panic", "callback_panic":
+					if caught != cause {
+						t.Fatal("panic lost", caught)
+					}
+				case "source_error", "callback_error":
+					if caught != nil || err != cause {
+						t.Fatal("error lost", err, caught)
+					}
+				case "conversion_error":
+					if caught != nil || err == nil {
+						t.Fatal("conversion error lost", err, caught)
+					}
+				default:
+					if caught != nil || err != nil {
+						t.Fatal(err, caught)
+					}
+				}
+				if calls != 1 || adapter == nil || adapter.Value != nil {
+					t.Fatal("source dispatch or destination cleanup failed", calls, adapter)
+				}
+				// Closed scopes reject even an invalid signature before dispatching.
+				for _, dst := range [][]any{nil, {new(int64)}} {
+					if err := saved(dst...); err == nil || err.Error() != "sqlx: prepared scanner is closed" || calls != 1 {
+						t.Fatal("expired scope remained usable", err, calls)
+					}
+				}
+				scanner.scan = func(dst ...any) error {
+					calls++
+					adapter = dst[0].(*GeneralScanner)
+					return adapter.Scan(int64(42))
+				}
+				err = WithScan(source, types, func(scan RowScanFunc) error {
+					var got int64
+					if err := saved(&got); err == nil || calls != 1 {
+						t.Fatal("expired scope revived", err, calls)
+					}
+					if err := scan(&got); err != nil || got != 42 {
+						t.Fatal("subsequent scope failed", got, err)
+					}
+					return nil
+				})
+				if err != nil || calls != 2 || adapter.Value != nil {
+					t.Fatal("subsequent scope cleanup failed", err, calls)
+				}
+			})
+		}
+	}
+}
+
+func TestWithScanChecksRowsErrorDuringScope(t *testing.T) {
+	rows, _ := bindTestRows(t, int64(7))
+	defer rows.Close() //nolint:errcheck
+	cause := errors.New("rows failed during scope")
+	var saved RowScanFunc
+	err := WithScan(rows, []reflect.Type{reflect.TypeFor[*int64]()}, func(scan RowScanFunc) error {
+		saved = scan
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		var got int64
+		if err := scan(&got); err != nil || got != 7 {
+			t.Fatal(got, err)
+		}
+		// No revision change: this must be caught by the guarded source's Err check.
+		rows.err = cause
+		got = -1
+		err := scan(&got)
+		if err != cause || got != -1 {
+			t.Fatal("Rows.Err protection bypassed", got, err)
+		}
+		return err
+	})
+	if err != cause {
+		t.Fatal("rows error lost", err)
+	}
+	if err := saved(new(int64)); err == nil || err.Error() != "sqlx: prepared scanner is closed" {
+		t.Fatal("failed scope remained usable", err)
+	}
+}
+
+func TestWithScanRowsValidationPrecedence(t *testing.T) {
+	rows, _ := bindTestRows(t, int64(7))
+	defer rows.Close() //nolint:errcheck
+
+	cause := errors.New("metadata unavailable")
+	types := []reflect.Type{reflect.TypeFor[*int64]()}
+	unreachable := func(RowScanFunc) error {
+		t.Fatal("invalid preparation reached callback")
+		return nil
+	}
+
+	rows.err = cause
+	rows.SetScanOptions(ScanOptions{Nulls: 99})
+	err := WithScan(rows, nil, nil)
+	if err == nil || err.Error() != "sqlx: nil scan callback" {
+		t.Fatal("callback validation no longer comes first", err)
+	}
+	if err := WithScan(rows, nil, unreachable); err != cause {
+		t.Fatal("metadata error no longer precedes options and types", err)
+	}
+
+	rows.err = nil
+	rows.SetColumns("first", "second")
+	err = WithScan(rows, nil, unreachable)
+	if err == nil || err.Error() != "sqlx: result label count differs from driver columns" {
+		t.Fatal("label validation no longer precedes options and types", err)
+	}
+
+	rows.SetColumns()
+	err = WithScan(rows, nil, unreachable)
+	if err == nil || err.Error() != "sqlx: invalid NULL policy" {
+		t.Fatal("option validation no longer precedes destination types", err)
+	}
+
+	var saved RowScanFunc
+	rows.SetScanOptions(ScanOptions{})
+	err = WithScan(rows, types, func(scan RowScanFunc) error {
+		saved = scan
+		if !rows.Next() {
+			t.Fatal(rows.Err())
+		}
+		rows.err = cause
+
+		// Public signature checks precede both guarded source checks.
+		err := scan(new(int))
+		if err == nil || err.Error() != "sqlx: prepared scan destination types changed" {
+			t.Fatal("source error preceded type validation", err)
+		}
+
+		var got int64 = -1
+		if err := scan(&got); err != cause || got != -1 {
+			t.Fatal("Rows.Err guard was bypassed", got, err)
+		}
+
+		rows.SetColumns("value")
+		err = scan(new(int))
+		if err == nil || err.Error() != "sqlx: prepared scan destination types changed" {
+			t.Fatal("revision check preceded type validation", err)
+		}
+		if err := scan(&got); err != errScanScopeChanged || got != -1 {
+			t.Fatal("revision guard no longer precedes Err", got, err)
+		}
+		return nil
+	})
+	if err != errScanScopeChanged {
+		t.Fatal("scope exit failed to detect revision change", err)
+	}
+	if err := saved(new(int)); err == nil || err.Error() != "sqlx: prepared scanner is closed" {
+		t.Fatal("scope invalidation no longer precedes type validation", err)
 	}
 }
 

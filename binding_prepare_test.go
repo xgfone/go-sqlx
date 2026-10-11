@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -35,7 +36,8 @@ func TestBindingPrepareOwnsMappingInputs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	columns[0], layouts[0] = "changed", "invalid layout"
+	columns[0] = "changed"
+	options.ScanOptions.TimeLayouts = []string{"invalid layout"}
 	options.ScanOptions.DurationUnit = time.Minute
 	rows := bindTestDB(t, &bindFixture{
 		// Prepared labels deliberately differ from the raw driver's names.
@@ -159,7 +161,11 @@ func TestCustomBindingReceivesRawCursorAndConfigurationSnapshot(t *testing.T) {
 			t.Fatal("missing binding metadata", options)
 		}
 
-		// A custom extension must not be able to corrupt the DB's snapshot.
+		if &options.ScanOptions.TimeLayouts[0] != &layouts[0] {
+			t.Fatal("custom binder received copied time layouts")
+		}
+		// A custom extension must copy shared layouts before changing them.
+		options.ScanOptions.TimeLayouts = slices.Clone(options.ScanOptions.TimeLayouts)
 		options.ScanOptions.TimeLayouts[0] = "custom mutation"
 		mapping, err := options.PrepareMapping(reflect.TypeFor[*time.Duration]())
 		if err != nil {

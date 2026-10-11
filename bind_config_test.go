@@ -87,9 +87,12 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 		values:  [][]driver.Value{{"08/09/2026"}},
 	}).WithBindConfig(BindConfig{ScanOptions: ScanOptions{TimeLayouts: layouts}})
 
-	layouts[0] = "bad"
 	copy := timeDB.BindConfig()
-	copy.ScanOptions.TimeLayouts[0] = "also bad"
+	if &copy.ScanOptions.TimeLayouts[0] != &layouts[0] {
+		t.Fatal("configuration copied immutable time layouts")
+	}
+	copy.ScanOptions.TimeLayouts = []string{"bad"}
+	copy.ScanOptions.Nulls = NullError
 
 	var got []time.Time
 	err = timeDB.QueryRowsContext(context.Background(), "q").Bind(&got)

@@ -30,13 +30,20 @@ const (
 )
 
 // ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns. Custom [sql.Scanner]
-// implementations
-// receive original source types and must copy borrowed bytes they retain.
-// Their implementations must return errors instead of panicking and manage
-// their own resources. sqlx does not recover application [sql.Scanner] panics.
+// maps NULL scalars to zero and rejects unknown result columns.
+//
+// TimeLayouts is shared without copying throughout sqlx. Once supplied to a
+// configuration setter, query result, binder or mapping, its backing array must
+// remain immutable while any of them retains it. This includes the original
+// caller, configuration getters, ScanOptionsFunc providers and custom binders.
+// Do not assign elements, copy into, clear, sort or append to the shared slice;
+// make a private copy before modifying it. Replacing TimeLayouts with a new
+// slice on a local ScanOptions value is allowed; other option fields copy by value.
+//
+// Custom [sql.Scanner] implementations receive original source types and must
+// copy borrowed bytes they retain. Their implementations must return errors
+// instead of panicking and manage their own resources. sqlx does not recover
+// application [sql.Scanner] panics.
 type ScanOptions = rowbind.ScanOptions
-
-func cloneScanOptions(o ScanOptions) ScanOptions { return rowbind.CloneOptions(o) }
 
 func validateScanOptions(o ScanOptions) error { return rowbind.ValidateOptions(o) }

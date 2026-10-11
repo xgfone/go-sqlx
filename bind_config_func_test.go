@@ -147,7 +147,7 @@ func TestScanOptionsFuncPrecedenceAndZeroValue(t *testing.T) {
 	}
 }
 
-func TestScanOptionsFuncOwnsReturnedLayouts(t *testing.T) {
+func TestScanOptionsFuncSharesLayoutsAndSnapshotsOptionValues(t *testing.T) {
 	for _, single := range []bool{false, true} {
 		layouts := []string{"02/01/2006"}
 		options := ScanOptions{TimeLayouts: layouts, Location: time.UTC}
@@ -161,11 +161,19 @@ func TestScanOptionsFuncOwnsReturnedLayouts(t *testing.T) {
 		var err error
 		if single {
 			row := db.QueryRowOneContext(context.Background(), "q")
-			layouts[0], options.Location = "invalid", time.FixedZone("UTC+8", 8*60*60)
+			if &row.options.TimeLayouts[0] != &layouts[0] {
+				t.Fatal("Row copied provider layouts")
+			}
+			options.TimeLayouts = []string{"invalid"}
+			options.Location = time.FixedZone("UTC+8", 8*60*60)
 			err = row.Scan(&got)
 		} else {
 			rows := db.QueryRowsContext(context.Background(), "q")
-			layouts[0], options.Location = "invalid", time.FixedZone("UTC+8", 8*60*60)
+			if &rows.config.ScanOptions.TimeLayouts[0] != &layouts[0] {
+				t.Fatal("Rows copied provider layouts")
+			}
+			options.TimeLayouts = []string{"invalid"}
+			options.Location = time.FixedZone("UTC+8", 8*60*60)
 			var values []time.Time
 			err = rows.Bind(&values)
 			if len(values) == 1 {
@@ -288,21 +296,30 @@ func TestScanOptionsFuncValidationAndQueryErrors(t *testing.T) {
 }
 
 func TestScanOptionsFuncConcurrentQueries(t *testing.T) {
+	type record struct {
+		Value time.Duration `sql:"value"`
+		Stamp time.Time     `sql:"stamp"`
+	}
 	var calls atomic.Int64
+	layouts := []string{"02/01/2006"}
 	db := bindTestDB(t, &bindFixture{
-		columns: []string{"value"},
-		values:  [][]driver.Value{{int64(1)}},
+		columns: []string{"value", "stamp"},
+		values:  [][]driver.Value{{int64(1), "11/09/2026"}},
 	}).WithBindConfig(BindConfig{ScanOptionsFunc: func() ScanOptions {
 		calls.Add(1)
-		return ScanOptions{DurationUnit: time.Second}
+		return ScanOptions{DurationUnit: time.Second, TimeLayouts: layouts}
 	}})
 
 	var wg sync.WaitGroup
 	for range 16 {
 		wg.Go(func() {
-			var got []time.Duration
-			if err := db.QueryRowsContext(context.Background(), "q").Bind(&got); err != nil ||
-				!reflect.DeepEqual(got, []time.Duration{time.Second}) {
+			var got []record
+			rows := db.QueryRowsContext(context.Background(), "q")
+			if &rows.config.ScanOptions.TimeLayouts[0] != &layouts[0] {
+				t.Error("concurrent result copied provider layouts")
+			}
+			want := []record{{time.Second, time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)}}
+			if err := rows.Bind(&got); err != nil || !reflect.DeepEqual(got, want) {
 				t.Errorf("%v %v", got, err)
 			}
 		})

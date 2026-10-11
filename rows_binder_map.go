@@ -15,7 +15,7 @@ import (
 // NewMapPairsBinder scans two positional columns as key and value. Duplicate
 // keys fail by default. Only a non-nil pointer to M is accepted.
 func NewMapPairsBinder[M ~map[K]V, K comparable, V any]() RowsBinder {
-	return mapRowsBinder[M](false, nil, []reflect.Type{
+	return newMapRowsBinder[M](false, nil, []reflect.Type{
 		reflect.TypeFor[*K](),
 		reflect.TypeFor[*V](),
 	}, scanMapPairs[K, V])
@@ -81,7 +81,7 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 		configError = errors.New("sqlx: nil map key function")
 	}
 
-	return mapRowsBinder[M](
+	return newMapRowsBinder[M](
 		false,
 		configError,
 		[]reflect.Type{reflect.TypeFor[*V]()},
@@ -114,7 +114,7 @@ func NewMapIndexBinder[M ~map[K]V, K comparable, V any](key func(V) K) RowsBinde
 // NewMapSetBinder scans each row as a set key. Duplicate keys are intentionally
 // deduplicated, including during [Rows.Merge]. Use map[K]struct{} to express a set.
 func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
-	return mapRowsBinder[M](
+	return newMapRowsBinder[M](
 		true,
 		nil,
 		[]reflect.Type{reflect.TypeFor[*K]()},
@@ -140,48 +140,62 @@ func NewMapSetBinder[M ~map[K]struct{}, K comparable]() RowsBinder {
 	)
 }
 
-func mapRowsBinder[M ~map[K]V, K comparable, V any](
+func newMapRowsBinder[M ~map[K]V, K comparable, V any](
 	set bool,
 	configError error,
 	types []reflect.Type,
 	makeScan scanMaker[K, V],
 ) RowsBinder {
-	checkKey := dynamicMapKey(reflect.TypeFor[K]())
-	return RowsBinderFunc(func(dst any, options BindOptions) (RowsBinding, error) {
-		pointer, ok := dst.(*M)
+	return mapRowsBinder[M, K, V]{
+		set:         set,
+		checkKey:    dynamicMapKey(reflect.TypeFor[K]()),
+		configError: configError,
+		makeScan:    makeScan,
+		types:       types,
+	}
+}
 
-		if !ok {
-			return unsupportedBinder("sqlx.MapRowsBinder", dst)
-		}
-		if pointer == nil {
-			return nil, errors.New("sqlx: nil map destination")
-		}
-		if err := options.validate(); err != nil {
-			return nil, err
-		}
-		if options.Mode == BindAppend {
-			return nil, errors.New("sqlx: Append requires a slice destination")
-		}
-		if configError != nil {
-			return nil, configError
-		}
+type mapRowsBinder[M ~map[K]V, K comparable, V any] struct {
+	set         bool
+	checkKey    bool
+	configError error
+	makeScan    scanMaker[K, V]
+	types       []reflect.Type
+}
 
-		mapping, err := rowbind.Prepare(options.Columns, types, options.ScanOptions)
-		if err != nil {
-			return nil, err
-		}
+func (b mapRowsBinder[M, K, V]) Prepare(dst any, options BindOptions) (RowsBinding, error) {
+	pointer, ok := dst.(*M)
+	if !ok {
+		return unsupportedBinder("sqlx.MapRowsBinder", dst)
+	}
+	if pointer == nil {
+		return nil, errors.New("sqlx: nil map destination")
+	}
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
+	if options.Mode == BindAppend {
+		return nil, errors.New("sqlx: Append requires a slice destination")
+	}
+	if b.configError != nil {
+		return nil, b.configError
+	}
 
-		return &mapRowsBinding[M, K, V]{
-			mapping:    mapping,
-			pointer:    pointer,
-			makeScan:   makeScan,
-			capacity:   options.capacity(),
-			duplicates: options.DuplicateKeys,
-			bindMode:   options.Mode,
-			checkKey:   checkKey,
-			set:        set,
-		}, nil
-	})
+	mapping, err := options.prepareMapping(b.types)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mapRowsBinding[M, K, V]{
+		mapping:    mapping,
+		pointer:    pointer,
+		makeScan:   b.makeScan,
+		capacity:   options.capacity(),
+		duplicates: options.DuplicateKeys,
+		bindMode:   options.Mode,
+		checkKey:   b.checkKey,
+		set:        b.set,
+	}, nil
 }
 
 type scanMaker[K comparable, V any] func(RowScanFunc, rowbind.Reuse) func() (K, V, error)

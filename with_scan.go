@@ -33,7 +33,7 @@ func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFun
 		return errors.New("sqlx: nil scan callback")
 	}
 
-	source, columns, options, err := scanSource(scanner)
+	columns, options, rows, err := scanMetadata(scanner)
 	if err != nil {
 		return err
 	}
@@ -43,9 +43,11 @@ func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFun
 		return err
 	}
 
-	if rows, ok := scanner.(*Rows); ok {
+	// The callback and scanner have been checked, and Prepare succeeded.
+	// Use prepared entries to avoid repeating scope validation.
+	if rows != nil {
 		revision := rows.revision
-		err := mapping.WithCheckedScan(func(dst ...any) error {
+		err := mapping.WithPreparedScan(func(dst ...any) error {
 			if rows.revision != revision {
 				return errScanScopeChanged
 			}
@@ -60,30 +62,33 @@ func WithScan(scanner RowScanner, types []reflect.Type, run func(scan RowScanFun
 		return err
 	}
 
-	return mapping.WithCheckedScan(source, run)
+	// Keep the scanner in the handle without allocating a source method value.
+	// *Rows must keep the guarded source above.
+	return mapping.WithPreparedSource(scanner, run)
 }
 
 var errScanScopeChanged = errors.New("sqlx: result set or scan configuration changed during WithScan")
 
-// Select the raw function so a prepared scan does not repeat [Rows.Scan]'s
-// mapping and adaptation. Only this public convenience API infers configuration.
-func scanSource(scanner RowScanner) (RowScanFunc, []string, ScanOptions, error) {
+// Read the labels and options before creating a scan function, which is only
+// needed after preparation succeeds. Only this convenience API infers options.
+// Return the identified *Rows so execution can retain its scope guards.
+func scanMetadata(scanner RowScanner) ([]string, ScanOptions, *Rows, error) {
 	if nilBindingValue(scanner) {
-		return nil, nil, ScanOptions{}, errors.New("sqlx: nil row scanner")
+		return nil, ScanOptions{}, nil, errors.New("sqlx: nil row scanner")
 	}
 	switch rows := scanner.(type) {
 	case *Rows:
 		columns, err := rows.scanColumns()
 		if err != nil {
-			return nil, nil, ScanOptions{}, err
+			return nil, ScanOptions{}, nil, err
 		}
-		return rows.rows.Scan, columns, rows.config.ScanOptions, nil
+		return columns, rows.config.ScanOptions, rows, nil
 
 	case Row, *Row:
-		return nil, nil, ScanOptions{}, errors.New("sqlx: use Row.Scan for a single-use result")
+		return nil, ScanOptions{}, nil, errors.New("sqlx: use Row.Scan for a single-use result")
 
 	default:
 		columns, err := scanner.Columns()
-		return scanner.Scan, columns, ScanOptions{}, err
+		return columns, ScanOptions{}, nil, err
 	}
 }
