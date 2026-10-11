@@ -856,10 +856,20 @@ previous registry remain intact; registrations are not copied to its replacement
 
 ## Opening a database
 
-`Open(driverName, dataSourceName, configs...)` uses the registered dialect for
-`driverName` and passes the driver-specific DSN to `DefaultOpener` (by default,
-`sql.Open`). Import the SQL driver in your application to register it with
-`database/sql`.
+`Open(driverName, dataSourceName)` uses the registered dialect for `driverName`,
+prepares the native DSN through `Dialect.ConfigureConnection`, and calls
+`DefaultOpener` (by default, `sql.Open`). It supplies no connection options and
+always applies `DefaultConfigs()` to the pool. Import the SQL driver in your
+application to register it with `database/sql`.
+
+Use `OpenWithOptions` for per-pool configuration. Nil `OpenOptions.Configs` uses
+the defaults; a non-nil empty slice disables them; a nonempty slice replaces them:
+
+```go
+db, err := sqlx.OpenWithOptions("mysql", "user:pass@tcp(localhost:3306)/app", sqlx.OpenOptions{
+    Configs: []sqlx.Config{sqlx.MaxOpenConns(8), sqlx.MaxIdleConns(2)},
+})
+```
 
 When `driverName` is empty, you can prepend `[dialect+]driver://` to the native DSN:
 
@@ -880,8 +890,9 @@ Names are case-sensitive registration names; the built-in names are `mysql`,
 
 If neither a driver name nor a metadata prefix is specified, Open uses
 `dialect.Default()`, initially `dialect.MySQL`, and its `Name()` as the driver name.
-The native DSN is passed unchanged, including an empty DSN when supported by the
-driver. Use `dialect.SetDefault` to change the default:
+The native DSN is passed to that dialect's connection preparation, including an
+empty DSN when supported by the driver. Use `dialect.SetDefault` to change the
+default:
 
 ```go
 dialect.SetDefault(dialect.SQLite)
@@ -892,12 +903,86 @@ Calling `dialect.SetDefault` affects subsequent calls to Open that omit both
 driver and prefix; opened DBs keep their explicit dialect. An empty default
 driver name returns an error.
 
-Open strips this metadata prefix and passes the remaining DSN unchanged,
-without parsing or converting credentials, paths, or query parameters. If the
-native DSN is a URL, retain its scheme inside the prefixed string, for example
-`postgres+pgx://postgres://user:pass@localhost:5432/app`. An empty native DSN is
-allowed when the driver supports it. Malformed prefixes and unknown
+SQLx strips this metadata prefix without parsing credentials, paths, or query
+parameters. The selected dialect receives the remaining native DSN and may
+prepare it before the opener is called. If the native DSN is a URL, retain its
+scheme inside the prefixed string, for example
+`postgres+pgx://postgres://user:pass@localhost:5432/app`. An empty native DSN
+is allowed when the driver supports it. Malformed prefixes and unknown
 dialects return an error. A nonempty `driverName` bypasses prefix parsing.
+
+### Connection options
+
+`OpenWithOptions` accepts extensible settings applied **before** opening a native
+connection, separately from pool configurations applied **after** opening:
+
+```go
+import (
+    "time"
+
+    "github.com/xgfone/go-sqlx"
+    "github.com/xgfone/go-sqlx/dialect"
+    _ "github.com/xgfone/go-sqlx-mysql"
+)
+
+db, err := sqlx.OpenWithOptions("", "mysql://user:pass@tcp(localhost:3306)/app", sqlx.OpenOptions{
+    Connection: dialect.ConnectionOptions{
+        dialect.OptionLocation: time.UTC,
+    },
+    Required: []string{dialect.OptionLocation}, // Optional caller policy.
+    Configs: []sqlx.Config{sqlx.MaxOpenConns(8)},
+})
+```
+
+`ConnectionOptions` is a read-only map with documented value types.
+`OptionLocation` takes a `*time.Location`; nil is unspecified and does not select
+`time.Local` implicitly. New keys can be added without changing method signatures.
+Unknown options are ignored. Supported options with invalid values return an error.
+Each adapter documents precedence over explicit native settings. `Required` can
+require selected keys to appear in `ConnectionResult.Handled`, failing before
+the driver opens a pool if they do not. Nil `Configs` uses `DefaultConfigs`;
+a non-nil empty slice disables defaults. Connection options do not change
+the database's scan/bind configuration.
+
+`Dialect` now requires
+`ConfigureConnection(ConnectionRequest) (ConnectionResult, error)`.
+The request contains the **actual driver**, native DSN, and an option snapshot.
+The result contains the prepared DSN and successfully handled keys.
+Implementations must be safe for concurrent use, treat input values as read-only,
+avoid retaining mutable options, and omit credentials/DSNs from errors.
+Custom dialects can embed a built-in to inherit its default behavior or
+implement the method directly. `WithVersion`, `WithFeatures`, `WithGrammar`,
+and `WithLexicalRules` forward this method to their wrapped dialect.
+
+Built-in dialects pass through native DSNs and ignore unsupported options
+until a compatible adapter is registered. An adapter uses
+`dialect.RegisterConnectionConfigurer(canonicalDialectName, actualDriver, fn)`.
+Both names must match; sharing a SQL dialect does not imply sharing a DSN format.
+Duplicate registrations fail. Other drivers are never given MySQL-only options.
+
+The optional [go-sqlx-mysql](https://github.com/xgfone/go-sqlx-mysql) adapter is a
+separate project and Go module (`github.com/xgfone/go-sqlx-mysql`). Importing it
+registers the official `go-sql-driver/mysql` SQL driver and the matching connection
+configurer. It parses and formats native DSNs and handles `OptionLocation` by
+overwriting native `loc`. UTC and explicit IANA names also overwrite session
+`time_zone`, including existing explicit values; use `Asia/Shanghai` for domestic
+deployments. The adapter privately captures the initial `time.Local` and uses
+pointer equality to identify Local, regardless of its name or later reassignment
+of `time.Local`. That pointer explicitly sets `loc=Local` and preserves native
+`time_zone`, adding none if absent. Its session time zone remains the caller's
+responsibility. A different pointer with the same UTC/IANA name synchronizes both
+settings; a separately created location named `Local` is rejected. Empty names are
+errors. Other driver options, including `parseTime`, are preserved. No
+configuration function injection is needed.
+
+UTC uses the driver's default UTC location and `time_zone='+00:00'`; `FormatDSN`
+may omit `loc=UTC`. Other IANA names need MySQL time zone tables. DSN settings
+apply to every physical connection, including reconnects.
+Pools remain lazy: use `PingContext` to verify server-side settings before startup.
+See [the MySQL adapter documentation](https://github.com/xgfone/go-sqlx-mysql#readme)
+for the complete time zone policy and local development instructions. Test the
+adapter in its own checkout; SQLx's `go test ./...` covers only the core module.
+The main SQLx module, including its tests, retains no third-party dependencies.
 
 ## Tables and transactions
 
@@ -1535,7 +1620,8 @@ pointers and custom Scanners retain their usual NULL semantics. Use
 
 Dialect registration uses `Register` (error) or `MustRegister` (panic at startup).
 Custom dialects implement `Dialect`, including `Grammar()` for SQL forms and
-clause placement and `LexicalRules()` for expression template scanning. The
+clause placement, `LexicalRules()` for expression template scanning, and
+`ConfigureConnection()` for pre-open driver settings. The
 lexical rules must match the connection's SQL mode. See the
 [dialect configuration guide](docs/sql-syntax.md#dialect-configuration).
 

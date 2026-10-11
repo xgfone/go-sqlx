@@ -60,23 +60,20 @@ func TestDefaultConfigsOpenSnapshot(t *testing.T) {
 		return std, nil
 	}
 
-	SetDefaultConfigs(func(*sql.DB) { SetDefaultConfigs(MaxOpenConns(5)) }, MaxOpenConns(7))
-	for _, tc := range []struct {
-		configs []Config
-		want    int
-	}{
-		{nil, 7}, // Both configs come from the snapshot captured before application.
-		{nil, 5}, // The next call observes the replacement.
-		{[]Config{MaxOpenConns(11)}, 11},
-		{[]Config{}, 0},
-	} {
-		db, err := Open("mysql", "native", tc.configs...)
+	SetDefaultConfigs(
+		func(*sql.DB) { SetDefaultConfigs(MaxOpenConns(5)) },
+		MaxOpenConns(7),
+	)
+	// Both configs come from the snapshot captured before application; the next
+	// Open observes the replacement made by the first config.
+	for _, want := range []int{7, 5} {
+		db, err := Open("mysql", "native")
 		if err != nil {
 			t.Fatal(err)
 		}
 		std, ok := AsExecutor[*sql.DB](db)
-		if !ok || std.Stats().MaxOpenConnections != tc.want {
-			t.Fatal("Open did not use the selected config snapshot", tc.want)
+		if !ok || std.Stats().MaxOpenConnections != want {
+			t.Fatal("Open did not use the selected config snapshot", want)
 		}
 	}
 	SetDefaultConfigs()

@@ -3,6 +3,60 @@
 This branch intentionally breaks compatibility. Removed convenience methods do
 not have deprecated aliases.
 
+## Connection preparation in Dialect
+
+Custom `Dialect` implementations now also implement
+`ConfigureConnection(dialect.ConnectionRequest) (dialect.ConnectionResult, error)`.
+Return the native DSN unchanged and an empty `Handled` list for unsupported
+options. Recognized invalid values must return an error without including the
+DSN or credentials. Adapters document whether connection options override or
+validate native settings. Embedded built-in dialects inherit this method and
+their driver adapter registrations.
+
+`Open` now takes only `driverName` and `dataSourceName` and uses `DefaultConfigs()`
+for pool configuration. Two-argument calls retain their default configuration behavior.
+Move per-pool configurations to `OpenWithOptions.Configs`:
+
+```go
+// Before:
+db, err := sqlx.Open(driver, dsn, sqlx.MaxOpenConns(8))
+
+// After:
+db, err := sqlx.OpenWithOptions(driver, dsn, sqlx.OpenOptions{
+    Configs: []sqlx.Config{sqlx.MaxOpenConns(8)},
+})
+```
+
+For an expanded config slice, set `Configs: configs`. Nil uses the defaults;
+a non-nil empty slice disables defaults. `OpenWithOptions` also handles pre-open
+connection settings; options are extensible and unsupported keys are ignored
+unless explicitly listed in `Required`. Connection preparation does not change
+scanner or binding settings.
+
+`SetConnURLLocation` has been removed. For MySQL location and session time zone
+consistency, import `github.com/xgfone/go-sqlx-mysql` and pass
+`dialect.OptionLocation` to `OpenWithOptions`. The adapter now lives in the
+separate [go-sqlx-mysql project](https://github.com/xgfone/go-sqlx-mysql). Replace
+any old `github.com/xgfone/go-sqlx/driver/mysql` import and module requirement
+with `github.com/xgfone/go-sqlx-mysql`. For local development, include both project
+checkouts in your workspace instead of the former `driver/mysql` subdirectory.
+The adapter directly imports the official MySQL driver, registers it, and owns
+DSN parsing, formatting, and application time zone synchronization. The supplied
+application location overrides native `loc`. UTC and explicit IANA names also
+override `time_zone`; use `Asia/Shanghai` for domestic deployments. The adapter
+identifies Local by pointer equality with its privately captured initial `time.Local`,
+regardless of the location name or later assignments to `time.Local`. That pointer
+explicitly sets `loc=Local`, preserving any existing `time_zone` and adding none
+if absent. Local does not guarantee driver/session time zone consistency. A
+separately created location named `Local` is rejected; empty names are errors.
+The driver formatter may omit the default `loc=UTC`. The main SQLx module remains
+dependency-free. The previous `ConfigureDSN`, `SetConfigureDSN`, and `DSNConfigFunc`
+injection API has been removed; shared database libraries now only import the
+adapter and pass connection options. Unsupported options are ignored unless
+listed in `Required`, which fails before opening a pool. See
+[opening a database](README.md#opening-a-database) and the
+[MySQL adapter documentation](https://github.com/xgfone/go-sqlx-mysql#readme).
+
 ## Default configuration accessors
 
 `DefaultConfigs`, `DefaultDB`, and `DefaultMixRowsBinder` are now getter functions.

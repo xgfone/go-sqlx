@@ -4,10 +4,19 @@
 // Package dialect defines SQL dialects and their registration names.
 package dialect
 
-// Dialect renders SQL syntax and defines template tokenization rules.
-// Implementations must be safe for concurrent use.
+// Dialect renders SQL syntax, defines template tokenization rules, and prepares
+// native driver connections. Implementations must be safe for concurrent use.
 type Dialect interface {
 	Name() string
+
+	// ConfigureConnection prepares a native driver DSN before the connection
+	// opens. Unsupported options must be ignored. Recognized options with
+	// invalid values return an error. Adapters document whether options
+	// override or validate settings already present in the native DSN.
+	//
+	// Requests are read-only; implementations must not retain mutable Options.
+	// Errors must not include the DSN or credentials.
+	ConfigureConnection(ConnectionRequest) (ConnectionResult, error)
 
 	// Placeholder renders a positional parameter; i starts at one.
 	Placeholder(i int) string

@@ -16,10 +16,13 @@ import (
 func TestOpenDataSourcePrefix(t *testing.T) {
 	previous := DefaultOpener
 	previousDefault := dialect.Default()
+	previousConfigs := DefaultConfigs()
 	t.Cleanup(func() {
 		DefaultOpener = previous
 		dialect.SetDefault(previousDefault)
+		SetDefaultConfigs(previousConfigs...)
 	})
+	SetDefaultConfigs(MaxOpenConns(3))
 	// Explicit names and prefixes must take precedence over the default.
 	dialect.SetDefault(dialect.SQLite)
 
@@ -98,7 +101,7 @@ func TestOpenDataSourcePrefix(t *testing.T) {
 				return std, nil
 			}
 
-			db, err := Open(tc.driver, tc.source, MaxOpenConns(3))
+			db, err := Open(tc.driver, tc.source)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -121,11 +124,14 @@ func TestOpenDefaultDialect(t *testing.T) {
 	previousOpener := DefaultOpener
 	previousDefault := dialect.Default()
 	previousDB := DefaultDB()
+	previousConfigs := DefaultConfigs()
 	t.Cleanup(func() {
 		SetDefaultDB(previousDB)
 		DefaultOpener = previousOpener
 		dialect.SetDefault(previousDefault)
+		SetDefaultConfigs(previousConfigs...)
 	})
+	SetDefaultConfigs(MaxOpenConns(3))
 	// The opening default comes from dialect, independently of DefaultDB.
 	SetDefaultDB(&DB{Dialect: dialect.Postgres})
 
@@ -163,7 +169,7 @@ func TestOpenDefaultDialect(t *testing.T) {
 					return std, nil
 				}
 
-				db, err := Open("", source, MaxOpenConns(3))
+				db, err := Open("", source)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -237,8 +243,11 @@ func TestOpenInvalidDataSourcePrefix(t *testing.T) {
 }
 
 func TestOpenInferredDriverOpenerError(t *testing.T) {
-	previous := DefaultOpener
-	t.Cleanup(func() { DefaultOpener = previous })
+	previous, previousConfigs := DefaultOpener, DefaultConfigs()
+	t.Cleanup(func() {
+		DefaultOpener = previous
+		SetDefaultConfigs(previousConfigs...)
+	})
 	failure := errors.New("driver failed to open")
 	DefaultOpener = func(driver, source string) (*sql.DB, error) {
 		if driver != "pgx" || source != "native" {
@@ -248,7 +257,8 @@ func TestOpenInferredDriverOpenerError(t *testing.T) {
 	}
 
 	configured := false
-	db, err := Open("", "postgres+pgx://native", func(*sql.DB) { configured = true })
+	SetDefaultConfigs(func(*sql.DB) { configured = true })
+	db, err := Open("", "postgres+pgx://native")
 	if db != nil || !errors.Is(err, failure) || configured {
 		t.Fatal("Open lost the opener error or configured a failed database", db, err, configured)
 	}
@@ -256,11 +266,14 @@ func TestOpenInferredDriverOpenerError(t *testing.T) {
 
 func TestOpenConcurrentDefaultDialect(t *testing.T) {
 	previousOpener, previousDB, previousDefault := DefaultOpener, DefaultDB(), dialect.Default()
+	previousConfigs := DefaultConfigs()
 	t.Cleanup(func() {
 		DefaultOpener = previousOpener
 		SetDefaultDB(previousDB)
 		dialect.SetDefault(previousDefault)
+		SetDefaultConfigs(previousConfigs...)
 	})
+	SetDefaultConfigs()
 	SetDefaultDB(&DB{})
 	dialect.SetDefault(dialect.MySQL)
 
@@ -310,7 +323,7 @@ func TestOpenConcurrentDefaultDialect(t *testing.T) {
 		wg.Go(func() {
 			<-start
 			for range 100 {
-				db, err := Open("", "native", []Config{}...)
+				db, err := Open("", "native")
 				if err != nil {
 					t.Error(err)
 					return

@@ -273,42 +273,69 @@ func TestExecutorInterceptorQueryAndPrepare(t *testing.T) {
 }
 
 func TestExecutorInterceptorOpen(t *testing.T) {
-	calls := installTestInterceptor(t)
-	previous := DefaultOpener
-	t.Cleanup(func() { DefaultOpener = previous })
+	for _, tc := range []struct {
+		name  string
+		open  func() (*DB, error)
+		limit int
+	}{
+		{
+			"Open",
+			func() (*DB, error) { return Open("postgres", "test") },
+			3,
+		},
+		{
+			"OpenWithOptions",
+			func() (*DB, error) {
+				return OpenWithOptions("postgres", "test", OpenOptions{
+					Configs: []Config{MaxOpenConns(7)},
+				})
+			},
+			7,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := installTestInterceptor(t)
+			previous, previousConfigs := DefaultOpener, DefaultConfigs()
+			t.Cleanup(func() {
+				DefaultOpener = previous
+				SetDefaultConfigs(previousConfigs...)
+			})
+			SetDefaultConfigs(MaxOpenConns(3))
 
-	std := sql.OpenDB(txConnector{&txFixture{}})
-	t.Cleanup(func() { _ = std.Close() })
+			std := sql.OpenDB(txConnector{&txFixture{}})
+			t.Cleanup(func() { _ = std.Close() })
 
-	DefaultOpener = func(name, dsn string) (*sql.DB, error) {
-		if name != "postgres" || dsn != "test" {
-			t.Fatal(name, dsn)
-		}
-		return std, nil
-	}
+			DefaultOpener = func(name, dsn string) (*sql.DB, error) {
+				if name != "postgres" || dsn != "test" {
+					t.Fatal(name, dsn)
+				}
+				return std, nil
+			}
 
-	db, err := Open("postgres", "test", MaxOpenConns(3))
-	if err != nil {
-		t.Fatal(err)
-	}
+			db, err := tc.open()
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	got, ok := AsExecutor[*sql.DB](db)
-	if !ok || got != std || got.Stats().MaxOpenConnections != 3 {
-		t.Fatal("Open lost its underlying database or configuration")
-	}
+			got, ok := AsExecutor[*sql.DB](db)
+			if !ok || got != std || got.Stats().MaxOpenConnections != tc.limit {
+				t.Fatal("Open lost its underlying database or configuration")
+			}
 
-	_, err = db.ExecContext(context.Background(), "UPDATE t SET value = 1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(*calls) != 1 {
-		t.Fatal("Open did not apply interceptor", len(*calls))
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := std.PingContext(context.Background()); err == nil {
-		t.Fatal("underlying database was not closed")
+			_, err = db.ExecContext(context.Background(), "UPDATE t SET value = 1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(*calls) != 1 {
+				t.Fatal("Open did not apply interceptor", len(*calls))
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := std.PingContext(context.Background()); err == nil {
+				t.Fatal("underlying database was not closed")
+			}
+		})
 	}
 }
 

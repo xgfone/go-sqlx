@@ -9,7 +9,8 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-// Dialect is the SQL rendering contract defined by package [dialect].
+// Dialect is the SQL rendering and connection configuration contract defined
+// by package [dialect].
 type Dialect = dialect.Dialect
 
 func resolveDialect(d Dialect) Dialect {

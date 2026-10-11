@@ -7,8 +7,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"net/url"
-	"strings"
 	"testing"
 	"time"
 )
@@ -168,17 +166,5 @@ func TestDBSetExecutorUpdatesSharedBuilders(t *testing.T) {
 				t.Fatal(got, err)
 			}
 		})
-	}
-}
-
-func TestConnURLLocationEscaping(t *testing.T) {
-	loc := time.FixedZone("local+08&timeout=1", 8*60*60)
-	for _, connURL := range []string{"user@/db", "user@/db?charset=utf8"} {
-		got := SetConnURLLocation(connURL, loc)
-		_, query, _ := strings.Cut(got, "?")
-		values, err := url.ParseQuery(query)
-		if err != nil || values.Get("loc") != loc.String() || values.Has("timeout") {
-			t.Fatalf("location was not escaped: %q (%v)", got, err)
-		}
 	}
 }

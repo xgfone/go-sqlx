@@ -374,6 +374,11 @@ for custom dialects, which can delegate to an existing dialect or return explici
 rule values. Decisions do not rely on the driver's registration name.
 `FeatureDialect.Supports` optionally advertises individual capabilities;
 these features remain disabled when that interface is absent.
+`Dialect.ConfigureConnection` is also required for opening driver connections;
+custom implementations may return `ConnectionResult{DSN: request.DSN}` and no
+handled keys to ignore unsupported options. Embedding an existing dialect inherits
+its behavior. Connection configuration is described in the
+[opening guide](../README.md#connection-options); SQL rendering does not invoke it.
 
 `WithFeatures`, `WithGrammar`, and `WithLexicalRules` return immutable wrappers.
 Apply explicit feature overrides after `WithVersion`. For SQLite, enable

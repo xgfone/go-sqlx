@@ -5,33 +5,11 @@ package sqlx
 
 import (
 	"database/sql"
-	"net/url"
 	"runtime"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
 )
-
-// SetConnURLLocation sets the argument "loc" in the connection url if missing.
-//
-// If loc is nil, return connURL unchanged.
-func SetConnURLLocation(connURL string, loc *time.Location) string {
-	if loc == nil {
-		return connURL
-	}
-
-	if index := strings.IndexByte(connURL, '?') + 1; index > 0 {
-		query, err := url.ParseQuery(connURL[index:])
-		if err == nil && query.Get("loc") == "" {
-			query.Set("loc", loc.String())
-			return connURL[:index] + query.Encode()
-		}
-		return connURL
-	}
-
-	return connURL + "?loc=" + url.QueryEscape(loc.String())
-}
 
 // Config is used to configure the [DB].
 type Config func(db *sql.DB)
