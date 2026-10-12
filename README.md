@@ -617,31 +617,6 @@ keeps its whole block and the other elements' referenced data alive. This is mos
 useful when the application retains and releases the page together. Bind/Append
 still publish atomically, and empty results allocate no result storage.
 
-For synchronous byte processing, `VisitRawBytes` can borrow the SQL driver's
-current row instead of making owned copies:
-
-```go
-err := db.Select("payload").From("events").QueryRowsContext(ctx).
-    VisitRawBytes(ctx, func(row []sql.RawBytes) (bool, error) {
-        // Read row[0] here. Use bytes.Clone(row[0]) if it must be saved.
-        return processPayload(row[0])
-    })
-```
-
-The row slice and every byte view are read-only and expire when the callback
-returns. Values follow `database/sql.RawBytes` conversion; ScanOptions, struct
-mapping and collection binders do not apply. SQL NULL becomes nil, but empty
-values can also become nil. Select an extra `IS NULL` column when the distinction
-matters. Ordinary Scan/Collect/Visit continue to return owned byte values.
-
-Pass the query's context. Returning false stops normally; errors, including
-cancellation and close failures, are preserved. Only the current result set is
-consumed, and it is closed even after panic. Cancellation may wait for the
-callback to finish before closing the cursor; never wait for that close from
-inside the callback. Do not operate on the same Rows or underlying sql.Rows from
-the callback. Reentrant cursor methods return an error/false, and Set methods do
-nothing. Concurrent use remains unsupported.
-
 Scalar pointers and values use the same conversions: both `time.Duration` and
 `*time.Duration` interpret numeric sources in the configured unit. NULL clears
 scalar values by default; `NullError` rejects NULL for non-nullable scalars.
@@ -770,7 +745,6 @@ column or cancellation may invalidate them. Reusable column buffers are bounded
 to 4 KiB in total per operation, overwritten by later rows, and cleared on
 Reset/Close. Larger values use temporary copies released after conversion.
 This internal storage does not establish a longer public Scanner lifetime.
-`VisitRawBytes` keeps its separate callback-scoped borrowing contract.
 
 Custom binders can call `options.PrepareMapping(types...)` during Prepare,
 then `mapping.WithScan(cursor, run)` during Scan. It lends a type-checked scan

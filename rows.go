@@ -120,10 +120,6 @@ func (r *Rows) ColumnTypes() ([]*sql.ColumnType, error) {
 // copied and checked against the driver count when preparing a scan. Nil restores
 // driver labels. [Rows.NextResultSet] clears the override for every alias of r.
 func (r *Rows) SetColumns(columns ...string) *Rows {
-	if r.inRawVisit() {
-		return r
-	}
-
 	r.labels = slices.Clone(columns)
 	r.revision++
 	r.scan.Reset()
@@ -136,10 +132,6 @@ func (r *Rows) hasLabels() bool { return r != nil && r.labels != nil }
 // A non-nil ScanOptionsFunc is evaluated immediately. Option values are copied;
 // TimeLayouts shares immutable storage as described by [ScanOptions].
 func (r *Rows) SetBindConfig(config BindConfig) *Rows {
-	if r.inRawVisit() {
-		return r
-	}
-
 	r.config = config.resolved()
 	r.revision++
 	r.scan.Reset()
@@ -150,10 +142,6 @@ func (r *Rows) SetBindConfig(config BindConfig) *Rows {
 // Option values are copied; TimeLayouts shares immutable storage as described
 // by [ScanOptions].
 func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
-	if r.inRawVisit() {
-		return r
-	}
-
 	r.config.ScanOptions = options
 	r.config.ScanOptionsFunc = nil
 	r.revision++
@@ -164,10 +152,6 @@ func (r *Rows) SetScanOptions(options ScanOptions) *Rows {
 // SetBinder selects this result's binder and returns r. Nil restores the default
 // registry. The binder is shared and must support concurrent preparation.
 func (r *Rows) SetBinder(binder RowsBinder) *Rows {
-	if r.inRawVisit() {
-		return r
-	}
-
 	r.config.RowsBinder = binder
 	return r
 }
@@ -178,19 +162,12 @@ func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 // values are rejected during collection binding. Other configuration and
 // prepared scan state are preserved.
 func (r *Rows) SetCapacity(capacity int) *Rows {
-	if r.inRawVisit() {
-		return r
-	}
-
 	r.config.Capacity = capacity
 	return r
 }
 
 func (r *Rows) Err() error {
 	if r != nil && r.err != nil {
-		if r.inRawVisit() {
-			return errRawVisitActive
-		}
 		return r.err
 	}
 	if r == nil || r.rows == nil {
@@ -365,10 +342,6 @@ func (r *Rows) Close() error {
 	if r == nil {
 		return nil
 	}
-	if r.inRawVisit() {
-		return errRawVisitActive
-	}
-
 	r.labels = nil
 	r.columns = nil
 	r.capacityHint = 0
