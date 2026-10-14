@@ -53,6 +53,57 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			[][]any{{99}},
 		},
 		{
+			"arithmetic add expression",
+			db.Update().Table("t").Set(Column("v").Add(Expr("? - ?", 5, 2))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{13}},
+		},
+		{
+			"arithmetic subtract expression precedence",
+			db.Update().Table("t").Set(Sub("v", Expr("? + ?", 2, 3))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{5}},
+		},
+		{
+			"arithmetic multiply expression precedence",
+			db.Update().Table("t").Set(Mul("v", Expr("? + ?", 2, 3))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{50}},
+		},
+		{
+			"arithmetic divide expression precedence",
+			db.Update().Table("t").Set(Column("v").Div(Expr("? * ?", 2, 5))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{1}},
+		},
+		{
+			"arithmetic integer division",
+			db.Update().Table("t").Set(Div("v", 3)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{3}},
+		},
+		{
+			"arithmetic floating division",
+			db.Update().Table("t").Set(Div("v", 1.6)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{6.25}},
+		},
+		{
+			"arithmetic division by zero follows sqlite",
+			db.Update().Table("t").Set(Div("v", 0)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{nil}},
+		},
+		{
+			"arithmetic increment",
+			db.Update().Table("t").Set(Inc("v")).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{11}},
+		},
+		{
+			"arithmetic decrement",
+			db.Update().Table("t").Set(Column("v").Dec()).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{9}},
+		},
+		{
+			"arithmetic upsert",
+			db.Insert().Into("t").Columns("id", "v").Values(1, 4).
+				OnConflict(ConflictColumns("id").DoUpdate(Add("v", Excluded("v")))).Returning("v"),
+			[][]any{{14}},
+		},
+		{
 			"returning wildcard with alias",
 			db.Delete().FromAlias("t", "u").Where(Eq("u.id", 1)).Returning("*"),
 			[][]any{{1, "a", 10}},

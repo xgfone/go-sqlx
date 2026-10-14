@@ -187,6 +187,36 @@ no inferable model type; use SelectType or a typed nil pointer instead.
 SelectStruct still honors dynamic ColumnProvider output, including when the
 argument is an interface. SelectType intentionally uses only mapped type fields.
 
+## Arithmetic update constraints
+
+`Add`, `Sub`, `Mul` and `Div` and their generic `Column` methods return `Updater`.
+Their value argument is constrained to `ArithmeticOperand` (`Number | Expression`).
+`Number` includes signed and unsigned integers except `uintptr`, floating-point
+values and defined types with those underlying types. Bare strings, booleans,
+complex numbers, `Column`, nil, pointers, `any` and custom objects no longer
+compile as arithmetic values. Use `Ref()` for column references and `Value(...)`
+to explicitly bind other values, including decimal objects, nullable numbers,
+named arguments and `driver.Valuer`:
+
+```go
+const score sqlx.Column = "score"
+sqlx.Add(score, 10)
+score.Mul(1.5)
+score.Div(sqlx.Param(0))
+score.Add(sqlx.Column("bonus").Ref()) // Replaces v0's Add("bonus") column operand.
+score.Add(sqlx.Value(decimalValue))
+score.Sub(sqlx.Value(sql.Named("delta", 2)))
+score.Add(sqlx.Value(nil))
+```
+
+The helper column argument still accepts strings and defined string types.
+Function and method values require instantiation, such as `sqlx.Add[string, int]`
+and `score.Add[int]`. Expressions, template inputs and explicit `Value` contents
+still require SQL-compatible types at execution. `Div` emits SQL `/` without
+casts; integer division and division by zero use the database's rules.
+`Inc` and `Dec` and the corresponding `Column` methods still use the SQL literal
+`1` without binding an operand.
+
 ## Predicate operand constraints
 
 `Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,

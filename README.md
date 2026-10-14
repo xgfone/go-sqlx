@@ -86,6 +86,69 @@ arguments as values or explicit Expressions, following the usual binding rules.
 Use `column.As("alias")` with `SelectNamers`, and an unqualified
 `column.ColValue(value)` with `InsertBuilder.Row`.
 
+## Arithmetic updates
+
+`Add`, `Sub`, `Mul`, `Div`, `Inc`, and `Dec` return `Updater`, as do the matching
+`Column` methods. The database computes the new value from the column's current value:
+
+```go
+const (
+    UserID sqlx.Column = "id"
+    Score  sqlx.Column = "score"
+    Visits sqlx.Column = "visits"
+)
+
+update := db.Update().Table("users").
+    Set(Score.Add(10), Visits.Inc()).Where(UserID.Eq(userID))
+// SET score = score + ?, visits = visits + 1
+
+// Package functions accept string paths, Column, and other defined string types.
+updater := sqlx.Batch(
+    sqlx.Sub(Score, 5), sqlx.Dec("remaining"),
+    sqlx.Mul("factor", 3), sqlx.Div("ratio", 2),
+)
+err := users.Update(ctx, updater, UserID.Eq(userID)) // users is an Oper[User].
+
+// Expressions are treated as a whole operand: score = score - (fee + ?).
+update = db.Update().Table("users").Set(
+    Score.Sub(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
+)
+```
+
+`Add`, `Sub`, `Mul`, and `Div` constrain their value to `ArithmeticOperand`
+(`Number | Expression`). `Number` includes all signed and unsigned integer types
+except `uintptr`, plus `float32`, `float64`, and defined types with those
+underlying types. Strings, booleans, complex numbers, bare `Column` values and
+`any` arguments do not satisfy the constraint. Use `otherColumn.Ref()` or
+`Ident(...)` to reference another column; `Expr(...)` and `Param(...)` are also
+accepted directly. The same constraint applies to the generic `Column` methods.
+
+Use `Value(...)` to explicitly bind special values, including nil, pointers,
+named arguments, nullable numbers, custom decimal objects and `driver.Valuer`:
+
+```go
+Score.Add(10)                                  // Bound number.
+Score.Mul(1.5)                                 // Bound multiplier.
+Score.Div(sqlx.Column("factor").Ref())          // Explicit column reference.
+Score.Add(sqlx.Param(0))                        // Template input.
+Score.Add(sqlx.Value(decimalValue))             // Custom driver value.
+Score.Sub(sqlx.Value(sql.Named("delta", 2)))    // Named argument.
+Score.Add(sqlx.Value(nil))                      // SQL NULL operand.
+// Score.Add("10")                             // Does not compile.
+```
+
+`Value` binds its contents as data; it does not convert them to numbers or call
+`driver.Valuer.Value` during Build or Compile. The constraint catches direct
+argument-type mistakes; expression results, `Param` inputs, explicitly wrapped
+values and database column types still need to be valid for the selected SQL.
+Unlike v0's go-op helpers, strings are never inferred to be column names.
+Expression operands other than `Param` slots are parenthesized to preserve
+precedence. `Inc` and `Dec` use the SQL literal `1` without adding a parameter.
+`Div` emits SQL `/`; integer division, rounding and division by zero follow the
+database's rules, without inserting casts. NULL operands retain SQL's NULL
+propagation. For a `RuleColumn`, use `column.Column().Add(...)` and the other
+`Column` methods; database arithmetic does not apply its value rule.
+
 ## Column value rules
 
 Attach a reusable value rule once; callers continue to supply ordinary values:

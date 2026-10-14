@@ -88,6 +88,24 @@ func (c Column) NotInSlice[V any](values []V) Condition { return NotInSlice(stri
 // Set assigns a bound value or [Expression] to the column.
 func (c Column) Set(v any) Updater { return Set(string(c), v) }
 
+// Add adds a number or [Expression] to the column, following [Add]'s binding rules.
+func (c Column) Add[V ArithmeticOperand](v V) Updater { return Add(string(c), v) }
+
+// Sub subtracts a number or [Expression] from the column, following [Sub]'s binding rules.
+func (c Column) Sub[V ArithmeticOperand](v V) Updater { return Sub(string(c), v) }
+
+// Mul multiplies the column by a number or [Expression], following [Mul]'s binding rules.
+func (c Column) Mul[V ArithmeticOperand](v V) Updater { return Mul(string(c), v) }
+
+// Div divides the column by a number or [Expression], following [Div]'s database rules.
+func (c Column) Div[V ArithmeticOperand](v V) Updater { return Div(string(c), v) }
+
+// Inc increments the column by the SQL literal 1.
+func (c Column) Inc() Updater { return Inc(string(c)) }
+
+// Dec decrements the column by the SQL literal 1.
+func (c Column) Dec() Updater { return Dec(string(c)) }
+
 // Asc returns an ascending ordering term.
 func (c Column) Asc() SortColumn { return SortColumn{Column: string(c), Order: Asc} }
 

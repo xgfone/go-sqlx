@@ -80,6 +80,63 @@ dialect supports it. It cannot be embedded in an arbitrary expression. SQLite
 supports `DefaultValues()` for inserting a default row, but not per-value DEFAULT
 or `SET column = DEFAULT`.
 
+## Arithmetic updates
+
+`Add(column, value)`, `Sub(column, value)`, `Mul(column, value)` and
+`Div(column, value)` return `Updater` assignments using SQL `+`, `-`, `*` and `/`
+on the column's current value. `Inc(column)` and `Dec(column)` add or subtract
+the SQL literal `1` without binding a parameter. Column paths accept strings
+and defined string types, including `Column`. Matching methods are available
+on `Column`:
+
+```go
+const score sqlx.Column = "score"
+q := sqlx.Update().Table("users").Set(
+    score.Add(10),
+    sqlx.Mul("factor", 3),
+    sqlx.Column("ratio").Div(2),
+    sqlx.Dec("remaining"),
+).Where(sqlx.Eq("id", 7))
+
+// Subtract the entire expression: score = score - (fee + ?).
+q = sqlx.Update().Table("users").Set(
+    score.Sub(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
+).Where(sqlx.Eq("id", 7))
+```
+
+All four value-taking helpers and their generic `Column` methods constrain the
+value to `ArithmeticOperand` (`Number | Expression`). `Number` includes signed
+and unsigned integers other than `uintptr`, floating-point values and defined
+types with those underlying types; it excludes complex numbers. Direct strings,
+booleans, `Column` values, nil, pointers, `any` and custom objects are rejected
+at compile time. Use `Column.Ref()` or `Ident(...)` for column-valued operands;
+`Expr(...)` and `Param(...)` are accepted directly.
+
+Wrap other bound values explicitly with `Value(...)`:
+
+```go
+score.Add(sqlx.Value(decimalValue))
+score.Sub(sqlx.Value(sql.Named("delta", 2)))
+score.Mul(sqlx.Value(pointerToNumber))
+score.Div(sqlx.Value(nullableNumber))
+score.Add(sqlx.Value(nil))
+```
+
+`Value` preserves data binding, including named arguments and `driver.Valuer`;
+it does not validate numeric types or invoke driver conversion during Build or
+Compile. Expression operands other than `Param` slots are parenthesized to
+preserve precedence. Templates bind `Param` slots normally; their runtime input
+types and expression result types are not checked by the generic constraint.
+Database column types and explicitly wrapped values remain the caller's
+responsibility. Arithmetic retains SQL's NULL propagation. `Div` emits `/`
+without casts or local zero checks, so integer division, rounding and division
+by zero follow the database's rules.
+
+The resulting updaters compose with `Batch` and can also be passed to
+`Oper.Update`, `OnConflict(...DoUpdate(...))`, or `OnDuplicateKeyUpdate`.
+For `RuleColumn`, obtain the underlying `Column` first; arithmetic does not apply
+the value rule.
+
 ## Sources and joins
 
 `TableSource`, `QuerySource`, `ExpressionSource`, and `ValuesSource` produce
