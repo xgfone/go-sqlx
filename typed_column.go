@@ -41,6 +41,16 @@ func (c TypedColumn[T]) Scope(scope string) TypedColumn[T] {
 	return NewTypedColumn[T](c.column.Scope(scope))
 }
 
+// As returns a named selection for [SelectBuilder.SelectNamers]. The alias is
+// one identifier and does not change c or its declared data type.
+func (c TypedColumn[T]) As(alias string) Namer { return c.column.As(alias) }
+
+// Asc returns an ascending ordering term, following [Column.Asc].
+func (c TypedColumn[T]) Asc() SortColumn { return c.column.Asc() }
+
+// Desc returns a descending ordering term, following [Column.Desc].
+func (c TypedColumn[T]) Desc() SortColumn { return c.column.Desc() }
+
 // Set binds value as data, including nil when T permits it. Values are shallow
 // and driver conversion is deferred, following [Value]. To render SQL use
 // [TypedColumn.SetExpr]; declaring T as any weakens the static type check.
@@ -144,6 +154,12 @@ func (c TypedColumn[T]) EqExpr(expr Expression) Condition { return c.column.Eq(e
 // NeExpr compares the column for inequality with an explicit expression without
 // checking its SQL result type against T.
 func (c TypedColumn[T]) NeExpr(expr Expression) Condition { return c.column.Ne(expr) }
+
+// On compares two column paths for equality. Both columns must declare the same
+// T; the right operand is always a column reference, following [Column.On].
+// SQL type compatibility remains the caller's responsibility. For an untyped
+// expression comparison use [TypedColumn.EqExpr].
+func (c TypedColumn[T]) On(other TypedColumn[T]) Condition { return c.column.On(other.column) }
 
 // Gt compares the column with data of type T using >. Nil binds SQL NULL when
 // T permits it; only [TypedColumn.Eq] and [TypedColumn.Ne] rewrite nil predicates.
@@ -280,3 +296,59 @@ func (c TypedColumn[T]) IsNull() Condition { return c.column.IsNull() }
 
 // IsNotNull tests the column for a non-NULL value independently of T.
 func (c TypedColumn[T]) IsNotNull() Condition { return c.column.IsNotNull() }
+
+// Count counts non-NULL column values. The SQL result type is not checked against T.
+func (c TypedColumn[T]) Count() Expression { return c.column.Count() }
+
+// CountDistinct counts distinct non-NULL column values, following [Column.CountDistinct].
+func (c TypedColumn[T]) CountDistinct() Expression { return c.column.CountDistinct() }
+
+// Sum sums column values. Database operator support and result types are not
+// checked against T.
+func (c TypedColumn[T]) Sum() Expression { return c.column.Sum() }
+
+// Min returns the minimum column value, following [Column.Min].
+func (c TypedColumn[T]) Min() Expression { return c.column.Min() }
+
+// Max returns the maximum column value, following [Column.Max].
+func (c TypedColumn[T]) Max() Expression { return c.column.Max() }
+
+// Avg averages column values. Database operator support and result types are
+// not checked against T.
+func (c TypedColumn[T]) Avg() Expression { return c.column.Avg() }
+
+// Cast converts the column to a trusted SQL type specification, following
+// [Column.Cast]. The result is an untyped expression, not a new TypedColumn.
+func (c TypedColumn[T]) Cast(typeSQL string) Expression { return c.column.Cast(typeSQL) }
+
+// Coalesce returns the first non-NULL value, starting with this column. At least
+// one fallback assignable to T is required. Fallbacks bind through [Value]; the
+// slice container is copied and elements remain shallow. The SQL result type
+// is not checked against T. Use [TypedColumn.CoalesceExpr] for SQL expressions.
+func (c TypedColumn[T]) Coalesce(values ...T) Expression {
+	args := make([]any, len(values))
+	for i, value := range values {
+		args[i] = Value(value)
+	}
+	return c.column.Coalesce(args...)
+}
+
+// CoalesceExpr returns the first non-NULL value, starting with this column and
+// followed by at least one explicit expression. Expressions are snapshotted;
+// bound objects remain shallow. Results and [Param] inputs are not checked against T.
+func (c TypedColumn[T]) CoalesceExpr(values ...Expression) Expression {
+	args := make([]any, len(values))
+	for i, value := range values {
+		args[i] = value
+	}
+	return c.column.Coalesce(args...)
+}
+
+// NullIf returns SQL NULL when the column equals data assignable to T. Value
+// binds through [Value], including nil when T permits it, without rewriting
+// the comparison. The result is an untyped expression and may be NULL for any T.
+func (c TypedColumn[T]) NullIf(value T) Expression { return c.column.NullIf(Value(value)) }
+
+// NullIfExpr returns SQL NULL when the column equals an explicit expression.
+// Its SQL result type and [Param] inputs are not checked against T.
+func (c TypedColumn[T]) NullIfExpr(expr Expression) Expression { return c.column.NullIf(expr) }

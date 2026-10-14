@@ -41,12 +41,19 @@ func rejected() {
 		`sqlx.Set(age, 18)`, `sqlx.Eq(age, 18)`, `sqlx.SelectColumns(age)`,
 		`sqlx.ColValue(age, 18)`, `sqlx.Add(age, 1)`,
 		`age.Inc(1)`, `age.Dec(1)`,
+		`age.On(name)`, `age.On(sqlx.Column("backup_age"))`, `age.On("backup_age")`,
+		`age.On(age.Ref())`, `age.On(18)`, `age.On(nil)`,
+		`age.On(sqlx.NewTypedColumn[int]("backup_age"))`,
+		`age.On(sqlx.NewTypedColumn[*int64]("backup_age"))`,
+		`user.On(order)`, `age.Scope("u").On(name.Scope("v"))`,
+		`age.Asc(1)`, `age.Desc(1)`, `age.As(18)`, `age.Cast(18)`,
 	}
 	for _, method := range []string{
 		"Set", "ColValue", "Eq", "Ne",
 		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
 		"Add", "Sub", "Mul", "Div",
 		"Like", "NotLike",
+		"Coalesce", "NullIf",
 	} {
 		for _, value := range []string{
 			`"Alice"`, `int(18)`, `any(int64(18))`, `nil`,
@@ -59,6 +66,7 @@ func rejected() {
 		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
 		"Add", "Sub", "Mul", "Div",
 		"Like", "NotLike",
+		"Coalesce", "NullIf",
 	} {
 		calls = append(calls,
 			fmt.Sprintf("user.%s(orderID(7))", method),
@@ -78,6 +86,7 @@ func rejected() {
 		"GtExpr", "GeExpr", "LtExpr", "LeExpr", "InExpr", "NotInExpr",
 		"AddExpr", "SubExpr", "MulExpr", "DivExpr",
 		"LikeExpr", "NotLikeExpr",
+		"CoalesceExpr", "NullIfExpr",
 	} {
 		for _, value := range []string{
 			`18`, `"18"`, `nil`, `age`, `sqlx.Column("age")`,
@@ -85,6 +94,16 @@ func rejected() {
 			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
 		}
 	}
+
+	calls = append(calls,
+		`age.Coalesce(18, "Alice")`,
+		`age.Coalesce([]int{18}...)`,
+		`age.Coalesce([]any{int64(18)}...)`,
+		`age.CoalesceExpr([]any{sqlx.Value(18)}...)`,
+		`age.CoalesceExpr(sqlx.Value(18), "Alice")`,
+		`age.NullIf(sql.Named("value", 18))`,
+		`age.NullIf(sql.NullInt64{})`,
+		`age.Coalesce(new(int64))`)
 
 	for _, method := range []string{"Like", "NotLike"} {
 		for _, value := range []string{

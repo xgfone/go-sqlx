@@ -54,6 +54,8 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		}
 	}
 	wideValues[0][0], wideValues[2][0] = nil, "text"
+	nullableName := NewTypedColumn[*string]("deleted_at")
+	fallbackName := "active"
 
 	cases := []struct {
 		name string
@@ -64,6 +66,66 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			"returning target name with alias",
 			db.Update().TableAlias("main.t", "u").Set(Set("v", 99)).Where(Eq("u.id", 1)).Returning("t.v"),
 			[][]any{{99}},
+		},
+		{
+			"typed selection alias and join",
+			db.Select().SelectNamers(typedID.Scope("t").As("user.id")).From("t").
+				Join("other", "o", typedID.Scope("t").On(NewTypedColumn[int64]("id").Scope("o"))).
+				Sort(typedID.Scope("t").Desc()),
+			[][]any{{2}},
+		},
+		{
+			"typed mixed ordering",
+			db.Select("id").FromAlias("t", "u").
+				Sort(NewTypedColumn[string]("team").Scope("u").Asc(), typedValue.Scope("u").Desc()),
+			[][]any{{2}, {1}, {3}},
+		},
+		{
+			"typed aggregates",
+			db.Select().SelectExpr(typedValue.Count(), typedValue.CountDistinct(), typedValue.Sum(),
+				typedValue.Min(), typedValue.Max(), typedValue.Avg()).From("t"),
+			[][]any{{3, 3, 60, 10, 30, 20}},
+		},
+		{
+			"typed empty aggregates preserve null results",
+			db.Select().SelectExpr(typedValue.Count(), typedValue.CountDistinct(), typedValue.Sum(),
+				typedValue.Min(), typedValue.Max(), typedValue.Avg()).From("t").Where(typedID.Lt(0)),
+			[][]any{{0, 0, nil, nil, nil, nil}},
+		},
+		{
+			"typed string aggregates skip nulls",
+			db.Select().SelectExpr(typedName.Count(), typedName.CountDistinct(), typedName.Min(), typedName.Max()).FromSource(likeValues),
+			[][]any{{5, 5, "", "axb"}},
+		},
+		{
+			"typed cast changes SQL result type",
+			db.Select().SelectExpr(typedValue.Cast("TEXT")).From("t").Where(typedID.Eq(1)),
+			[][]any{{"10"}},
+		},
+		{
+			"typed coalesce and nullif data",
+			db.Select().SelectExpr(typedValue.Coalesce(0), typedValue.NullIf(10)).From("t").Where(typedID.Eq(1)),
+			[][]any{{10, nil}},
+		},
+		{
+			"typed nullable function data",
+			db.Select().SelectExpr(nullableName.Coalesce(nil, &fallbackName), nullableName.NullIf(nil)).From("users"),
+			[][]any{{"active", nil}},
+		},
+		{
+			"typed coalesce expression fallback",
+			db.Select().SelectExpr(nullableName.CoalesceExpr(Value(nil), Column("email").Ref())).From("users"),
+			[][]any{{"one"}},
+		},
+		{
+			"typed coalesce all null data",
+			db.Select().SelectExpr(NewTypedColumn[any]("deleted_at").Coalesce(nil, nil)).From("users"),
+			[][]any{{nil}},
+		},
+		{
+			"typed nullif column reference",
+			db.Select().SelectExpr(typedValue.NullIfExpr(typedValue.Ref())).From("t").Where(typedID.Eq(1)),
+			[][]any{{nil}},
 		},
 		{
 			"typed like literal has no implicit wildcards",

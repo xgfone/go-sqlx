@@ -156,6 +156,77 @@ caller's responsibility. Declaring T as any or an interface weakens static
 checking. Existing Column and Set semantics are unchanged; typed columns
 have their own arithmetic methods and do not carry value rules.
 
+### Typed selection, ordering and joins
+
+`Asc()` and `Desc()` return the same SortColumn as the corresponding Column
+methods. They preserve scoped paths and identifier quoting and work with
+SELECT, window Sort, Oper.WithStructSorter and supported mutation ordering.
+They do not constrain T or infer NULL placement from its Go representation.
+Set SortColumn.Nulls explicitly when needed; existing dialect checks still apply.
+
+`As(alias string)` returns a Namer for SelectNamers. The alias is quoted as one
+identifier, including embedded dots, and does not change the original column.
+`On(other TypedColumn[T])` returns a column-to-column equality Condition, requiring
+the same T, including defined-type distinctions. It does not bind the right path
+as data. SQL type compatibility remains the caller's responsibility. Use EqExpr
+with an explicit reference for comparisons between differently declared Go types:
+
+```go
+id := sqlx.NewTypedColumn[int64]("id").Scope("u")
+owner := sqlx.NumericColumn[int64]("user_id").Scope("o")
+name := sqlx.NewTypedColumn[string]("name").Scope("u")
+q := sqlx.Select().SelectNamers(name.As("user.name")).FromAlias("users", "u").
+    Join("orders", "o", id.On(owner)).Sort(name.Asc(), id.Desc())
+```
+
+### Typed aggregates and scalar functions
+
+Count, CountDistinct, Sum, Min, Max and Avg delegate to the corresponding Column
+methods and return Expression values. Existing aggregate Filter and Over methods
+remain available. T is not restricted to Number or comparable types; database
+operator support and SQL result types are not checked. Aggregate results can
+have a different type from T or be NULL, including on empty input sets.
+
+`Cast(typeSQL string)` returns an Expression using a trusted SQL type specification
+such as DECIMAL(12,2). The SQL type is syntax, not a bound argument or a new Go
+field declaration. Empty type specifications retain their Build/Compile errors.
+
+Coalesce and NullIf separate typed data from explicit SQL:
+
+| Data method           | Expression method                  |
+| --------------------- | ---------------------------------- |
+| Coalesce(values ...T) | CoalesceExpr(values ...Expression) |
+| NullIf(value T)       | NullIfExpr(expr Expression)        |
+
+Both Coalesce forms start with the column and require at least one fallback.
+They snapshot argument containers, with shallow bound objects. Data must be
+assignable to T and binds through Value; ordinary Expression objects held in any
+remain data. Param retains its existing scalar template-slot behavior, including
+when wrapped by Value. Expression results, Value contents and Bind inputs are
+not checked against T. NULL follows SQL function semantics without predicate
+rewriting; NullIf can produce NULL even when T cannot represent it.
+
+```go
+amount := sqlx.NumericColumn[int64]("amount")
+q := sqlx.Select().SelectExpr(
+    amount.Count(), amount.CountDistinct(), amount.Sum(),
+    amount.Min(), amount.Max(), amount.Avg(),
+).From("orders")
+q = sqlx.Select().SelectExpr(
+    amount.Cast("DECIMAL(12,2)"), amount.Coalesce(0), amount.NullIf(0),
+    amount.CoalesceExpr(sqlx.Column("backup").Ref(), sqlx.Value(int64(0))),
+    amount.NullIfExpr(sqlx.Param(0)),
+).From("orders")
+```
+
+All scalar-function results are untyped Expression values. For nullable Go
+representations, data arguments still follow T: a TypedColumn[*string] takes
+\*string fallbacks, while CoalesceExpr(Value("unknown")) explicitly permits a
+string fallback. No new typed expression or column-conversion API is introduced.
+To redeclare the field type or attach an existing value rule, keep using
+`.Column().Typed[U]()` or `.Column().WithValueRule(rule)` explicitly. Existing
+Column, builder and package-level signatures and SQL semantics are unchanged.
+
 ### Typed comparisons and membership
 
 `Gt`, `Ge`, `Lt` and `Le` accept one value of type T. `Between` and `NotBetween`

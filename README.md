@@ -165,16 +165,67 @@ their Valuer at build time; use `IsNull`/`IsNotNull` to test SQL NULL explicitly
 
 `Name`, `Column`, `Ref` and `Scope` reuse existing identifier semantics. `Scope`
 returns a new typed column with the same T. Use `.Column()` to explicitly enter
-untyped APIs, including `SelectColumns(Age.Column(), Name.Column())`, sorting
-and value-rule operations. Existing `Column`, package `Set` and
-`SelectColumns(...Column)` behavior is unchanged. Typed columns have no value
-rule; `.Column().WithValueRule(rule)` returns the existing untyped `RuleColumn`.
+untyped APIs, including `SelectColumns(Age.Column(), Name.Column())` and value-rule
+operations. Existing `Column`, package `Set` and `SelectColumns(...Column)` behavior
+is unchanged. Typed columns have no value rule; `.Column().WithValueRule(rule)`
+returns the existing untyped `RuleColumn`. Redeclaring a column's Go data type
+remains explicit via `.Column().Typed[U]()`.
 
 Typed columns are variables, not constants, and do not register models or
 inspect database schemas. T declares the application's Go data type; driver
 conversion, SQL type compatibility, ranges and database nullability remain
 execution-time responsibilities. Values remain shallow, and Build/Compile
 never invoke `driver.Valuer.Value`.
+
+### Typed SQL helpers
+
+Typed columns can directly supply ordering, selected aliases, joins and SQL
+expressions, using the existing builder argument types:
+
+| Methods                                                              | Result     |
+| -------------------------------------------------------------------- | ---------- |
+| Asc / Desc                                                           | SortColumn |
+| As(alias string)                                                     | Namer      |
+| On(other TypedColumn[T])                                             | Condition  |
+| Count / CountDistinct / Sum / Min / Max / Avg / Cast(typeSQL string) | Expression |
+| Coalesce(values ...T) / NullIf(value T)                              | Expression |
+| CoalesceExpr(values ...Expression) / NullIfExpr(expr Expression)     | Expression |
+
+```go
+type UserID int64
+id := sqlx.NewTypedColumn[UserID]("id").Scope("u")
+owner := sqlx.NewTypedColumn[UserID]("user_id").Scope("o")
+name := sqlx.NewTypedColumn[string]("name").Scope("u")
+amount := sqlx.NumericColumn[int64]("amount").Scope("o")
+
+q := sqlx.Select().SelectNamers(name.As("user_name")).SelectExpr(amount.Sum()).
+    FromAlias("users", "u").Join("orders", "o", id.On(owner)).
+    GroupBy("u.name").Sort(name.Asc())
+
+amount.Coalesce(0)
+amount.NullIf(0)
+amount.CoalesceExpr(sqlx.Value(int64(0)), sqlx.Param(0))
+amount.NullIfExpr(sqlx.Column("backup_amount").Scope("o").Ref())
+amount.Cast("DECIMAL(12,2)")
+```
+
+On requires the same declared T on both columns and always compares column
+references. For a comparison without that type check, use EqExpr(other.Ref()).
+As creates a SELECT alias without replacing the original column path. Asc/Desc
+also work with window Sort and Oper.WithStructSorter; NULL placement retains
+existing SortColumn defaults and dialect checks.
+
+Coalesce and NullIf bind data through Value, including ordinary Expression
+objects held in any. Their expression forms accept explicit SQL without checking
+its result type against T. Coalesce requires at least one fallback; argument
+containers are snapshotted and elements remain shallow. Nil follows normal SQL
+function semantics when T permits it. A nullable Go type such as \*string can use
+CoalesceExpr(Value("unknown")) for a string fallback.
+
+Aggregates, Cast, Coalesce and NullIf return untyped Expression values; their
+SQL results may change type or become NULL. They do not infer a new Go type.
+Cast takes a trusted SQL type specification, not a bound value. Database operator
+support remains the caller's responsibility, including for Sum and Avg.
 
 ### Typed conditions
 

@@ -266,6 +266,35 @@ behavior. The methods check Go assignability rather than restricting LIKE to
 string columns or validating database operator support. Existing Column and
 package-level Like/NotLike APIs are unchanged; no StringColumn type is added.
 
+Typed columns now provide Asc/Desc, As, Count/CountDistinct, Sum/Min/Max/Avg,
+and Cast directly. These return the existing SortColumn, Namer or Expression
+builder arguments, with no changes to existing builder signatures. Sorting works
+with SELECT, windows, Oper.WithStructSorter and supported mutations. As creates
+a selected alias without changing the source column path.
+
+On(other TypedColumn[T]) compares column references with the same declared T.
+Use EqExpr(other.Ref()) to explicitly compare columns with different Go types.
+Coalesce(values ...T) and NullIf(value T) bind data through Value; CoalesceExpr
+and NullIfExpr accept explicit Expression operands. Coalesce still requires at
+least one fallback and snapshots its argument container. Nil retains SQL
+function semantics without predicate rewriting; ordinary Expression objects
+held in any remain data. Expression results and Bind inputs are not checked
+against T, and Param retains existing template behavior.
+
+```go
+age := sqlx.NumericColumn[int64]("age")
+backup := sqlx.NewTypedColumn[int64]("backup_age")
+q := sqlx.Select().SelectNamers(age.As("user_age")).
+    SelectExpr(age.Coalesce(0), age.NullIfExpr(backup.Ref())).
+    From("users").Where(age.On(backup)).Sort(age.Desc())
+```
+
+Aggregates and scalar functions return untyped Expression values: SQL result
+types and nullability are not inferred from T. Cast keeps its trusted SQL type
+string argument. Column-type conversions stay explicit through `.Column().Typed[U]()`
+and `.Column().WithValueRule(rule)`; TypedColumn does not add Typed or WithValueRule
+methods. Existing Column and package APIs are unchanged.
+
 ## Optional numeric columns
 
 `NumericColumn[T Number, C ~string](column C) TypedColumn[T]` is the single
