@@ -1,1059 +1,396 @@
-# Migration notes
+# Migrating from v0.51.1 to v1
 
-This branch intentionally breaks compatibility. Removed convenience methods do
-not have deprecated aliases.
+This guide compares the published **v0.51.1** API and behavior with v1.
+It covers changes required by applications upgrading from v0; new optional
+features are documented in [README.md](README.md) and the
+[SQL syntax guide](docs/sql-syntax.md). Removed APIs have no deprecated aliases.
 
-## Connection preparation in Dialect
+## Go version and dependencies
 
-Custom `Dialect` implementations now also implement
-`ConfigureConnection(dialect.ConnectionRequest) (dialect.ConnectionResult, error)`.
-Return the native DSN unchanged and an empty `Handled` list for unsupported
-options. Recognized invalid values must return an error without including the
-DSN or credentials. Adapters document whether connection options override or
-validate native settings. Embedded built-in dialects inherit this method and
-their driver adapter registrations.
+The minimum Go version increases from 1.22 to 1.27. The module path remains
+`github.com/xgfone/go-sqlx`.
 
-`Open` now takes only `driverName` and `dataSourceName` and uses `DefaultConfigs()`
-for pool configuration. Two-argument calls retain their default configuration behavior.
-Move per-pool configurations to `OpenWithOptions.Configs`:
+SQLx no longer requires `go-op` or `go-toolkit`. Replace `go-op` conditions,
+updates, sorting and pagination passed to SQLx with native clauses:
+
+| v0.51.1 usage                         | v1 replacement                          |
+| ------------------------------------- | --------------------------------------- |
+| `Where(op.Equal("id", id))`           | `Where(sqlx.Eq("id", id))`              |
+| `Set(op.Set("name", value))`          | `Set(sqlx.Set("name", value))`          |
+| `Sort(op.KeyId.OrderDesc())`          | `Sort(sqlx.Column("id").Desc())`        |
+| `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` |
+| `[]op.Condition` / `[]op.Updater`     | `[]sqlx.Condition` / `[]sqlx.Updater`   |
+
+The new interfaces are independent of `go-op` operation trees. Replace
+`RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` and `OpBuilderFunc`
+with implementations of `Condition` or `Updater`, or an application adapter.
+The module does not distribute a `go-op` adapter.
+
+## Build results and execution
+
+In v0.51.1, `Build` returns `(string, *ArgsBuilder)`; in v1 it returns
+`(string, []any, error)`:
 
 ```go
-// Before:
+// v0.51.1:
+query, args := builder.Build()
+defer args.Release()
+_, err := db.ExecContext(ctx, query, args.Args()...)
+
+// v1:
+query, args, err := builder.Build()
+if err != nil {
+    return err
+}
+_, err = db.ExecContext(ctx, query, args...)
+```
+
+Remove calls to `Args`/`Release` on build results. The returned argument slice
+is owned by the caller and remains a shallow copy of the argument objects.
+`ArgsBuilder`, `GetArgsBuilderFromPool`, `DefaultArgsCap` and `DefaultBufferCap`
+are removed. Extension code uses `BuildContext` and borrowed SQL writers.
+
+`Build` now reports invalid inputs and unsupported dialect features as errors.
+`MustBuild` provides a panic-on-error alternative for asserted invariants.
+`String` returns SQL or a diagnostic; do not use it as a replacement for `Build`
+error handling. Successful `Build` does not guarantee database-level SQL validity.
+Custom renderers must return errors instead of panicking.
+
+Context-free execution methods are removed. Replace `Exec`, `Query`, `QueryRow`,
+`QueryRows` and `QueryRowOne` with their `Context` forms. Builder execution checks
+build errors before calling the executor. Use `Query` methods for `RETURNING`;
+`Exec` rejects statements that return rows.
+
+## Builder entry points and clauses
+
+| v0.51.1 API                                                            | v1 replacement                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `NewSelectBuilder`, `NewInsertBuilder`, etc.; `db.SelectBuilder`, etc. | Package/`DB` `Select`, `Insert`, `Update`, `Delete`                                   |
+| `Selects`, `Froms`, `Sorts`                                            | Variadic `Select`, `From`, `Sort`                                                     |
+| Package/`DB`/`Table` `SelectAlias`                                     | `Select().SelectAlias(...)`                                                           |
+| Package/`DB` `SelectStruct(model)`                                     | `Select().SelectStruct(model)`                                                        |
+| Package/`DB`/builder `SelectStructWithTable(model, qualifier)`         | `Select().SelectStruct(model, qualifier)` or builder `SelectStruct(model, qualifier)` |
+| `Table` `SelectStructWithTable(model, qualifier)`                      | `table.Select().SelectStruct(model, qualifier)`                                       |
+| Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(sqlx.Sum(...))`, `SelectExpr(sqlx.Count(...))`, etc.                      |
+| `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                           |
+| `JoinOn`                                                               | `sqlx.Condition`; `On` compares column paths                                          |
+| `OnArg(left, right)`                                                   | `Eq(left, right)` for a bound value                                                   |
+| `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or native conditions                         |
+| `WhereNamedArgs`, `SetNamedArg`                                        | For each arg, `Where(Eq(arg.Name, arg.Value))` / `Set(sqlx.Set(arg.Name, arg.Value))` |
+| `IgnoreColumns`, `ForceOrderBy`                                        | Choose projection explicitly; specify ordering directly                               |
+| `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column, value), ...)` or `Columns(...).Values(...)`                     |
+| `ValuesFromStructs`                                                    | `Structs`                                                                             |
+| `GrowValues`                                                           | Removed allocation control                                                            |
+| `IgnoreInto(table)`, `ReplaceInto(table)`                              | `Into(table).Ignore()`, `Into(table).Replace()`                                       |
+| `Table.InsertInto`, `Table.DeleteFrom(conditions...)`                  | `Table.Insert()`, `Table.Delete().Where(conditions...)`                               |
+| `Table.Update(updaters...)`                                            | `Table.Update().Set(updaters...)`                                                     |
+
+`Count`, `CountDistinct` and `Sum` now return `Expression` rather than raw SQL strings.
+Pass them to `SelectExpr`, or `SelectExprAlias` when an output alias is needed.
+In the old `NamedValues`/`WhereNamedArgs`/`SetNamedArg` helpers, `sql.Named.Name`
+identified a column. Convert those pairs to `ColValue`/`Eq`/`Set` using `Name` and `Value`
+separately. In v1, a `sql.NamedArg` supplied as a value identifies a bound SQL
+parameter, not an `INSERT` column.
+Strings supplied as columns are quoted identifier paths; raw SQL belongs in
+`Expr`. Use `Ident` for explicit references and `Value` to bind data explicitly.
+An arithmetic string that previously meant a column reference must become an
+`Expression`, for example `sqlx.Add("total", sqlx.Ident("bonus"))`.
+
+`Eq`/`Ne` with `nil` produce `IS NULL`/`IS NOT NULL`. `Set(column, nil)` writes `NULL`;
+it no longer silently drops the assignment. Optional filters and setters must
+be omitted explicitly by application code. Expressions used as conditions are
+parenthesized. Generated SQL spacing, quoting and grouping may differ; update
+SQL snapshots accordingly.
+
+Collection clauses append, including `GroupBy`. Scalar configuration replaces.
+`ClearXxx` removes a clause; `Reset` clears clauses and sticky input errors while
+retaining execution configuration. `Clone` copies owned containers, with argument
+objects and custom clauses remaining shallow. Builders must not be concurrently
+mutated.
+
+`ORDER BY` is emitted independently of selected columns, `HAVING` no longer requires
+`GROUP BY`, and distinct `FROM` aliases are preserved. `Pagination` is normalized to
+`LIMIT`/`OFFSET` immediately. `Limit(0)` means zero rows; invalid page/size and overflow
+produce build errors. `QueryRow` preserves the offset and an explicit zero limit.
+
+An `INSERT` with `Columns` alone no longer generates a placeholder row. Supply
+`Values`/`Row`/`Struct(s)`, `FromSelect`, or `DefaultValues`. Empty sources fail
+`Build`; `Default` is SQL syntax and `nil` binds `NULL`.
+
+## Dialects, defaults and opening databases
+
+`Dialect` implementations and registration move from the root package to
+`github.com/xgfone/go-sqlx/dialect`:
+
+| v0.51.1 usage                                 | v1 replacement                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| `sqlx.MySQL`, `sqlx.Postgres`, `sqlx.Sqlite3` | `dialect.MySQL`, `dialect.Postgres`, `dialect.SQLite`                    |
+| `sqlx.GetDialect(name)`                       | `dialect.Get(name)`                                                      |
+| `sqlx.RegisterDialect(d, force)`              | `dialect.Register(name, d)` or `MustRegister(name, d)`                   |
+| Read/assign `sqlx.DefaultDialect`             | `dialect.Default()` / `dialect.SetDefault(d)`                            |
+| Read/assign `sqlx.DefaultDB`                  | `sqlx.DefaultDB()` / `sqlx.SetDefaultDB(db)`                             |
+| Read/assign `sqlx.DefaultConfigs`             | `sqlx.DefaultConfigs()` / `sqlx.SetDefaultConfigs(configs...)`           |
+| Read/assign `sqlx.DefaultMixRowsBinder`       | `sqlx.DefaultMixRowsBinder()` / `sqlx.SetDefaultMixRowsBinder(registry)` |
+
+Registration now takes an explicit lookup name and returns an error on duplicate
+names. The old `force=true` behavior left an existing registration unchanged;
+check `Get` first when preserving it. Use `Unregister` followed by `Register`
+only when replacement is intended. Default getter/setter pairs support concurrent
+use, but shared `DB` fields still need synchronization when mutated.
+
+Custom `Dialect` implementations must replace `Quote(string)` with
+`QuoteIdent(string)`, which quotes one literal identifier, and replace
+`LimitOffset(limit, offset int64)` with `LimitOffset(dialect.Pagination)`.
+`Pagination.HasLimit` distinguishes absent `LIMIT` from `LIMIT 0`. Add
+`Grammar() dialect.Grammar`, `LexicalRules() dialect.LexicalRules`, and
+`ConfigureConnection(dialect.ConnectionRequest) (dialect.ConnectionResult, error)`.
+Embedding a built-in dialect can supply these methods. Unsupported connection
+options pass through; recognized invalid settings return errors without DSNs
+or credentials. See [dialect configuration](docs/sql-syntax.md#dialect-configuration).
+
+`Open` now takes only `driverName` and `dataSourceName`. Move per-pool configs
+into `OpenWithOptions`:
+
+```go
+// v0.51.1:
 db, err := sqlx.Open(driver, dsn, sqlx.MaxOpenConns(8))
 
-// After:
+// v1:
 db, err := sqlx.OpenWithOptions(driver, dsn, sqlx.OpenOptions{
     Configs: []sqlx.Config{sqlx.MaxOpenConns(8)},
 })
 ```
 
-For an expanded config slice, set `Configs: configs`. Nil uses the defaults;
-a non-nil empty slice disables defaults. `OpenWithOptions` also handles pre-open
-connection settings; options are extensible and unsupported keys are ignored
-unless explicitly listed in `Required`. Connection preparation does not change
-scanner or binding settings.
+Nil `Configs` uses `DefaultConfigs()`; a non-`nil` empty slice disables defaults.
+`SetConnURLLocation` is removed. For MySQL location handling, import the optional
+`github.com/xgfone/go-sqlx-mysql` adapter and pass `dialect.OptionLocation` through
+`OpenWithOptions.Connection`. Configure scanning location separately through
+`ScanOptions.Location`. See [opening a database](README.md#opening-a-database)
+and [connection options](README.md#connection-options).
 
-`SetConnURLLocation` has been removed. For MySQL location and session time zone
-consistency, import `github.com/xgfone/go-sqlx-mysql` and pass
-`dialect.OptionLocation` to `OpenWithOptions`. The adapter now lives in the
-separate [go-sqlx-mysql project](https://github.com/xgfone/go-sqlx-mysql). Replace
-any old `github.com/xgfone/go-sqlx/driver/mysql` import and module requirement
-with `github.com/xgfone/go-sqlx-mysql`. For local development, include both project
-checkouts in your workspace instead of the former `driver/mysql` subdirectory.
-The adapter directly imports the official MySQL driver, registers it, and owns
-DSN parsing, formatting, and application time zone synchronization. The supplied
-application location overrides native `loc`. UTC and explicit IANA names also
-override `time_zone`; use `Asia/Shanghai` for domestic deployments. The adapter
-identifies Local by pointer equality with its privately captured initial `time.Local`,
-regardless of the location name or later assignments to `time.Local`. That pointer
-explicitly sets `loc=Local`, preserving any existing `time_zone` and adding none
-if absent. Local does not guarantee driver/session time zone consistency. A
-separately created location named `Local` is rejected; empty names are errors.
-The driver formatter may omit the default `loc=UTC`. The main SQLx module remains
-dependency-free. The previous `ConfigureDSN`, `SetConfigureDSN`, and `DSNConfigFunc`
-injection API has been removed; shared database libraries now only import the
-adapter and pass connection options. Unsupported options are ignored unless
-listed in `Required`, which fails before opening a pool. See
-[opening a database](README.md#opening-a-database) and the
-[MySQL adapter documentation](https://github.com/xgfone/go-sqlx-mysql#readme).
+## Executors and interceptors
 
-## Default configuration accessors
+`Executor` adds `PrepareContext` and no longer requires `io.Closer`. Implement that
+method on custom executors; closing and `BeginTx` are separate capabilities. `DB`
+accepts `*sql.DB`, `*sql.Tx` and `*sql.Conn`. Use `db.WithExecutor(tx)` to bind
+a transaction, or `SetExecutor` for one builder. `Table`'s `DB` reference is private;
+replace direct field access with `GetDB`, `SetDB` or `WithDB`. `Table` no longer
+promotes `DB` methods; call them through `table.GetDB()`. `DB.Reset` is removed;
+create a new `DB` or use the configuration setters.
 
-`DefaultConfigs`, `DefaultDB`, and `DefaultMixRowsBinder` are now getter functions.
-Replace variable reads with calls and assignments with the corresponding setters:
-
-| Previous usage                         | Replacement                              |
-| -------------------------------------- | ---------------------------------------- |
-| `sqlx.DefaultConfigs`                  | `sqlx.DefaultConfigs()`                  |
-| `sqlx.DefaultConfigs = configs`        | `sqlx.SetDefaultConfigs(configs...)`     |
-| `sqlx.DefaultDB`                       | `sqlx.DefaultDB()`                       |
-| `sqlx.DefaultDB = db`                  | `sqlx.SetDefaultDB(db)`                  |
-| `sqlx.DefaultMixRowsBinder`            | `sqlx.DefaultMixRowsBinder()`            |
-| `sqlx.DefaultMixRowsBinder = registry` | `sqlx.SetDefaultMixRowsBinder(registry)` |
-
-For example, register a binder with
-`sqlx.DefaultMixRowsBinder().RegisterType[*[]Model](binder)`.
-All getter/setter pairs support concurrent use. DB and binder setters reject nil
-without changing the current default, and both getters always return non-nil
-pointers. Config slices are copied on input and output; nil/empty lists disable
-default configuration, but nil config functions panic and retain the previous
-defaults. Use `sqlx.SetDefaultDB(&sqlx.DB{})` for a DB that inherits the default dialect.
-Replacing a registry does not copy its registrations or alter prepared bindings.
-Shared DB fields still require synchronization when mutated.
-
-## String limits in SQL struct tags
-
-`Struct`, `Structs` and `InsertPlan.AppendTo` recognize `maxlen=N`,
-`overflow=reject|truncate`, and `lenunit=runes|utf8bytes` options in `sql` tags.
-Defaults are rejection and Unicode code-point counting. These options were
-previously ignored; existing models using them now validate or truncate on
-insertion. Invalid configurations fail cached model preparation, including
-selection/scanning preparation, but valid tags do not modify read results.
-
-Rules run during field extraction and preserve the source model. Tagged string
-pointers now bind snapshots of their string values; changing the pointee after
-Struct/Structs/AppendTo no longer changes the pending INSERT argument. Untagged
-fields retain their existing ownership and driver.Valuer behavior. Length tags
-on Valuer or non-string fields fail preparation. See the README for NULL,
-omission/default, explicit-column and error behavior.
-
-## Eager column value rules
-
-`Column.WithValueRule` returns a `RuleColumn` that applies value rules
-immediately at assignment. `RuleColumn` keeps its base column private instead
-of embedding it. `Column` remains a defined string type and can still be
-constant. Both `Column` and `RuleColumn` expose `Name() string` and
-`Column() Column`; the latter returns the base column without a rule. Use these
-accessors to reuse one field definition for both reads and writes.
+`DB.Interceptor`, `InterceptorFunc`, `Interceptors`, `Intercept`, `SqlCollector`
+and `DefaultSqlCollector` are removed. For logging, wrap executors:
 
 ```go
-var name = sqlx.Column("name").WithValueRule(rule)
-query := sqlx.SelectColumns(id.Column(), name.Column())
-update := sqlx.Update().Table("users").Set(name.Set(input))
-insert := sqlx.Insert().Into("users").Row(name.ColValue(input))
+sqlx.SetDefaultExecutorInterceptor(func(e sqlx.Executor) sqlx.Executor {
+    return sqlx.WrapExecutor(e, func(query string, args []any, err error) {
+        slog.Info("sql audit", "query", query, "error", err)
+    })
+})
 ```
 
-`SelectColumns` now takes `...Column` and accepts empty calls without type
-arguments. Replace expanded string slices with `Select(strings...)`, and map
-collections of `RuleColumn` to `[]Column` using their `Column()` methods.
-Function forms such as `Set` and `ColValue` accept string paths/defined string
-types; use `RuleColumn.Set`/`ColValue` to apply the rule. `On`, `InQuery` and
-`NotInQuery` function forms take string paths; use `Name()` or base-column methods.
+Configure the hook before concurrent use. `Open` and `SetExecutor`/`WithExecutor`
+apply it to newly attached executors; direct field assignment bypasses it.
+`WrapExecutor` observes completed executor calls and does not rewrite SQL.
+Move rewriting/rejection logic into a custom `Executor` wrapper. Expose
+`Unwrap() Executor` so `DB` can find transaction and closing capabilities;
+`AsExecutor[T]` searches that chain. Later `Scan`/`Next`/`Close` errors are outside
+the logging callback's scope. Copy borrowed arguments before retaining them.
 
-Rules run immediately in `Set`, `ColValue` or `Apply`, never in Build, Bind or
-execution. Failed assignments preserve the rule error for Build/Compile/Exec;
-use `Apply` to handle it immediately. Built arguments and compiled constants
-contain processed values, not deferred Valuers. `ColumnValue` now has an
-internal error field; use `ColValue`, `RuleColumn.ColValue`, or keyed literals
-instead of positional struct literals.
+## Struct mapping and insertion
 
-`WithComparisons` and all automatic comparison rules are removed. Query
-predicates use `name.Column()` without processing their right operands.
-`name.Set(Param(...))` and other SQL expressions now fail; use
-`name.Column().Set(Param(...))` in templates and process input with
-`name.Apply` before binding. Database-computed assignments also use the base
-column explicitly. `Value(data)` is unwrapped; `sql.Named` retains its name.
-Value unwrapping is recursive, including within named arguments, before the
-rule runs. Param and SQL expressions remain invalid through multiple Value
-wrappers or named arguments, even with an empty name. This preprocessing differs
-from Column and TypedColumn's shared binding rules. Apply(sql.Named(...))
-returns a named argument for static binding; template Bind and execution reject
-that result as a runtime slot input, even with an empty name. Apply ordinary
-runtime data before binding a positional Param; for a named input, apply its
-Value field instead. No rule is retained by a template or rerun during Build,
-Compile or Bind. Driver Valuers are no longer converted automatically before a
-rule: extract actual data in the caller or a custom rule. The standalone deferred
-`WithValueRule(value, rule)` helper is removed; use `name.Apply(value)` or
-`rule.Apply(value)` and handle the returned error.
+Selection, insertion and scanning share model metadata. Exported fields use
+Go names or `sql` tags; private fields are excluded. Nested structs and pointers
+flatten with a fixed `_` separator; the mutable `Sep` global is removed.
+SQL `Scanner`/`Valuer` fields remain scalar, including pointer-receiver methods.
+Duplicate mappings and recursive models fail preparation.
 
-## CTE bodies and independent SQL builders
+`SelectStruct` is a generic method with its model type inferred from the argument.
+For type-only selection, use `SelectType[Model]()`; untyped `nil` is not a model.
+`ColumnProvider` output is evaluated per call. Binding uses driver result labels,
+including wildcard expansion and aliases, rather than inferred `SelectedColumns`.
+Unknown labels fail by default; enable `ScanOptions.IgnoreUnknownColumns` to
+ignore them. Duplicate labels mapping to the same field require explicit aliases.
 
-`CommonTable` is now named `NewCTE`. The constructor accepts the open `CTEBody`
-interface; all four built-in builder pointers remain valid arguments. Custom
-bodies implement `WriteSQL(*strings.Builder, *BuildContext) error`,
-`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Nil bodies or snapshots are reported
-by the enclosing `Build` call. Custom implementations must not panic; NewCTE no
-longer intercepts Snapshot panics or stores them for a later Build.
-
-The former public `Statement` interface is removed. Use `SQLBuilder` for code
-that calls `Build()` and `CTEBody` for CTE composition. They are independent:
-an external CTE body does not need a standalone `Build` method. `Kind` must
-return `CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete`; other values fail
-at build time. Other query composition methods keep their existing input types.
-
-## SQL construction and validation boundary
-
-This validation simplification does not change public builder or renderer
-interfaces. Parameter reuse and VALUES type handling remain supported.
-Build retains local structural checks and named-window checks,
-but no longer checks nested expressions for RETURNING/row-lock restrictions,
-SQLite RETURNING qualification, or the DISTINCT ON/ORDER BY semantic relationship.
-Applications must use valid SQL for their selected dialect; do not use Build as a
-complete SQL validator. No optional validation mode is introduced. See
-[SQL composition](docs/sql-syntax.md).
-
-DISTINCT ON now uses the ordinary expression writer and parameter cache. ORDER BY
-aliases and ordinals remain as supplied: for example, `ORDER BY "key"` or
-`ORDER BY 1` is no longer expanded to the matching DISTINCT ON expression.
-Valid queries retain their semantics, but SQL string snapshots may need updating.
-
-Func no longer applies named-parameter restrictions to function names. Names are
-trusted function paths for the selected dialect; an empty name still fails Build.
-This permits valid names such as `_fn` and `public._fn`. ConflictExpressions now
-wraps qualified identifiers in expression parentheses, while a single column
-name keeps its existing SQL form.
-
-## Go 1.27 and generic model selection
-
-The minimum Go version is now 1.27. `SelectBuilder.SelectStruct[T]` and
-`Table.SelectStruct[T]` infer T from the model argument, so ordinary calls stay
-the same. Their function values require instantiation, such as
-`builder.SelectStruct[Model]`. For type-only selection use
-`builder.SelectType[Model]()` or `table.SelectType[Model]()`. An untyped nil has
-no inferable model type; use SelectType or a typed nil pointer instead.
-
-SelectStruct still honors dynamic ColumnProvider output, including when the
-argument is an interface. SelectType intentionally uses only mapped type fields.
-
-## Optional typed columns
-
-Existing `Column` declarations, `Set(column, any)`, `Column.Set(any)` and
-`SelectColumns(...Column)` remain unchanged. For opt-in Go data-type checking,
-derive an independent `TypedColumn[T]`:
+Without explicit `Columns`, single-row `Struct` still omits zero-valued fields
+tagged `omitempty`/`omitzero`. v0.51.1 `ValuesFromStructs` excluded every omit-tagged
+field from its inferred batch projection. v1 `Structs` instead keeps all mapped
+columns, uses `DEFAULT` for tagged zero values, and retains tagged nonzero values:
 
 ```go
-const ageColumn sqlx.Column = "age"
-age := ageColumn.Typed[int64]() // Also NewTypedColumn[int64](ageColumn).
-age.Set(18)
-age.SetNamed("age", 18)
-age.SetFrom(sqlx.Column("backup_age").Typed[int64]())
-age.Eq(18)
-age.SetExpr(sqlx.Param(0))
-```
-
-`NewTypedColumn` now constrains its column argument to `C ~string`, accepting
-`string` variables, `Column` and other defined string types. Existing calls
-with only T continue to infer C from the argument. Constructor function values
-may need an explicit C, for example `sqlx.NewTypedColumn[int64, string]`.
-Struct wrappers still require `.Column()` projection.
-
-Data-taking methods require assignability to T and bind through Value. When T
-admits Expression values, ordinary expressions and Value wrappers remain data;
-they are not rendered or automatically unwrapped. For example, with T = any,
-`Set(Value(1))` binds the Expression object, while `SetExpr(Value(1))` binds 1.
-Use `SetExpr`, `ColValueExpr`, `EqExpr` and `NeExpr` for explicit expressions
-and template slots. Use `.Column()` to explicitly return to untyped operations
-and to construct existing `[]Column` selections. Scope preserves T. Typed columns
-are variables and do not implicitly carry a `ValueRule`.
-
-Direct Param values retain their template-slot behavior through Value, including
-the automatic wrapper in typed data methods when T permits Param. Such slots
-require Compile and Bind or template execution; ordinary Build fails. Bind does
-not check values against T, and nested Value wrappers remain data. SetNamed
-preserves named binding for ordinary Expression objects; a direct Param as its
-value fails Build and Compile, even with an empty name. Use SetExpr(Param(i))
-for a positional slot. See the shared
-[binding rules](docs/sql-syntax.md#data-value-and-param-binding).
-
-Choose a Go representation of SQL NULL, such as a pointer or nullable wrapper.
-Nil pointers and nil interfaces in typed Eq/Ne retain IS NULL/IS NOT NULL
-semantics; nullable wrapper objects remain bound data. No database metadata or
-expression result-type checks are added, and template Bind inputs retain their
-existing dynamic validation.
-
-Typed columns also provide Gt/Ge/Lt/Le, Between/NotBetween, In/NotIn and
-InSlice/NotInSlice. Data operands must be assignable to T; slice methods take
-[]T, preserving the declared field type. NumericColumn returns a TypedColumn
-with these methods. Use GtExpr/GeExpr/LtExpr/LeExpr, BetweenExpr/NotBetweenExpr
-and InExpr/NotInExpr for explicit expression operands:
-
-```go
-age.Ge(18)
-age.Between(18, 65)
-age.InSlice([]int64{18, 20, 25})
-age.BetweenExpr(sqlx.Value(int64(18)), sqlx.Param(0))
-age.InExpr(sqlx.Value(int64(18)), sqlx.Param(0))
-age.InQuery(sqlx.Select("age").From("eligible_users"))
-```
-
-Each data list element binds as data, even when T is any and the element is an
-ordinary Expression. Ordered comparisons, ranges and lists bind nil as SQL NULL;
-only Eq/Ne rewrite nil predicates. Empty In/InSlice/InExpr lists are false and
-empty NotIn/NotInSlice/NotInExpr lists are true. NULL elements are retained.
-List containers are copied, with shallow elements. Expression results, explicit
-Value contents and template inputs are not checked against T; Param does not
-expand slices. InQuery/NotInQuery snapshot a one-column query without asserting
-its result type. Existing Column and package-level predicate APIs are unchanged.
-
-Typed columns also provide Like/NotLike for patterns assignable to T, and
-LikeExpr/NotLikeExpr for explicit expressions. All four accept `escape ...string`
-and delegate to the existing Column pattern matching:
-
-```go
-name := sqlx.NewTypedColumn[string]("name")
-name.Like("A%")
-name.NotLike("A!_%", "!")
-name.LikeExpr(sqlx.Column("pattern").Ref())
-name.NotLikeExpr(sqlx.Param(0))
-```
-
-Data patterns bind through Value, including ordinary Expression objects when
-T is any. Expression results and template inputs are not checked against T.
-Nil patterns preserve SQL NULL semantics without predicate rewriting. Patterns
-keep their original wildcards; no automatic wildcard insertion or escaping is
-performed. ESCAPE keeps its single-character validation, binding and snapshot
-behavior. The methods check Go assignability rather than restricting LIKE to
-string columns or validating database operator support. Existing Column and
-package-level Like/NotLike APIs are unchanged; no StringColumn type is added.
-
-Typed columns now provide Asc/Desc, As, Count/CountDistinct, Sum/Min/Max/Avg,
-and Cast directly. These return the existing SortColumn, Namer or Expression
-builder arguments, with no changes to existing builder signatures. Sorting works
-with SELECT, windows, Oper.WithStructSorter and supported mutations. As creates
-a selected alias without changing the source column path.
-
-On(other TypedColumn[T]) compares column references with the same declared T.
-Use EqExpr(other.Ref()) to explicitly compare columns with different Go types.
-Coalesce(values ...T) and NullIf(value T) bind data through Value; CoalesceExpr
-and NullIfExpr accept explicit Expression operands. Coalesce still requires at
-least one fallback and snapshots its argument container. Nil retains SQL
-function semantics without predicate rewriting; ordinary Expression objects
-held in any remain data. Expression results and Bind inputs are not checked
-against T, and Param retains existing template behavior.
-
-```go
-age := sqlx.NumericColumn[int64]("age")
-backup := sqlx.NewTypedColumn[int64]("backup_age")
-q := sqlx.Select().SelectNamers(age.As("user_age")).
-    SelectExpr(age.Coalesce(0), age.NullIfExpr(backup.Ref())).
-    From("users").Where(age.On(backup)).Sort(age.Desc())
-```
-
-Aggregates and scalar functions return untyped Expression values: SQL result
-types and nullability are not inferred from T. Cast keeps its trusted SQL type
-string argument. Column-type conversions stay explicit through `.Column().Typed[U]()`
-and `.Column().WithValueRule(rule)`; TypedColumn does not add Typed or WithValueRule
-methods. Existing Column and package APIs are unchanged.
-
-## Optional numeric columns
-
-`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` is the single
-numeric constructor. It requires T to be a signed integer, unsigned integer
-other than uintptr, floating-point type or a defined type with one of those
-underlying types. It accepts the same string paths as NewTypedColumn, including
-string variables, Column and defined string types, and infers C:
-
-```go
-age := sqlx.NumericColumn[int64]("age")
-visits := sqlx.NumericColumn[uint64](sqlx.Column("visits"))
-age.Add(2)
-visits.Inc()
-age.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2))
-age.AddExpr(sqlx.Param(0))
-
-// sqlx.NumericColumn[string]("name") // Does not compile.
-```
-
-The NumericColumn type alias and the Numeric and NewNumericColumn functions
-have been removed. Use NumericColumn[T](path) for construction and TypedColumn[T]
-for variable, field and parameter types. An existing typed column already has all
-arithmetic methods; to pass its path to the constructor, use `.Column()`.
-Constructor function values specify both type arguments, for example
-`sqlx.NumericColumn[int64, string]`.
-
-All arithmetic methods now belong to TypedColumn[T], including Inc/Dec and the
-expression methods. Add/Sub/Mul/Div bind data through Value and require it to
-be assignable to T; ordinary Expression objects held in any remain data. Use
-AddExpr/SubExpr/MulExpr/DivExpr for expressions and explicit Value operands.
-Expression results and template Bind inputs retain their existing dynamic
-checks. Inc/Dec use the SQL literal 1. All methods return Updater and retain
-existing SQL arithmetic behavior.
-
-TypedColumn[string] can call Add with string data or Inc, but database support
-for that operation is not checked. NumericColumn checks Number at construction
-without adding a separate type or method set. Pointer, nullable and struct-based
-decimal representations can use TypedColumn arithmetic directly, although they
-do not satisfy Number.
-
-The previous NumericColumn wrapper's `.TypedColumn` field has been removed.
-Pass constructor results directly to SetFrom and other TypedColumn[T] parameters:
-
-```go
-backup := sqlx.NewTypedColumn[int64]("backup_age")
-backup.SetFrom(age)
-age.SetFrom(backup)
-var scoped sqlx.TypedColumn[int64] = age.Scope("u")
-```
-
-Scope returns TypedColumn[T] without changing the original column. `.Column()`
-remains the projection to untyped APIs. Existing Column, package Set and arithmetic
-helpers are unchanged.
-
-## Arithmetic update constraints
-
-`Add`, `Sub`, `Mul` and `Div` and their generic `Column` methods return `Updater`.
-Their value argument is constrained to `ArithmeticOperand` (`Number | Expression`).
-`Number` includes signed and unsigned integers except `uintptr`, floating-point
-values and defined types with those underlying types. Bare strings, booleans,
-complex numbers, `Column`, nil, pointers, `any` and custom objects no longer
-compile as arithmetic values. Use `Ref()` for column references and `Value(...)`
-to explicitly bind other values, including decimal objects, nullable numbers,
-named arguments and `driver.Valuer`:
-
-```go
-const score sqlx.Column = "score"
-sqlx.Add(score, 10)
-score.Mul(1.5)
-score.Div(sqlx.Param(0))
-score.Add(sqlx.Column("bonus").Ref()) // Replaces v0's Add("bonus") column operand.
-score.Add(sqlx.Value(decimalValue))
-score.Sub(sqlx.Value(sql.Named("delta", 2)))
-score.Add(sqlx.Value(nil))
-```
-
-The helper column argument still accepts strings and defined string types.
-Function and method values require instantiation, such as `sqlx.Add[string, int]`
-and `score.Add[int]`. Expressions, template inputs and explicit `Value` contents
-still require SQL-compatible types at execution. `Div` emits SQL `/` without
-casts; integer division and division by zero use the database's rules.
-`Inc` and `Dec` and the corresponding `Column` methods still use the SQL literal
-`1` without binding an operand.
-
-## Predicate operand constraints
-
-`Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,
-`In`, `NotIn`, `IsNull`, and `IsNotNull` now constrain their left operand to
-`Operand` (`~string | Expression`). Strings, including defined string types,
-name identifier paths. Other values and dynamically typed `any` arguments no
-longer compile as left operands. Use `Value(v)` to explicitly compare a bound
-literal, or resolve a dynamic column to a string/Expression before calling.
-Right operands still accept SQL values, expressions, nil, and driver.Valuer.
-
-```go
-sqlx.Eq("id", 42)                 // unchanged
-sqlx.Eq(sqlx.Ident("id"), 42)      // unchanged
-sqlx.Eq(sqlx.Value(42), 42)        // explicit literal on the left
-predicate := sqlx.Eq[string]      // instantiate a generic function value
-```
-
-Custom `Condition` and `Updater` implementations now use SQLWriter, as described
-below. Returned SQL and argument slices remain independently owned by callers.
-
-## Streaming clause extensions and compact expressions
-
-The clause interfaces require `WriteCondition(*SQLWriter) (bool, error)` and
-`WriteUpdate(*SQLWriter) (bool, error)`, respectively. The string-returning
-`LegacyCondition`, `LegacyUpdater`, `ConditionFunc`, `UpdaterFunc`,
-`AdaptCondition`, and `AdaptUpdater` APIs have been removed. Custom types must
-implement the writer method directly:
-
-```go
-func (p Predicate) WriteCondition(w *sqlx.SQLWriter) (bool, error) {
-    w.Raw("(")
-    w.Path(p.Column)
-    w.Raw(" = ")
-    w.Value(p.Value)
-    w.Raw(")")
-    return true, nil
+type User struct {
+    Name string `sql:"name"`
+    Age  int    `sql:"age,omitempty"`
 }
+builder := sqlx.Insert().Into("users").Structs([]User{
+    {Name: "A"},
+    {Name: "B", Age: 20},
+})
+// MySQL: INSERT INTO `users` (`name`, `age`) VALUES (?, DEFAULT), (?, ?)
+// Args: ["A", "B", 20]
 ```
 
-Replace function adapters with `ConditionWriterFunc` and `UpdaterWriterFunc`;
-these callbacks receive a `*SQLWriter` and return `(bool, error)` instead of SQL
-text. A custom renderer is invoked once per occurrence. Returning false must
-not change SQL or arguments; returning true requires SQL. Returned errors
-abort the whole Build/Compile; error identity is preserved through wrapping.
-Custom implementations must not panic.
-Optional empty terms do not leave separators.
+Explicit `Columns` includes actual zero values in that order for both `Struct`
+and `Structs`. MySQL/PostgreSQL support `DEFAULT` inside `VALUES`; SQLite rejects
+batches requiring it. `Structs` accepts structs or pointers; `nil` top-level rows
+fail. Named rows require matching column sets.
 
-For standalone rendering use `sqlx.BuildCondition(ctx, condition)` or
-`sqlx.BuildUpdate(ctx, updater)`. These helpers accept the current clause
-interfaces, return independent strings, share the context's parameter numbering,
-and panic on rendering errors.
+Previously ignored `sql` tag options `maxlen`, `overflow` and `lenunit` now define
+`INSERT` string limits. Audit existing models using those names: invalid options
+fail metadata preparation, and valid limits reject or truncate during extraction.
+Tagged string pointers bind value snapshots; untagged arguments remain shallow.
+Length rules preserve the model and do not change scan results.
 
-The writer is borrowed for the callback only and must not be retained, copied,
-or used concurrently. `Ident` takes explicit name components, `Path` splits a
-dotted path, `Raw` writes trusted SQL, `Arg` binds data, and `Value`/`Expr` render
-expressions in the same context. `Arg(Param(i))` and `Expr(Param(i))` support
-Compile; other Expressions should use Expr/Value. DEFAULT remains restricted to
-direct inserted/assigned values: compose Set/SetRow to render such assignments.
+`Base`/`Base1`/`Base2` conventions are removed. Define application-owned key and
+soft-delete fields with explicit tags and conditions.
 
-Expression constructors and operand constraints are unchanged. Internal storage
-is compact and complex payloads are immutable shallow snapshots; mutable values
-and driver.Valuer objects keep their prior ownership and evaluation rules.
-Expression copies preserve reuse identity, and StatementTemplate still freezes
-rendered SQL only at Compile. Do not depend on private layouts or unsafe memory
-representations.
+## Rows, binding and custom binders
 
-## Removing the go-op dependency
+`NewRows` and `QueryRowsContext` now return `*Rows` rather than a `Rows` value.
+`Update` fields and function signatures accordingly. Do not copy or concurrently
+use a `Rows` object. It no longer embeds `*sql.Rows`; construct with `NewRows`
+and call cursor methods directly, including `NextResultSet` and `ColumnTypes`.
 
-The root module no longer imports or requires go-op, including in its tests.
-Builder and Oper signatures now use local `Condition`, `Updater`, `Sorter` and
-`Pagination` interfaces. They contain only exported methods; application types
-can implement them without inheriting an Op operation tree.
+| v0.51.1 API                                                                          | v1 replacement                                                      |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `Rows.WithColumns`, `Rows.WithBinder`                                                | `Rows.SetColumns`, `Rows.SetBinder`                                 |
+| `Rows.WithRowsCap`, `Rows.RowsCap`                                                   | `Rows.SetCapacity` or `BindConfig.Capacity`                         |
+| `Oper.WithRowsCap`                                                                   | `WithBindConfig(BindConfig{Capacity: n})`                           |
+| `DefaultRowsCap`                                                                     | Immutable `DefaultRowsCapacity`; override `Capacity` locally        |
+| `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or `RowsBinder`                |
+| `CommonSliceRowsBinder`                                                              | `SliceRowsBinder{}`                                                 |
+| `NewDegradedSliceRowsBinder[S](fallback)`                                            | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)`             |
+| `NewMapRowsBinderForKeyValue`                                                        | `NewMapPairsBinder`                                                 |
+| `NewMapRowsBinderForValue`                                                           | `NewMapIndexBinder`                                                 |
+| `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue`                      | `NewMapSetBinder` for sets; custom binders for derived/fixed values |
+| `RegisterMapRowsBinder`                                                              | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))`  |
+| `Row.Next`                                                                           | Removed; `Row` is not an iterator                                   |
 
-Use native clauses or implement the exported clause interfaces in an application
-adapter. No go-op adapter is distributed by this module.
+`Rows` setters mutate the same result. `Row.WithColumns` retains value semantics.
+`SetColumns` overrides expire at the next result set; collection helpers consume
+the current set and close the whole result. `Capacity` is an allocation hint,
+never a row limit.
 
-| Previous use                                                | Native replacement                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------- |
-| `Where(op.Eq("id", id))`                                    | `Where(sqlx.Eq("id", id))`                              |
-| `Set(op.Set("name", value))`                                | `Set(sqlx.Set("name", value))`                          |
-| `Sort(sorter)`                                              | `Sort(sqlx.SortColumn{Column: "id", Order: sqlx.Desc})` |
-| `Pagination(op.PageSize(page, size))`                       | `Pagination(sqlx.PageSize(page, size))`                 |
-| `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` | Implement `Condition`/`Updater` directly                |
-
-`Expression.Condition`, `On`, `Eq`, `Exists`, `NotExists`, `InQuery`, and
-`NotInQuery` return native `sqlx.Condition` values. Combine conditions with
-`sqlx.And`/`sqlx.Or`. A `[]op.Condition` cannot be expanded as `...sqlx.Condition`;
-adapt its elements explicitly. Soft-delete callbacks must return `sqlx.Updater`.
-The main module has no requirement or replace directive pointing to an adapter.
-
-## Builder and execution APIs
-
-`OnArg` has been removed; use `Eq` for column-to-value comparisons, including
-nil and expression values. Eq also accepts an Expression on the left. Generated
-predicates now use Eq's parentheses and spaces, e.g. `("id" = $1)` instead of
-`"id"=$1`; SQL string snapshots may need updating. References to generic function
-values must instantiate Eq, for example `sqlx.Eq[string]`.
-
-All four builders accept optional output column names in
-`With(name, query, columns...)` and `WithRecursive(name, query, columns...)`.
-Replace SelectBuilder.WithColumns / WithRecursiveColumns with these methods.
-Existing calls without column names keep working; function values now have a
-variadic column parameter. `WithCTE` remains available for other CTE bodies and
-advanced options. Single-row `Row.WithColumns` is unrelated and remains available.
-
-`OnConflictDoNothing` and `OnConflictDoUpdate` have been removed:
+Built-in `Bind` replaces collections atomically after scanning and closing
+succeed. Use `Append` for slices and `Merge` for maps. Map destinations must
+be non-`nil` pointers, including maps previously passed by value:
 
 ```go
-builder.OnConflict(sqlx.ConflictColumns(columns...).DoNothing())
-builder.OnConflict(sqlx.ConflictColumns(columns...).DoUpdate(setters...))
+names := make(map[int64]string)
+// v0.51.1: rows.Bind(names)
+err := rows.Bind(&names) // v1: replaces on success.
+// Use rows.Merge(&names) to preserve existing entries.
 ```
 
-`ConflictColumns()` omits the target where the dialect permits it. Each OnConflict
-call appends independent clauses in order. Old repeated convenience calls
-accumulated columns and setters into one action: combine those arguments into
-one ConflictColumns/DoUpdate call when migrating. For multiple SQLite conflict
-clauses, supply separate actions; PostgreSQL permits only one. ClearConflict
-removes all conflict handling. MySQL's distinct `OnDuplicateKeyUpdate` API remains
-available and cannot be combined with OnConflict.
-
-`SelectBuilder.ClearUnion` has been removed. Use `ClearSetOperations`, which
-clears UNION, INTERSECT and EXCEPT, including their ALL variants.
-
-| Previous API                                                           | Replacement                                                                                |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `Build() (string, []any)`                                              | `Build() (string, []any, error)`; use `MustBuild` only to assert initialization invariants |
-| `NewSelectBuilder`, `NewInsertBuilder`, etc.; `db.SelectBuilder`, etc. | `Select()`, `Insert()`, `Update()`, `Delete()` on the package or DB                        |
-| `Selects`, `Froms`, `Sorts`                                            | Variadic `Select`, `From`, `Sort`                                                          |
-| Package/DB/Table `SelectAlias`, `SelectExpr`, `SelectExprAlias`        | Call `Select()` then the corresponding builder method                                      |
-| Package/DB `SelectStruct`; `SelectStructWithTable`                     | `Select().SelectStruct(model, qualifier)`; Table keeps `SelectStruct(model)`               |
-| Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(Sum(...))`, `SelectExpr(Count(...))`, etc.                                     |
-| `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                                |
-| `JoinOn`                                                               | `sqlx.Condition`; On compares column paths; Eq compares paths/expressions to values        |
-| `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or another sqlx.Condition                         |
-| `IgnoreColumns`, `ForceOrderBy`                                        | Removed; choose projection explicitly and specify ordering intentionally                   |
-| `WhereNamedArgs`, `SetNamedArg`                                        | `Where(Eq(...))`, `Set(sqlx.Set(...))`                                                     |
-| `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column,value),...)`, or positional Columns/Values                            |
-| `ValuesFromStructs`                                                    | `Structs`; omit-tagged zero fields use SQL DEFAULT unless Columns is explicit              |
-| `GrowValues`, `DefaultBufferCap`                                       | Removed internal allocation controls                                                       |
-| `IgnoreInto(table)`, `ReplaceInto(table)`                              | `Into(table).Ignore()`, `Into(table).Replace()`                                            |
-| `Exec`, `QueryRow`, `QueryRows`, `QueryRowOne`                         | Corresponding Context methods; no context-free execution helpers                           |
-| `Database` interface                                                   | Removed; depend on Executor and optional TxBeginner separately                             |
-| `DB{Database: ...}`                                                    | `DB{Executor: ...}`; accepts `*sql.DB`, `*sql.Tx`, `*sql.Conn`                             |
-| Anonymous `Table.DB`                                                   | Private reference; `GetDB`, `SetDB`, `WithDB`                                              |
-| `Table.InsertInto`, `Table.DeleteFrom`                                 | `Table.Insert()`, `Table.Delete().Where(...)`                                              |
-| `Table.Update(updaters...)`                                            | `Table.Update().Set(updaters...)`                                                          |
-| Mutable `Sep`                                                          | Fixed `_` nested-field separator                                                           |
-
-Table no longer inherits DB methods. SetDB remains on Table, Oper, and builders;
-it supports initialization without reassigning a WithDB result. Mutating these
-references concurrently with queries is unsupported.
-
-Execution and Build reject empty INSERT sources. A placeholder-only template
-is no longer implicitly built from Columns alone. Use DefaultValues to insert
-a default row, and FromSelect for INSERT SELECT. Default is different from nil:
-Default is SQL syntax; nil binds NULL.
-
-All collection clauses append; scalar configuration replaces. GroupBy no longer
-replaces prior columns. Pagination normalizes into LIMIT/OFFSET immediately;
-QueryRow preserves the offset. Invalid page/size inputs return a build error,
-rather than being ignored. ClearXxx clears a clause; Reset clears clauses and
-sticky input errors while keeping execution configuration. Clone copies the
-builder's owned slices, not mutable argument objects or custom operation values.
-
-ORDER BY is emitted regardless of the projection. HAVING is emitted without
-requiring GROUP BY. FROM aliases for the same table are preserved. Raw expression
-conditions are parenthesized before combination with other conditions.
-
-Set(column,nil) writes NULL instead of dropping the setter. Eq(column,nil)
-produces IS NULL. Use an explicit native expression or a custom Condition for
-other predicates; the root package no longer exposes go-op comparison helpers.
-Append optional application filters conditionally.
-
-String() returns a diagnostic on invalid builders; execution must use Build or
-the context methods to retain structured errors. Custom clause renderers must
-return errors instead of panicking.
-Invalid dialect registration through MustRegister still panics at startup.
-
-## Struct mapping
-
-Query, insert and scan use one cached metadata model. SQL Scanner/Valuer fields
-are scalar, including implementations on pointer receivers. Unexported ordinary
-fields are excluded. Nested pointers are supported; recursive relationships and
-duplicate field mappings return errors. Unknown result labels now return errors;
-set `ScanOptions.IgnoreUnknownColumns` to opt out. Duplicate labels targeting
-the same struct field require explicit aliases.
-
-Structs accepts slices of structs or pointers. Without explicit Columns, it keeps
-all mapped columns and replaces zero-valued fields tagged omitempty/omitzero with
-SQL DEFAULT; nonzero tagged values are retained. This replaces v0.51.1's batch
-behavior that unconditionally excluded omit-tagged fields, and the earlier branch
-behavior that rejected rows with different omitted columns. Defaults are evaluated
-by the database, not bound as NULL or Go zero values. MySQL/PostgreSQL support this;
-SQLite rejects batches that need DEFAULT in VALUES.
-
-Single-row Struct still omits zero-valued tagged fields. Explicit Columns selects
-fields in that order and includes actual zero values for both Struct and Structs;
-omission tags do not replace explicitly selected values with DEFAULT. Exclude
-database-generated columns from an explicit column list to leave them to the
-database. Named rows still reject missing/extra/duplicate names; mixing Struct
-and Structs calls requires matching column sets.
-
-Binding uses driver result labels rather than inferred SelectedColumns, fixing
-wildcards, computed columns and aliases. SelectedColumns and SelectedFullColumns
-are only descriptions of the declared projection. The latter reports source
-names, not output aliases. ColumnProvider output is per-call and not type-cached.
-
-## Optional Oper layer
-
-Oper stays in the root package for convenient use but has no role in builder
-execution. Default id ordering and fixed-id helpers were removed. Configure model
-query ordering with `WithStructSorter(sqlx.Column("id").Desc())`.
-
-Rename the intermediate API's `Oper.Sorter` to `Oper.StructSorter` and
-`WithSorter` to `WithStructSorter`. The configured sorter now applies only to
-`Oper.SelectStruct()` and the `Get`, `Gets`, and `CountGets` data queries that
-use it. `Select` and `SelectColumns` no longer inherit ordering, including empty
-calls. Use `.Sort(oper.StructSorter)` to explicitly reuse it on a column query,
-or specify sorting with builder methods. Count/Exist/Aggregate do not inherit
-model-query sorting. Use `WithStructSorter(nil)` to disable the default on an
-operation copy, or `ClearOrderBy()` to remove it from a built query builder.
-
-| Previous Oper API                                        | Replacement                                                         |
-| -------------------------------------------------------- | ------------------------------------------------------------------- |
-| SoftGet/SoftGets/SoftCount/SoftExist and similar         | `Active().Get/Gets/Count/Exist`                                     |
-| SoftSelect                                               | `Active().Select` or `Active().SelectStruct`                        |
-| SoftUpdate                                               | `Active().Update`                                                   |
-| Query, CountQuery                                        | Gets, CountGets with sqlx.PageSize                                  |
-| GetAll                                                   | Gets with nil pagination                                            |
-| Sum/SumInt/SumInt64/SumFloat/SumString and soft variants | Aggregate with a typed destination, or AggregateValue[R], using Sum |
-| CountDistinct                                            | Aggregate or AggregateValue[R] with CountDistinct expression        |
-| Add, AddResult                                           | Insert, InsertResult                                                |
-| AddWithId                                                | InsertResult returns sql.Result, or use an INSERT RETURNING builder |
-| ById helpers                                             | Explicit conditions on the application's key column                 |
-| Select(columns any, conditions...)                       | Typed `Select(columns ...string).Where(...)` or `SelectStruct()`    |
-| GetRow/GetRows                                           | Select builder with QueryRowContext/QueryRowsContext                |
-| IgnoredColumns/WithIgnoredColumns/MakeSlice              | Explicit projections and application-owned slices                   |
-
-Insert/Update/Delete/SoftDelete return only error. Use
-InsertResult/UpdateResult/DeleteResult/SoftDeleteResult to receive `(sql.Result, error)`.
-Code using the intermediate refactored API must rename mutation calls that
-receive two return values to the corresponding Result method. Calls that discard
-the result, such as `_, err := oper.Add(ctx, model)`, become `err := oper.Insert(ctx, model)`.
-Count/CountGets use int64 counts. CountGets does not modify the page size based
-on the count and validates pagination before querying, even when no rows match.
-Soft-delete defaults use NULL and current time, independently of go-op's legacy
-zero-date constants. Configure WithSoftCondition, WithDeletedCondition and
-WithSoftDeleteUpdater for boolean flags, timestamps, or numeric markers. The
-updater callback has signature `func() Updater`; use `Active().Update` for
-request-specific fields previously derived from the callback's context.
-Active/Deleted/Where scopes return independent Oper values.
-
-## New SQL capabilities
-
-See README for bound Expr, nested SELECT, CTE, UNION, RETURNING, conflict policies,
-DELETE USING and row-lock examples. SetExecutor selects execution separately
-from rendering; SetDialect selects rendering separately from execution.
-
-Built-in MySQL capabilities assume 8+; SQLite capabilities assume 3.39+.
-Custom dialects opt in via FeatureDialect. SQLite does not support row locks,
-DEFAULT in individual VALUES positions, or ON CONFLICT after DEFAULT VALUES.
-MySQL conflict updates use an explicit OnDuplicateKeyUpdate API; INSERT IGNORE
-and REPLACE are not equivalent to PostgreSQL/SQLite ON CONFLICT.
-
-## Dialect grammar and lexical rules
-
-`Dialect` now requires `Grammar() dialect.Grammar` and
-`LexicalRules() dialect.LexicalRules`. Custom implementations must provide both
-methods, either returning explicit rules or delegating to an existing dialect.
-Built-in dialects and the `WithFeatures`, `WithVersion`, `WithGrammar`, and
-`WithLexicalRules` wrappers already implement them.
-
-The optional `GrammarDialect` and `LexicalDialect` interfaces and their
-`GrammarOf` / `LexicalRulesOf` helpers have been removed. Replace helper calls
-with `d.Grammar()` / `d.LexicalRules()`. To retain the former fallback behavior,
-return `dialect.Grammar{}` and `dialect.LexicalRules{NestedBlockComments: true}`.
-Choose rules matching the executing connection. `FeatureDialect` and
-`NamedDialect` remain optional.
-
-## Earlier changes on this branch
-
-Dialect implementations moved to `dialect` (MySQL, Postgres, SQLite), with explicit
-Register/Get/Unregister names. BuildContext replaces public pooled ArgsBuilder;
-callers no longer release Build results. Identifiers are quoted literally, with
-Expr for trusted SQL. SQL column adapters moved to `sqltype`, using JSON rather
-than Json capitalization. Base/Base1/Base2 model conventions were removed.
-
-## Storage behavior
-
-Nil `Int64s`, `Strings`, and `JSONMap` values encode as SQL NULL. Empty non-nil
-slices encode as empty text; an empty non-nil JSONMap encodes as `{}`. `JSON[T]`
-always encodes its `V` as JSON, so a nil V is the JSON text `null`.
-
-Every successful Decode/Scan replaces the prior value. SQL NULL, empty strings,
-and zero-length byte slices reset it to its Go zero value, including nil maps
-and slices. JSON `null` is decoded normally into a fresh zero destination; `{}`
-creates an empty map, and `[]` is not accepted as a map. Whitespace-only JSON
-text, wrong shapes, malformed input, and trailing extra JSON are errors.
-
-`EncodeJSON(false)` returns `false`, `EncodeJSON(0)` returns `0`, and a nil value
-returns JSON `null`. Encoding uses the standard `encoding/json` package, without
-the old toolkit's configurable encoder/decoder hooks.
-
-Delimited strings preserve whitespace. Elements containing the separator and a
-single empty-string element are rejected because they cannot round-trip. JSON
-string lists are available through `JSON[[]string]`. Delimited integer lists
-reject empty elements and malformed numbers; empty or whitespace-only input
-decodes to a nil slice. Decoding errors preserve the old slice instead of leaving
-partial results.
-
-## Scanner behavior
-
-SQL NULL still maps built-in and named scalar destinations to zero, but now
-actually clears reused destinations. A nil `GeneralScanner.Value` still means
-ignore this column. A typed nil destination returns an error. Custom scanners
-receive the original source, including NULL, and retain their own semantics.
-
-Byte data retained in `*any` or byte-slice destinations is copied. Numbers are
-range-checked using the destination's width. Negative unsigned values,
-fractional-to-integer conversions, non-finite floats, and overflow fail without
-changing the destination. Ordinary IEEE floating-point rounding remains allowed.
-Boolean numeric values are restricted to 0 and 1; text and textual byte inputs
-share `strconv.ParseBool` semantics. Binary single-byte 0/1 values are supported.
-Empty numeric and boolean text is rejected rather than silently becoming zero.
-
-Integer and floating-point duration sources both use milliseconds by default.
-Set `DurationUnit` explicitly for other units; duration strings still use
-`time.ParseDuration`. Time strings support RFC3339Nano, SQL datetime, and date by
-default. Text without a zone uses UTC unless `Location` is set. Existing
-`time.Time` values retain their location unless one is requested explicitly.
-Time-to-string conversion uses RFC3339Nano to retain fractions and offsets.
-MySQL zero dates require `AllowZeroDate: true`; empty time strings remain invalid.
-
-## Binding APIs and commit semantics
-
-The four `Rows.WithColumns`, `Rows.WithBindConfig`, `Rows.WithScanOptions`, and
-`Rows.WithBinder` methods have been removed. Use `SetColumns`, `SetBindConfig`,
-`SetScanOptions`, and `SetBinder` on `*Rows`. They mutate the same result object
-and return its pointer. DB/Oper and single-row Row retain their With methods
-and independent configuration semantics.
-
-Binding configuration is now explicit and inherited from DB through raw queries,
-Table, Oper, builders, and RETURNING. Use `DB.WithBindConfig`,
-`Oper.WithBindConfig`, a builder's `SetBindConfig`, or `Rows.SetBindConfig`.
-`Row.WithScanOptions` and `Rows.SetScanOptions` override conversion/mapping
-options. A local configuration replaces the entire inherited configuration.
-Configure before concurrent use; configuration setters copy layout slices and
-do not mutate the parent. `WithExecutor` retains the configuration.
-
-Binding configuration fields have been renamed. Update struct literals and field
-accesses to use the following names:
-
-| Previous field      | Replacement               |
-| ------------------- | ------------------------- |
-| `BindConfig.Scan`   | `BindConfig.ScanOptions`  |
-| `BindConfig.Binder` | `BindConfig.RowsBinder`   |
-| `BindOptions.Scan`  | `BindOptions.ScanOptions` |
-
-`BindOptions.Mode` and `DuplicateKeys` retain their names. The renamed fields
-keep the same types, defaults, and behavior. `SetBinder` and `WithBinder` also
-retain their names.
-
-`DefaultMixRowsBinder()`, `MixRowsBinder`, and `NewMixRowsBinder` provide a shared
-or independent concurrent registry. Register the exact pointer destination type
-with `Register(reflect.Type, binder)` or `RegisterType[D](binder)`. Common scalar
-slices and the following maps are registered in the default registry:
-
-- Two-column key/value maps (`NewMapPairsBinder`): keys are `int`, `int64`, or
-  `string`; values are `int`, `int32`, `int64`, or `string` (all 12 combinations).
-- Single-column sets (`NewMapSetBinder`): `map[K]struct{}` with `K` equal to
-  `int`, `int32`, `int64`, or `string`.
-
-`NewRegisteredOper` registers its model slice only if absent.
-`NewOper` does not register a binder.
-User registrations take precedence, including registrations made after an Oper
-was created. Unregistered slices retain a general fallback; other maps, including
-defined map types and model indexes, require an explicit registration or local
-binder. `map[K]bool` is not registered by default. `NewMixRowsBinder()` starts
-with no registrations and only the slice fallback. Removing a default map
-registration makes that destination unsupported until it is registered again
-or a local binder is supplied.
-
-`DB.WithBinder`, `Oper.WithBinder`, and `Rows.SetBinder` preserve the remaining
-configuration while selecting a shared binder. Passing nil restores the default
-registry. Explicit binders replace the default; use ComposeRowsBinders when an
-ordered preparation fallback is intended. Registration lookup is authoritative
-and does not retry another binder after an error. A prepared binding retains its
-own state when the registration later changes. Single-row Row.Bind continues to
-use row scanning, not RowsBinder.
-
-| Removed API                                                                          | Replacement                                                                                           |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `DefaultRowsCap`                                                                     | Immutable `DefaultRowsCapacity`; override `BindConfig.Capacity`                                       |
-| `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or a custom `RowsBinder`                                         |
-| `RegisterMapRowsBinder`                                                              | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))`                                    |
-| `CommonSliceRowsBinder`                                                              | `SliceRowsBinder{}`                                                                                   |
-| `NewDegradedSliceRowsBinder`                                                         | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)`                                               |
-| `WithRowsCap`, `RowsCap`                                                             | `BindConfig.Capacity` (an allocation hint, not result length)                                         |
-| `Oper.WithRowsBinder`, `RowsBinder`, `AppendRowsBinders`                             | `WithBinder` or `WithBindConfig`; compose explicitly when fallback is needed                          |
-| `NewMapRowsBinderForKeyValue`                                                        | `NewMapPairsBinder`                                                                                   |
-| `NewMapRowsBinderForValue`                                                           | `NewMapIndexBinder`                                                                                   |
-| `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue`                      | `NewMapSetBinder` for sets; custom binders for other derived/fixed values                             |
-| `RowsBinder.BindRows`                                                                | `Prepare(dst, BindOptions) (RowsBinding, error)`                                                      |
-| `RowsBinding{Scan: scan, Commit: commit}`                                            | `RowsBindingFuncs{ScanFunc: scan, CommitFunc: commit}`, or a state pointer implementing `RowsBinding` |
-| `Row.Next`                                                                           | Removed: Row no longer implements the iterator interface                                              |
-
-`RowScanner` contains only Columns and Scan. `RowsScanner` has been removed;
-`RowCursor` supplies Next, raw positional Scan and Err for binding execution.
-Although `*Rows` satisfies that method set, its Scan applies sqlx mapping and
-must not be used as a raw cursor. Rows.Bind passes its underlying `*sql.Rows`.
-`RowsBinderFunc` is a preparation function, not a scanning function. Prepare
-receives no cursor, so unsupported-type fallback cannot skip already-read rows.
-Both value and pointer forms of `UnsupportedTypeError` are recognized, including
-wrapped errors. Empty compositions report an unsupported destination.
-
-Built-in `Rows.Bind` replaces; use `Append` for slices and `Merge` for maps.
-
-**Map destination migration:** v0.51.1 accepted both a pointer to a map whose
-underlying value could be nil (`var m map[K]V; Bind(&m)`) and an initialized map
-passed by value (`m := make(map[K]V); Bind(m)`). The new built-in map binders
-accept only a **non-nil `*map`**. Passing a map directly is unsupported whether
-it is nil or already initialized with `make`. A non-nil pointer to a nil map
-remains supported; callers do not need to allocate the map first.
-
-```go
-// Each example below assumes a fresh query result in rows.
-// Still supported: the binder creates the map on success.
-var names map[int64]string
-err := rows.Bind(&names)
-
-// Migration for an initialized map:
-names = make(map[int64]string)
-// Old: rows.Bind(names)
-err = rows.Bind(&names) // Replaces contents on success.
-// Use rows.Merge(&names) instead to preserve existing entries.
-```
-
-A nil pointer (`var p *map[int64]string; rows.Bind(p)`) is invalid. Apply this
-change to both `Bind` and `Merge` destinations; registering a map binder does
-not enable passing maps by value. To retain v0.51.1's merge-and-overwrite
-behavior, use `Merge(&m)` with `DuplicateKeyLast` in the bind configuration.
-The pointer lets the binder publish replacement storage only after scanning
-and closing succeed. Other aliases of the old map retain their old contents.
-
-Existing map contents and slice backing arrays are never modified during scanning:
-conversion, iteration, and Close errors leave the destination unchanged. Empty
-replacement results are non-nil empty collections. Append/Merge copy existing
-elements shallowly; pointed-to objects are not cloned. Map pairs and indexes
-reject duplicate keys by default, including collisions with existing keys during
-Merge. Configure `DuplicateKeyFirst` or `DuplicateKeyLast` to choose a winner;
-map sets deliberately deduplicate. `map[K]bool` no longer implicitly means a set.
-
-Pointer chains now use GeneralScanner recursively: nullable duration/time fields
-have the same units, parsing, range checks, and byte ownership as value fields.
-NULL leaves pointer destinations nil. Non-pointer custom scanners still receive
-NULL directly; nullable pointers to custom scanners remain nil on NULL.
-`NullError` can reject NULL for non-nullable scalar destinations. Unknown struct
-columns fail by default. `NilNullNestedPointers` makes all-NULL selected nested
-structs nil, instead of allocating zero-valued nested objects.
-
-Collection binders reuse immutable column/field mappings across results, keep
-mutable scanning state per result, then commit only after successful finalization.
-Mappings are keyed by model type, ordered labels, and mapping policies; scalar
-conversion options are applied independently on each query. Dynamic mapping
-caches are bounded (256 shapes per model, at most 256 columns and 16 KiB of labels
-per retained shape). Type metadata remains cached independently of those limits.
-`BindError` adds a one-based row number and preserves errors.Is/errors.As.
-Custom binding/key-function panics outside the underlying Scan propagate after
-owning results are closed. Application Scanner panics inside the underlying
-Scan have no cursor-cleanup guarantee, as described below. Custom binders must
-stage their writes and make Commit
-non-failing. `Row.Scan` and manual `Rows.Scan` retain database/sql-style partial
-row writes on conversion errors.
-
-`ScanColumnsToStruct` remains a low-level field-address mapper with strict label
-validation. It does not perform scalar conversion. Use `WithScan` for raw
-`*sql.Rows` or repeated scanning with conversion policies; use Row.Scan directly
-for single-use results. Result labels and `Rows.SetColumns` / `Row.WithColumns`
-inputs are copied.
-
-All `Scan(dst ...any) error` implementations and matching callbacks now borrow
-the destination slice only for the call. Replace saved slice assignments such
-as `saved = dst` (including subslices) with `saved = slices.Clone(dst)` or an
-equivalent copy. The copy does not extend the lifetime of temporary adapters or
-driver buffers. `ScanColumnsToStruct` now borrows and automatically returns its
-scan plan on success, error or panic; a clone of its destination slice still
-contains the caller's actual field addresses. `WithScan` reuses its plan for
-the callback and releases it automatically afterward.
-
-`Rows` no longer embeds or exposes `*sql.Rows`. Replace `rows.Rows.Method(...)`
-with `rows.Method(...)`; all seven public cursor methods remain available:
-`Next`, `NextResultSet`, `Scan`, `Columns`, `ColumnTypes`, `Err`, and `Close`.
-Construct wrappers with `NewRows` instead of a struct literal. After transferring
-ownership, advance through the wrapper so its metadata stays synchronized.
-`NextResultSet` refreshes the manual scan state for aliases of the same `*Rows`;
-`SetColumns` and `NewRows` label overrides expire at the next result set.
-`ColumnTypes` returns driver names and types independently of label overrides.
-Collection helpers consume the current set and close the entire result.
-
-`PrepareScan` and the public `PreparedScanner` interface have been removed.
-Use `WithScan(scanner, types, run)`, passing destination types as a
-`[]reflect.Type`. Move the iteration loop into `run func(RowScanFunc) error`
-and call the supplied scan function directly. Remove the separate scanner Close;
-the callback scope returns its scratch automatically on success, error or panic.
-Panics propagate. The caller still owns cursor iteration, Err and Close.
-
-For custom binders, replace `RowMapping.Scanner(cursor)` (formerly `ScanFunc`)
-with `RowMapping.WithScan(cursor, run)` and move row scanning into its callback.
-It requires a raw cursor and rejects `*Rows`; use package-level `WithScan` for
-wrapped results. Mapping preparation still occurs separately through
-`BindOptions.PrepareMapping` before the cursor is available.
-
-Each scope uses one result set with fixed labels, options and destination types.
-Unlike the former prepared scanner, it does not rebuild mappings when the source
-changes. For `*Rows`, SetColumns, SetScanOptions, SetBindConfig, NextResultSet or
-Close during the callback returns an error; make those changes between scopes.
-Raw cursors must obey this contract themselves. Destination addresses can change,
-but types must match. Scan functions must be used synchronously within the
-callback; calls after it exits return an error.
-
-Struct metadata, column layouts, compiled setters and scan plans now live in
-`internal/rowbind`, together with the shared scalar conversion rules. The root
-package owns SQL expression caching, result lifetimes and collection commits.
-Binding alone no longer creates SQL projection expressions. `ScanOptions`,
-`NullPolicy`, `NestedPointerPolicy` and `GeneralScanner` remain available from
-`sqlx` as type aliases; their fields, constants and ordinary usage are unchanged.
-Their defining package reported by reflection is now `internal/rowbind`.
-No metadata cache, setter or scan-plan API is exported from the root package.
-
-`RowsBinding` is now an interface with `Scan(RowCursor) error` and `Commit()`
-methods. Successful Prepare calls must return an independent, non-nil operation;
-error returns should use `nil, err`. Nil underlying pointers are also rejected
-before scanning. `RowsBindingFuncs.Scan` validates both callbacks before invoking
-the scan callback. Direct callers must still call Commit only after successful
-scanning and finalization.
-
-Built-in typed slices, general slices and maps implement the public interface
-with state pointers. Wrappers can return a delegated Prepare result directly,
-with no additional per-result callback allocation.
-
-### Typed collection and map temporary reuse
-
-`rows.Collect[T]()` is an optional typed alternative to declaring a slice and
-calling `rows.Bind(&slice)`. It inherits labels, conversion options, capacity
-hints and custom-binder precedence. Unregistered slices use the typed binder;
-existing exact registrations remain authoritative. No global registration is
-needed. Errors return nil, including closing failures; the built-in empty result
-is a non-nil empty slice. Existing Bind/Append/Merge calls keep their behavior.
-
-`rows.SetCapacity(n)` changes only the incoming-row allocation hint, preserving
-other configuration and prepared scan state. Positive values are uncapped;
-zero restores automatic sizing and negative values fail during collection binding.
-
-MapPairs now reuses key and value temporaries independently. Standard scalar
-and explicitly recognized database/sql nullable targets can reuse storage with
-the internal SQL cursor. Custom Scanner targets and unknown raw cursor types
-keep fresh temporary addresses where required. No Scanner signature change or
-new ownership promise is imposed on existing implementations.
-
-### Reusing result slices and visiting rows
-
-`rows.CollectInto(storage)` and `rows.Visit(yield)` are opt-in alternatives to
-atomic collection binding. Existing Bind/Append/Merge/Collect behavior is unchanged.
-
-- CollectInto overwrites exclusively owned storage through its capacity, returns
-  the successfully scanned prefix on errors, and clears failed/unused slots.
-  Always save its return value after growth. It does not preserve old aliases.
-- Visit delivers retainable values and closes the result after completion,
-  early stop, errors or a yield panic. Returning false stops normally; callback errors
-  are wrapped with the current row number. Callbacks must not control the cursor.
-- Both use labels and ScanOptions directly; RowsBinder registrations do not
-  apply. Visit does not use Capacity or DuplicateKeys. Close errors are joined
-  with an earlier error instead of being discarded.
-- Custom Scanner methods normally execute synchronously inside the underlying
-  SQL Scan with its original borrowed input. There is no input snapshot or panic
-  interception. Implementations must return errors instead of panicking and
-  manage their own resources; sqlx does not call their Close methods or guarantee
-  cursor cleanup after their panics. Scanners must copy borrowed bytes they retain.
-  `NilNullNestedPointers` still
-  captures byte inputs for deferred conversion. Ordinary byte results remain owned.
-
-### Optional storage layouts
-
-Known standard nullable fields now permit safe temporary-struct reuse. No new
-nullable type or conversion rule is introduced: `sql.Null[time.Duration]` keeps
-standard numeric conversion, and `sql.NullTime` keeps standard time conversion,
-independent of sqlx's DurationUnit and parsing options. Inline nullable values
-reduce non-NULL object allocations but can use more space for NULL-heavy models.
-
-`NewChunkedSliceRowsBinder[[]*Model](blockSize)` explicitly selects fixed blocks
-for pointers to mapped structs. The positive block size is separate from the
-pointer slice's Capacity. Scalar elements and structs implementing Scanner are
-rejected. Bind/Append remain atomic. A single retained pointer retains the entire
-block, including other rows' referenced objects; use ordinary allocation when
-rows must have independent retention lifetimes.
-
-### Oper construction and registration
-
-`NewOper[T](name)` no longer registers a model slice binder. Use
-`NewRegisteredOper[T](name)` to retain that shared registration behavior.
-Unregistered model slices continue to work through the reflection fallback.
-Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()` for construction
-without registration, or `table.NewRegisteredOper[T]()` to opt in.
-Both table methods preserve the table name and database.
-
-### Optional compiled statement templates
-
-Existing builder and binding signatures are unchanged. To reuse a fixed SQL
-shape, replace changing values with `Param(0)`, `Param(1)`, etc., call `Compile`
-once, then call `StatementTemplate.Bind` or its execution methods with one input
-per index. All four DML builders support compilation. `StatementTemplate` does
-not implement `SQLBuilder`: its `Bind` explicitly accepts runtime parameters.
-
-Do not call ordinary Build/Exec on a builder containing Param. Runtime nil is a
-bound SQL NULL and never changes an equality into IS NULL; choose the desired
-SQL shape explicitly. Runtime expressions and named arguments cannot replace
-slots. Variable IN lengths, parameterized pagination and database prepared
-statement caching are not implicit features of Compile.
-
-Pass a DB explicitly when executing a template, including `db.WithExecutor(tx)`
-for a transaction. The builder's DB and SetExecutor are not captured. Reuse the
-compiled dialect configuration (structurally equal configurations are also
-accepted); a matching Name alone is not enough. An explicit builder BindConfig
-is snapshotted, while an inherited DB configuration is resolved from the DB
-passed at execution. Result-level overrides and bounded LIMIT capacity hints
-retain their existing precedence.
-
-SELECT and RETURNING templates use QueryRowsContext; DML without RETURNING uses
-ExecContext. Templates do not narrow a limit automatically or invoke custom
-renderers again on each request. Compile a new template when its SQL shape must
-change. Arguments remain shallow snapshots; mutable constants must not be changed
-while the template is being shared. See README for a complete example.
-
-### Optional compiled insert field plans
-
-Existing Values, Row, Struct and Structs signatures and shallow snapshot rules
-are unchanged. Batch storage now keeps contiguous cells and avoids copying
-preceding chunks during incremental appends. Clone owns independent cells;
-ClearValues and Reset release the builder's batch references.
-
-Use `CompileInsert[T](columns...)` once and reuse its `InsertPlan[T].AppendTo`
-for homogeneous batches. Choose T as the slice element type (`User` or `*User`),
-not the slice type or an interface. With no columns, the plan uses all mapped
-fields and Structs' DEFAULT omission semantics. Explicit columns on the plan or
-builder include zero values. Existing columns must match the plan's order and
-existing VALUES rows must match its width. Empty builders adopt the projection;
-an explicit plan makes subsequent Struct/Structs calls use explicit columns.
-
-Check AppendTo's returned error. A failed call publishes no added rows or columns
-and does not poison the builder; IsZero side effects cannot be rolled back.
-This differs from Structs, which retains earlier successful rows and records a
-sticky error. Empty slices append nothing. SQL feature validation remains at
-Build/Exec, and Valuer conversion remains with the driver. Slice and pointer
-members are not deep-copied. Plans can be shared across separate builders but
-do not make a builder or its input objects safe for concurrent mutation.
-
-This API compiles field extraction, while StatementTemplate compiles SQL shape.
-It does not add code generation, deferred/borrowed input or a global plan cache.
+A pointer to a `nil` map is valid. Map pairs/indexes reject duplicate keys by
+default, including collisions during `Merge`. To retain merge-and-overwrite
+behavior, use `Merge` with `DuplicateKeyLast`. Empty successful replacements are
+non-`nil` collections; scanning, iteration and close errors preserve old storage.
+Map sets deduplicate; `map[K]bool` no longer implicitly means a set. Other maps,
+including model indexes and named map types, need registration or a local binder.
+
+`RowsBinder` changes from `BindRows(scanner, dst)` to
+`Prepare(dst, BindOptions) (RowsBinding, error)`; `RowsBinderFunc` changes likewise.
+`Prepare` receives labels and policies before iteration, must not modify `dst`,
+and returns independent non-`nil` state. `RowsBinding` implements `Scan(RowCursor)`
+error and `Commit()`. Stage results during `Scan`; `Commit` must not fail and runs
+only after scanning and owning-result closing succeed.
+
+`RowScanner` now contains only `Columns` and `Scan`. `RowCursor` supplies `Next`,
+raw positional `Scan` and `Err`. `Rows.Bind` passes the underlying `*sql.Rows`;
+do not pass `*Rows` as a raw cursor because its `Scan` already applies SQLx mapping.
+Use `BindOptions.PrepareMapping` and `mapping.WithScan` for custom binder conversion.
+`Scan` callbacks borrow their destination slice only during the call; clone it
+before retaining it. Temporary scanner adapters still require synchronous use.
+
+`ComposeRowsBinders` falls through only on `UnsupportedTypeError` during `Prepare`;
+once a binder recognizes a destination, errors are returned without retrying.
+Register exact pointer destination types. Registry operations support concurrent
+use; a prepared operation retains its selected binder after registration changes.
+
+## Scanner conversions and stored values
+
+SQL `NULL` now clears reused scalar destinations instead of leaving old values.
+Pointer destinations remain `nil` on `NULL`; `NullError` can reject `NULL` for scalar
+values. `GeneralScanner.Value=nil` still discards a column; typed `nil` destinations
+are invalid. Use keyed `GeneralScanner` literals because it now has policy fields.
+
+Numeric conversions reject overflow, negative unsigned values, fractions when
+converting to integers, and non-finite floats. Numeric booleans accept only `0`/`1`.
+Empty numeric/boolean text is invalid. Built-in byte destinations, including
+byte-valued `any`, receive owned copies. Custom Scanners retain their own conversion
+semantics, must copy borrowed bytes they retain, and must return errors instead
+of panicking; cursor cleanup after a panic inside raw `Scan` is not guaranteed.
+
+Both integer and floating-point durations default to milliseconds; v0.51.1
+floating durations used seconds. Set `DurationUnit=time.Second` when retaining
+that interpretation; it applies to every numeric source, so normalize mixed
+legacy units before scanning. Time text defaults to `RFC3339Nano`, SQL datetime
+and date; zone-less text uses UTC unless `Location` is set. Replace implicit
+toolkit time settings with `ScanOptions`. Zero dates require `AllowZeroDate=true`;
+empty time text is invalid. Time-to-string formatting now uses `RFC3339Nano`.
+
+Column adapters move to `github.com/xgfone/go-sqlx/sqltype`:
+
+| v0.51.1 API                                    | v1 replacement                                                               |
+| ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `sqlx.Int64s`, `sqlx.Strings`, `sqlx.SliceSep` | Corresponding `sqltype` names                                                |
+| `sqlx.Map[T]`                                  | `sqltype.JSONMap[T]`                                                         |
+| `EncodeJson`, `DecodeJson`                     | `sqltype.EncodeJSON`, `sqltype.DecodeJSON`                                   |
+| `EncodeMap`, `DecodeMap`                       | `sqltype.EncodeJSON`, `sqltype.DecodeJSON`                                   |
+| `EncodeInt64s`, `DecodeInt64s`                 | Corresponding `sqltype` names                                                |
+| `EncodeStrings`, `DecodeStrings`               | Corresponding `sqltype` names; `EncodeStrings` now returns `(string, error)` |
+
+Nil `Int64s`/`Strings`/`JSONMap` encode SQL `NULL`; empty non-`nil` slices encode
+empty text and an empty map encodes `{}`. `JSON[T]` encodes its `V` as JSON, including
+JSON `null`. `Decode`/`Scan` replaces old values; SQL `NULL` and empty inputs reset
+them. JSON decoding uses `encoding/json` without toolkit hooks; malformed or wrong-shaped
+input fails without modifying the destination. `EncodeJSON` now emits complete JSON
+for zero values, including `false`, `0` and `null`, instead of empty text. JSON `null`,
+`{}` and `[]` are decoded normally for compatible destinations rather than ignored;
+whitespace-only JSON is invalid.
+
+Delimited strings preserve whitespace and reject separator-containing elements
+or a singleton empty string; use `JSON[[]string]` for arbitrary strings. Integer
+lists reject empty elements previously skipped. `Decode` errors preserve the old
+slice rather than publishing partial results.
+
+## Oper
+
+`NewOper` no longer installs v0.51.1's local typed binder composition. Model
+slices still work through fallback. Use `WithBinder(NewSliceRowsBinder[[]T]())`
+for a local typed binder, or `NewRegisteredOper[T]` for shared registration.
+Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
+
+| v0.51.1 `Oper` API                                                     | v1 replacement                                                                 |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `Sorter`, `WithSorter`                                                 | `StructSorter`, `WithStructSorter`                                             |
+| `WithRowsBinder`, `RowsBinder`, `AppendRowsBinders`                    | `WithBinder`/`WithBindConfig`; `ComposeRowsBinders` for explicit fallback      |
+| `SoftGet`, `SoftGets`, `SoftCount`, `SoftExist`, etc.                  | `Active().Get/Gets/Count/Exist`, etc.                                          |
+| `SoftSelect`, `SoftUpdate`                                             | `Active().Select/SelectStruct`, `Active().Update`                              |
+| `Query`, `CountQuery` and soft variants                                | `Gets`/`CountGets` with `sqlx.PageSize`, optionally through `Active`           |
+| `GetAll`, `SoftGetAll`                                                 | `Gets(ctx, nil)`, optionally through `Active`                                  |
+| `Sum`, `SumInt`, `SumInt64`, `SumFloat`, `SumString` and soft variants | `Aggregate`/`AggregateValue[R]` with `sqlx.Sum`                                |
+| `CountDistinct` and soft variant                                       | `Aggregate`/`AggregateValue[R]` with `sqlx.CountDistinct`                      |
+| `Add`                                                                  | `Insert`                                                                       |
+| `AddWithId`                                                            | `InsertResult` and `sql.Result.LastInsertId`, or an `INSERT RETURNING` builder |
+| `ById` helpers                                                         | Explicit conditions on the application's key column                            |
+| `Select(columns any, conditions...)`                                   | `Select(columns ...string).Where(...)` or `SelectStruct`                       |
+| `GetRow`, `GetRows` and soft variants                                  | `SELECT` builder with `QueryRowContext`/`QueryRowsContext`                     |
+| `IgnoredColumns`, `WithIgnoredColumns`, `MakeSlice`                    | Explicit projections and application-owned slices                              |
+
+There is no implicit `id` column or default ordering. Configure
+`WithStructSorter(sqlx.Column("id").Desc())` when required. It applies only to
+`SelectStruct`/`Get`/`Gets` and `CountGets`' data query; `Select`/`SelectColumns`
+and aggregate queries do not inherit it.
+
+`Insert`/`Update`/`Delete`/`SoftDelete` return `error`. Use their `Result` variants
+when execution metadata is needed. `Count`/`CountGets` now return `int64` counts.
+`CountGets` does not shrink the requested page size from the count and validates
+pagination before querying. `Update` with a `nil` updater now skips execution.
+
+Soft-delete defaults change from `go-op` zero-date conventions to `deleted_at`
+`IS NULL`/`IS NOT NULL` and the current time. Configure `WithSoftCondition`,
+`WithDeletedCondition` and `WithSoftDeleteUpdater` for the application's schema.
+The updater callback changes from `func(context.Context) op.Updater` to
+`func() sqlx.Updater`; use `Active().Update` for request-specific values.
