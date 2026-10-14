@@ -122,7 +122,7 @@ insert := sqlx.Insert().Into("users").Row(
 )
 ```
 
-`Set`, `SetNamed`, `ColValue`, `Eq` and `Ne` accept only data assignable to T,
+`Set`, `SetNamed`, `ColValue` and data-taking conditions accept data assignable to T,
 including defined types, pointers and custom driver values when declared as T.
 They bind data through `Value`; driver conversion is deferred. `SetFrom` accepts
 only another `TypedColumn[T]`. Expressions use `SetExpr`, `ColValueExpr`,
@@ -155,6 +155,59 @@ Expression types, driver-supported values and SQL constraints remain the
 caller's responsibility. Declaring T as any or an interface weakens static
 checking. Existing Column and Set semantics are unchanged; typed columns do not
 implicitly inherit arithmetic methods or value rules.
+
+### Typed comparisons and membership
+
+`Gt`, `Ge`, `Lt` and `Le` accept one value of type T. `Between` and `NotBetween`
+accept two inclusive bounds of type T. `In` and `NotIn` accept `...T`, while
+`InSlice` and `NotInSlice` take `[]T` without an independent element type
+parameter. Defined types retain their distinctions; an int variable cannot be
+passed to an int64 column without conversion. These methods are available on
+all TypedColumn types and inherited by NumericColumn, including after Scope.
+They check Go assignability, not database ordering support or SQL type rules.
+
+```go
+age := sqlx.NewTypedColumn[int64]("age")
+ages := []int64{18, 20, 25}
+q := sqlx.Select("age").From("users").Where(
+    age.Ge(18), age.Between(18, 65), age.InSlice(ages), age.NotIn(30, 40),
+)
+```
+
+All data operands bind through Value, including individual list elements.
+Ordinary Expression objects in any-typed data are not rendered as SQL. Nil
+binds SQL NULL when T permits it. Only Eq/Ne rewrite nil predicates; ordered
+comparisons and BETWEEN retain their normal SQL NULL behavior. IN and NOT IN
+retain NULL elements and SQL's three-valued logic. Empty In/InSlice lists are
+false and empty NotIn/NotInSlice lists are true, including nil slices.
+
+The explicit expression methods are `GtExpr`, `GeExpr`, `LtExpr`, `LeExpr`,
+`BetweenExpr`, `NotBetweenExpr`, `InExpr` and `NotInExpr`. Each operand must be
+an Expression. Use Value for data mixed with a column reference or Param slot:
+
+```go
+minimum := sqlx.NewTypedColumn[int64]("minimum_age")
+q = sqlx.Select("age").From("users").Where(
+    age.GtExpr(minimum.Ref()),
+    age.BetweenExpr(sqlx.Value(int64(18)), sqlx.Param(0)),
+    age.InExpr(sqlx.Value(int64(18)), sqlx.Param(1), minimum.Ref()),
+)
+```
+
+These methods do not check expression results, Value contents or template Bind
+inputs against T. Param is one scalar slot; a slice supplied at Bind is not
+expanded into multiple list entries. Expression slices use InExpr(exprs...) or
+NotInExpr(exprs...). Empty expression lists have the same false/true behavior as
+data lists. Both data and expression list containers are copied when conditions
+are created; elements and bound objects are not deep-cloned. DEFAULT remains
+invalid in predicates, following the existing expression validation.
+
+`InQuery(q)` and `NotInQuery(q)` take a SelectBuilder pointer instead of a list
+expression. They snapshot the query and use the parent's dialect and parameter
+numbering. The caller must provide a one-column query whose SQL type is compatible
+with T; no static output-type check is performed. Nil query pointers produce
+build/compile errors. Use these methods for a set-valued subquery; an InExpr
+element represents one list expression, not a separate IN query source.
 
 ## Numeric column operations
 

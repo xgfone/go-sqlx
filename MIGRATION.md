@@ -221,6 +221,30 @@ semantics; nullable wrapper objects remain bound data. No database metadata or
 expression result-type checks are added, and template Bind inputs retain their
 existing dynamic validation.
 
+Typed columns also provide Gt/Ge/Lt/Le, Between/NotBetween, In/NotIn and
+InSlice/NotInSlice. Data operands must be assignable to T; slice methods take
+[]T, preserving the declared field type. NumericColumn inherits these methods.
+Use GtExpr/GeExpr/LtExpr/LeExpr, BetweenExpr/NotBetweenExpr and InExpr/NotInExpr
+for explicit expression operands:
+
+```go
+age.Ge(18)
+age.Between(18, 65)
+age.InSlice([]int64{18, 20, 25})
+age.BetweenExpr(sqlx.Value(int64(18)), sqlx.Param(0))
+age.InExpr(sqlx.Value(int64(18)), sqlx.Param(0))
+age.InQuery(sqlx.Select("age").From("eligible_users"))
+```
+
+Each data list element binds as data, even when T is any and the element is an
+ordinary Expression. Ordered comparisons, ranges and lists bind nil as SQL NULL;
+only Eq/Ne rewrite nil predicates. Empty In/InSlice/InExpr lists are false and
+empty NotIn/NotInSlice/NotInExpr lists are true. NULL elements are retained.
+List containers are copied, with shallow elements. Expression results, explicit
+Value contents and template inputs are not checked against T; Param does not
+expand slices. InQuery/NotInQuery snapshot a one-column query without asserting
+its result type. Existing Column and package-level predicate APIs are unchanged.
+
 ## Optional numeric columns
 
 `NumericColumn[T Number]` embeds `TypedColumn[T]` and enables arithmetic only

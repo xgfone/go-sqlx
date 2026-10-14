@@ -35,7 +35,10 @@ func rejected() {
 		`sqlx.Set(age, 18)`, `sqlx.Eq(age, 18)`, `sqlx.SelectColumns(age)`,
 		`sqlx.ColValue(age, 18)`, `sqlx.Add(age, 1)`, `age.Add(1)`,
 	}
-	for _, method := range []string{"Set", "ColValue", "Eq", "Ne"} {
+	for _, method := range []string{
+		"Set", "ColValue", "Eq", "Ne",
+		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
+	} {
 		for _, value := range []string{
 			`"Alice"`, `int(18)`, `any(int64(18))`, `nil`,
 			`sqlx.Expr("18")`, `sqlx.Value(18)`, `name`,
@@ -43,6 +46,72 @@ func rejected() {
 			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
 		}
 	}
+	for _, method := range []string{"Gt", "Ge", "Lt", "Le", "In", "NotIn"} {
+		calls = append(calls,
+			fmt.Sprintf("user.%s(orderID(7))", method),
+			fmt.Sprintf(`age.Scope("u").%s("18")`, method),
+			fmt.Sprintf(`sqlx.NewNumericColumn[int64]("age").Scope("u").%s("18")`, method))
+	}
+
+	for _, method := range []string{
+		"GtExpr", "GeExpr", "LtExpr", "LeExpr", "InExpr", "NotInExpr",
+	} {
+		for _, value := range []string{
+			`18`, `"18"`, `nil`, `age`, `sqlx.Column("age")`,
+		} {
+			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
+		}
+	}
+
+	for _, method := range []string{"Between", "NotBetween"} {
+		for _, value := range []string{
+			`"18"`,
+			`int(18)`,
+			`any(int64(18))`,
+			`nil`,
+			`sqlx.Param(0)`,
+			`sqlx.Value(18)`,
+		} {
+			calls = append(calls,
+				fmt.Sprintf("age.%s(%s, 65)", method, value),
+				fmt.Sprintf("age.%s(18, %s)", method, value))
+		}
+
+		calls = append(calls, fmt.Sprintf("user.%s(userID(1), orderID(7))", method))
+
+		for _, value := range []string{`18`, `"18"`, `nil`, `age`} {
+			calls = append(calls,
+				fmt.Sprintf("age.%sExpr(%s, sqlx.Value(65))", method, value),
+				fmt.Sprintf("age.%sExpr(sqlx.Value(18), %s)", method, value))
+		}
+	}
+
+	for _, method := range []string{"InSlice", "NotInSlice"} {
+		for _, value := range []string{
+			`[]int{18}`,
+			`[]string{"18"}`,
+			`[]any{int64(18)}`,
+			`[]sqlx.Expression{sqlx.Param(0)}`,
+		} {
+			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
+		}
+
+		calls = append(calls,
+			fmt.Sprintf("user.%s([]orderID{7})", method),
+			fmt.Sprintf(`age.Scope("u").%s([]int{18})`, method))
+	}
+
+	for _, method := range []string{"InQuery", "NotInQuery"} {
+		for _, value := range []string{`18`, `"query"`, `sqlx.Param(0)`, `sqlx.Subquery(sqlx.Select("id"))`, `age`} {
+			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
+		}
+	}
+
+	calls = append(calls,
+		`age.In([]int{18}...)`,
+		`age.NotIn([]any{int64(18)}...)`,
+		`age.InExpr([]any{sqlx.Value(18)}...)`,
+		`age.NotInExpr([]int{18}...)`)
 
 	expected := make(map[int]string, len(calls))
 	for _, call := range calls {

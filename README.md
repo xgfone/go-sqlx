@@ -135,12 +135,12 @@ An explicitly instantiated constructor function value can use
 `sqlx.NewTypedColumn[int64, string]`. Struct wrappers such as `RuleColumn`,
 `TypedColumn` and `NumericColumn` still require an explicit `.Column()` projection.
 
-`Set`, `SetNamed(name, value)`, `ColValue`, `Eq` and `Ne` require a value
-assignable to T. Integer constants can initialize `int64`; an `int` variable
-needs an explicit conversion. Defined business types such as `UserID` and
-`OrderID` remain distinct. Data methods bind through `Value` and do not render
-ordinary SQL expressions held in an `any` value as SQL. Use a concrete T for
-useful checking; `any` and interface types weaken that check.
+`Set`, `SetNamed(name, value)`, `ColValue` and data-taking condition methods
+require values assignable to T. Integer constants can initialize `int64`; an
+`int` variable needs an explicit conversion. Defined business types such as
+`UserID` and `OrderID` remain distinct. Data methods bind through `Value` and
+do not render ordinary SQL expressions held in an `any` value as SQL. Use a
+concrete T for useful checking; `any` and interface types weaken that check.
 
 `SetFrom` requires another `TypedColumn[T]`. `SetExpr`, `ColValueExpr`, `EqExpr`
 and `NeExpr` accept ordinary `Expression` values, including explicit column
@@ -175,6 +175,57 @@ inspect database schemas. T declares the application's Go data type; driver
 conversion, SQL type compatibility, ranges and database nullability remain
 execution-time responsibilities. Values remain shallow, and Build/Compile
 never invoke `driver.Valuer.Value`.
+
+### Typed conditions
+
+Typed columns provide comparisons, inclusive ranges and membership conditions:
+
+| Data methods                      | Explicit expression methods                        |
+| --------------------------------- | -------------------------------------------------- |
+| Gt / Ge / Lt / Le(value T)        | GtExpr / GeExpr / LtExpr / LeExpr(expr Expression) |
+| Between / NotBetween(low, high T) | BetweenExpr / NotBetweenExpr(low, high Expression) |
+| In / NotIn(values ...T)           | InExpr / NotInExpr(values ...Expression)           |
+| InSlice / NotInSlice(values []T)  | Expand expression slices into InExpr / NotInExpr   |
+
+```go
+age := sqlx.NewTypedColumn[int64]("age")
+minimum := sqlx.NewTypedColumn[int64]("minimum_age")
+ages := []int64{18, 20, 25}
+
+age.Ge(18)
+age.Between(18, 65)
+age.In(18, 20, 25)
+age.InSlice(ages) // Also age.In(ages...).
+
+age.GtExpr(minimum.Ref())
+age.BetweenExpr(sqlx.Value(int64(18)), minimum.Ref())
+age.InExpr(sqlx.Value(int64(18)), sqlx.Param(0), minimum.Ref())
+age.InQuery(sqlx.Select("age").From("eligible_users"))
+
+// age.Ge("18")             // Does not compile.
+// age.InSlice([]int{18})    // Does not compile.
+// age.Between(18, minimum.Ref()) // Use BetweenExpr with explicit bounds.
+```
+
+The data methods bind every operand through `Value`, including each list
+element, so ordinary Expression objects held in `any` remain data. Comparisons
+are not limited to Number or comparable Go types: strings, time.Time and custom
+driver values can be declared as T. Database ordering and type compatibility
+remain the caller's responsibility. NumericColumn inherits these conditions.
+
+Nil operands in ordered comparisons, ranges and lists bind SQL NULL when T
+permits them. Only Eq/Ne rewrite nil into IS NULL/IS NOT NULL. NULL list elements
+are retained, including in NotIn. Empty In/InSlice/InExpr lists are false;
+empty NotIn/NotInSlice/NotInExpr lists are true. List containers are snapshotted
+when conditions are created; their elements remain shallow.
+
+Expression bounds and lists can mix SQL with `Value(...)` data; neither their
+results nor explicit Value contents are checked against T. Param remains a
+scalar template slot and does not expand a bound slice into an IN list.
+Use InSlice for a data list or InExpr(exprs...) for an expression list.
+InQuery and NotInQuery snapshot a one-column query and render it in the parent's
+dialect and binding context; its output type is not checked against T. Use
+these query methods for set-valued subqueries, keeping InExpr for list elements.
 
 ## Numeric columns
 

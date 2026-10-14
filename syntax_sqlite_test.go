@@ -21,6 +21,8 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 
 	db := &DB{Dialect: dialect.SQLite}
 	numericValue := Numeric(Column("v").Typed[int64]())
+	typedID := NewTypedColumn[int64]("id")
+	typedValue := NewTypedColumn[int64]("v")
 	seq := Select().SelectExpr(Value(1)).UnionAll(Select().SelectExpr(Expr("? + 1", Ident("n"))).From("seq").Where(Lt("n", 4)))
 	row := Tuple(Ident("id"), Ident("team"))
 	window := Window().PartitionBy("team").OrderBy("id", Asc)
@@ -52,6 +54,80 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			"returning target name with alias",
 			db.Update().TableAlias("main.t", "u").Set(Set("v", 99)).Where(Eq("u.id", 1)).Returning("t.v"),
 			[][]any{{99}},
+		},
+		{
+			"typed ordered comparisons",
+			db.Select("id").From("t").Where(typedID.Gt(0), typedID.Ge(1), typedID.Lt(3), typedID.Le(2)).OrderByAsc("id"),
+			[][]any{{1}, {2}},
+		},
+		{
+			"typed inclusive range",
+			db.Select("id").From("t").Where(typedValue.Between(10, 20)).OrderByAsc("id"),
+			[][]any{{1}, {2}},
+		},
+		{
+			"typed negative inclusive range",
+			db.Select("id").From("t").Where(typedValue.NotBetween(10, 20)).OrderByAsc("id"),
+			[][]any{{3}},
+		},
+		{
+			"typed lists and slices",
+			db.Select("id").From("t").Where(typedID.In(1, 2), typedID.NotIn(3),
+				typedID.InSlice([]int64{1, 2, 3}), typedID.NotInSlice([]int64{3})).OrderByAsc("id"),
+			[][]any{{1}, {2}},
+		},
+		{
+			"typed empty in list",
+			db.Select("id").From("t").Where(typedID.In()),
+			nil,
+		},
+		{
+			"typed empty not in slice",
+			db.Select("id").From("t").Where(typedID.NotInSlice(nil)).OrderByAsc("id"),
+			[][]any{{1}, {2}, {3}},
+		},
+		{
+			"typed null ordered comparison",
+			db.Select("id").From("users").Where(NewTypedColumn[*string]("deleted_at").Gt(nil)),
+			nil,
+		},
+		{
+			"typed null in list",
+			db.Select("id").From("t").Where(NewTypedColumn[any]("v").In(10, nil)),
+			[][]any{{1}},
+		},
+		{
+			"typed null not in list",
+			db.Select("id").From("t").Where(NewTypedColumn[any]("v").NotIn(10, nil)),
+			nil,
+		},
+		{
+			"typed expression comparisons",
+			db.Select("id").From("t").Where(typedValue.GtExpr(Expr("? - ?", 15, 5)), typedValue.GeExpr(Value(20)),
+				typedValue.LtExpr(Expr("? + ?", 25, 5)), typedValue.LeExpr(Value(30))),
+			[][]any{{2}},
+		},
+		{
+			"typed expression ranges",
+			db.Select("id").From("t").Where(typedValue.BetweenExpr(typedID.Ref(), Value(20)),
+				typedValue.NotBetweenExpr(Value(11), Value(19))).OrderByAsc("id"),
+			[][]any{{1}, {2}},
+		},
+		{
+			"typed expression lists",
+			db.Select("id").From("t").Where(typedValue.InExpr(Value(10), Expr("? * ?", 10, 3)),
+				typedValue.NotInExpr(Value(20))).OrderByAsc("id"),
+			[][]any{{1}, {3}},
+		},
+		{
+			"typed in query",
+			db.Select("id").From("t").Where(typedID.InQuery(db.Select("id").From("other"))),
+			[][]any{{2}},
+		},
+		{
+			"typed not in query",
+			db.Select("id").From("t").Where(typedID.NotInQuery(db.Select("id").From("other"))).OrderByAsc("id"),
+			[][]any{{1}, {3}},
 		},
 		{
 			"typed data and expression assignment",
