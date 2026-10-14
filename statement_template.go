@@ -28,6 +28,8 @@ import (
 // added by [TypedColumn] data methods when T admits Param. For concrete data
 // types, use explicit expression methods such as [TypedColumn.SetExpr]. Bind
 // validates slot inputs as data without checking them against the column's T.
+// [RuleColumn.Apply] rejects Param even inside Value or sql.Named; create slots
+// through [RuleColumn.Column] and apply its rule to runtime data before binding.
 func Param(index int) Expression {
 	e := Expr("?", templateParam(index))
 	e.node.(*expressionArgs).kind = parameterExpression
@@ -165,6 +167,8 @@ func (b *builderBase) compileStatement(s statementWriter, returnsRows bool, hint
 // Bind returns the frozen SQL and an independent, shallow argument slice.
 // Supply exactly one value per declared [Param] index. [Expression], [SQLBuilder]
 // and [sql.NamedArg] inputs are rejected: slots hold data, not SQL or names.
+// Process ordinary runtime data with [RuleColumn.Apply] before binding; a named
+// argument retained by Apply remains unsupported as an input, even with an empty name.
 // Driver-specific value validation and [driver.Valuer.Value] remain execution-time work.
 func (q *StatementTemplate) Bind(params ...any) (string, []any, error) {
 	if err := q.validateParams(params); err != nil {

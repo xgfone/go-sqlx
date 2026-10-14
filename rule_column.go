@@ -10,13 +10,13 @@ import (
 )
 
 // RuleColumn pairs a column with a reusable value rule. [RuleColumn.Set] and
-// [RuleColumn.ColValue]
-// apply the rule immediately and retain only its result or error. [SQLBuilder.Build],
-// [InsertBuilder.Compile], [UpdateBuilder.Compile], [StatementTemplate.Bind]
-// and execution never reapply it. Use [RuleColumn.Name] or [RuleColumn.Column] to reuse
-// this definition in queries; reading the column does not apply the rule.
-// Raw paths, ordinary [Column] assignments and struct inserts do not use it.
-// A zero [RuleColumn] has no rule and rejects non-nil data.
+// [RuleColumn.ColValue] apply the rule immediately and retain only its result
+// or error. Value preprocessing and template limits follow [RuleColumn.Apply].
+// [SQLBuilder.Build], [InsertBuilder.Compile], [UpdateBuilder.Compile],
+// [StatementTemplate.Bind] and execution never reapply it. Use [RuleColumn.Name]
+// or [RuleColumn.Column] to reuse this definition in queries; reading the column
+// does not apply the rule. Raw paths, ordinary [Column] assignments and struct
+// inserts do not use it. A zero [RuleColumn] has no rule and rejects non-nil data.
 type RuleColumn struct {
 	column Column
 	rule   ValueRule
@@ -36,11 +36,18 @@ func (c RuleColumn) Name() string { return c.column.Name() }
 func (c RuleColumn) Column() Column { return c.column }
 
 // Apply processes data immediately and returns any error with column context.
-// Nil passes through, [Value](data) is unwrapped, and [sql.Named] retains its name.
-// [Param] and database-computed expressions are rejected: process template inputs
-// before binding, and use [RuleColumn.Column] with [Column.Set] for SQL expressions.
-// [driver.Valuer] implementations are
-// passed to the rule as-is; no driver conversion or deep copy is performed.
+// Nil interfaces and nil pointers become nil without calling the rule. [Value]
+// wrappers are recursively unwrapped, including inside [sql.Named]; the name
+// is retained, but nested named arguments are rejected. [Param], ordinary SQL
+// expressions and SQL builders are rejected even inside Value or sql.Named. Use
+// [RuleColumn.Column] with [Column.Set] or [Column.ColValue] for SQL expressions
+// and template slots, and process runtime data with Apply before binding.
+//
+// Apply(sql.Named(name, data)) returns a [sql.NamedArg] for static binding.
+// [StatementTemplate.Bind] rejects it as a runtime slot input even when name
+// is empty. For a named input to a positional template slot, apply the input's
+// Value field instead. [driver.Valuer] implementations are passed to the rule
+// as-is; no driver conversion or deep copy is performed.
 func (c RuleColumn) Apply(value any) (any, error) {
 	value, err := c.apply(value)
 	if err != nil {

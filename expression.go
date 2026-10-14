@@ -354,10 +354,13 @@ func Default() Expression {
 }
 
 // Value explicitly binds a value, including nil as SQL NULL.
-// An ordinary [Expression] in v remains data; nested Value wrappers are not
-// unwrapped. A direct [Param] in v retains its template-slot behavior and
-// requires Compile. [TypedColumn] data methods add Value themselves; pass an
-// explicit Value to their expression methods to bind its contents.
+// During SQL rendering an ordinary [Expression] in v remains data; nested Value
+// wrappers are not unwrapped. A direct [Param] in v retains its template-slot
+// behavior and requires Compile. [TypedColumn] data methods add Value themselves;
+// pass an explicit Value to their expression methods to bind its contents.
+//
+// [RuleColumn.Apply] instead recursively unwraps Value before applying its rule
+// and rejects Param and SQL expressions even inside Value or sql.Named.
 func Value(v any) Expression {
 	return Expression{node: &expressionValue{value: v}}
 }

@@ -192,8 +192,12 @@ func TestRuleColumnRejectsSQLInputs(t *testing.T) {
 	}))
 	for _, value := range []any{
 		Param(0), Param(-1), Value(Param(0)), sql.Named("n", Param(0)),
+		Value(Value(Param(0))), Value(sql.Named("n", Value(Param(0)))),
+		sql.Named("", Value(Value(Param(0)))), Value(sql.Named("", Param(0))),
 		Default(), name.Column().Ref(), Expr("UPPER(?)", "abcd"),
+		Value(Value(Default())), Value(sql.Named("n", Value(Expr("UPPER(?)", "abcd")))),
 		Subquery(Select("name").From("users")), Select("name"), templateParam(0),
+		Value(Select("name")),
 	} {
 		if _, err := name.Apply(value); err == nil {
 			t.Fatalf("Apply accepted SQL input %T", value)

@@ -193,6 +193,40 @@ A direct Param as the named value is unsupported and fails both Build and
 Compile, including when name is empty. Use `SetExpr(Param(i))` for a positional
 template slot. Existing name validation and repeated-name reuse rules apply.
 
+#### RuleColumn preprocessing
+
+RuleColumn processes data before it reaches the shared binder. Apply, Set and
+ColValue recursively unwrap Value, including within sql.Named values, then apply
+the rule once to non-nil data. Nil interfaces and nil pointers become nil without
+invoking the rule. Names are retained; nested named arguments are rejected. Param,
+ordinary SQL expressions and SQL builders are rejected even inside multiple Value
+wrappers or named arguments, including an empty name.
+
+For Set and ColValue, the following table compares ordinary data v with explicit
+wrappers. "Processed v" means the rule's result:
+
+| Input               | Column                       | TypedColumn[any]             | RuleColumn        |
+| ------------------- | ---------------------------- | ---------------------------- | ----------------- |
+| v                   | Binds v                      | Binds v                      | Binds processed v |
+| Value(v)            | Binds v                      | Binds the Value object       | Binds processed v |
+| Value(Value(v))     | Binds the inner Value object | Binds the outer Value object | Binds processed v |
+| Ordinary Expression | Renders SQL                  | Binds the expression object  | Rejects           |
+| Param(0)            | Template slot                | Template slot                | Rejects           |
+| Value(Param(0))     | Template slot                | Binds the Value object       | Rejects           |
+
+Use `.Column().Set(...)` or `.Column().ColValue(...)` for SQL expressions and
+Param slots. These base-column operations do not apply the rule. For templates,
+process ordinary runtime data with Apply before Bind or template execution;
+Build, Compile and Bind never rerun the rule or retain it in the template.
+
+`Apply(sql.Named(name, data))` returns sql.NamedArg with processed data. That
+result can be statically bound through the base column's Set or ColValue, with
+the usual dialect name support and reuse rules. Bind and template execution
+reject sql.NamedArg inputs even when name is empty: a Param slot holds data,
+not a name. For a named runtime input, apply its Value field and bind that
+result instead. Wrapping Param with Value or sql.Named never defers a rule
+until Bind; RuleColumn rejects the assignment before compilation.
+
 ### Typed selection, ordering and joins
 
 `Asc()` and `Desc()` return the same SortColumn as the corresponding Column

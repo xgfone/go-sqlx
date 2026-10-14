@@ -133,8 +133,16 @@ predicates use `name.Column()` without processing their right operands.
 `name.Column().Set(Param(...))` in templates and process input with
 `name.Apply` before binding. Database-computed assignments also use the base
 column explicitly. `Value(data)` is unwrapped; `sql.Named` retains its name.
-Driver Valuers are no longer converted automatically before a rule: extract
-actual data in the caller or a custom rule. The standalone deferred
+Value unwrapping is recursive, including within named arguments, before the
+rule runs. Param and SQL expressions remain invalid through multiple Value
+wrappers or named arguments, even with an empty name. This preprocessing differs
+from Column and TypedColumn's shared binding rules. Apply(sql.Named(...))
+returns a named argument for static binding; template Bind and execution reject
+that result as a runtime slot input, even with an empty name. Apply ordinary
+runtime data before binding a positional Param; for a named input, apply its
+Value field instead. No rule is retained by a template or rerun during Build,
+Compile or Bind. Driver Valuers are no longer converted automatically before a
+rule: extract actual data in the caller or a custom rule. The standalone deferred
 `WithValueRule(value, rule)` helper is removed; use `name.Apply(value)` or
 `rule.Apply(value)` and handle the returned error.
 

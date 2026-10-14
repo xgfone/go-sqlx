@@ -526,10 +526,15 @@ update := sqlx.Update().Table("users").Set(UserName.Column().Set(value))
 ```
 
 Nil, including typed nil pointers, passes through without calling the rule.
-`Value(data)` is unwrapped and processed; `sql.Named` retains its name with the
-processed data. `Param`, other SQL expressions and SQL builders are rejected
-because their results are unavailable at assignment time. Use the underlying
-column explicitly for database-computed assignments:
+Value wrappers are recursively unwrapped before processing, including inside
+`sql.Named`, which retains its name with the processed data. For example,
+`UserName.Set(Value(Value(input)))` applies the rule once to input. This is
+preprocessing before SQL rendering, distinct from Column and TypedColumn's
+[binding rules](docs/sql-syntax.md#data-value-and-param-binding). `Param`,
+other SQL expressions and SQL builders are rejected even inside multiple
+Value wrappers or named arguments, including an empty name. Their results are
+unavailable at assignment time. Use the underlying column's Set or ColValue
+explicitly for database-computed assignments:
 
 ```go
 update := sqlx.Update().Table("users").
@@ -551,6 +556,14 @@ if err != nil {
 }
 _, err = tmpl.ExecContext(ctx, db, value)
 ```
+
+Pass ordinary runtime data to Apply for a template slot.
+`Apply(sql.Named(name, input))` preserves a sql.NamedArg for static binding through
+the base column's Set or ColValue. Bind and template execution reject this object
+as a runtime slot input, even when name is empty.
+For a named input, process its Value field with `UserName.Apply(namedInput.Value)`
+and bind that result to the positional Param. Build, Compile and Bind never
+apply the rule again.
 
 `RuleColumn` does not call `driver.Valuer.Value` automatically. A rule receives
 such objects as-is; the caller or a custom rule must extract data when needed.
