@@ -209,6 +209,44 @@ with T; no static output-type check is performed. Nil query pointers produce
 build/compile errors. Use these methods for a set-valued subquery; an InExpr
 element represents one list expression, not a separate IN query source.
 
+### Typed pattern matching
+
+`Like(pattern T, escape ...string)` and `NotLike(pattern T, escape ...string)`
+require patterns assignable to T, including defined-type distinctions. They bind
+patterns through Value, so ordinary Expression objects held in any remain data.
+Pointers, nullable wrappers and custom driver values are accepted when declared
+as T, without invoking driver conversion during Build or Compile.
+
+`LikeExpr(pattern Expression, escape ...string)` and `NotLikeExpr` accept column
+references, SQL expressions, Param slots and explicit Value operands. Their
+result types, Value contents and runtime Bind inputs are not checked against T.
+Param remains one scalar pattern slot without slice expansion, including when
+wrapped by Value in any-typed data, following the existing template rules:
+
+```go
+name := sqlx.NewTypedColumn[string]("name").Scope("u")
+q := sqlx.Select("u.name").FromAlias("users", "u").Where(
+    name.Like("A%"),
+    name.NotLike("A!_%", "!"),
+    name.LikeExpr(sqlx.Column("pattern").Scope("u").Ref()),
+    name.NotLikeExpr(sqlx.Param(0)),
+)
+```
+
+Both LIKE and NOT LIKE preserve SQL NULL semantics, including nil patterns
+when T permits them; they do not rewrite nil predicates. Patterns are not
+modified: `%` and `_` remain wildcards unless escaped by the caller, and no
+wildcards are added. All four methods reuse Column's ESCAPE behavior: omit it
+or supply one string containing one Unicode character. ESCAPE binds as data;
+its value and validation outcome are captured when the condition is created.
+Empty, multi-character or multiple ESCAPE arguments fail Build and Compile.
+
+Like/NotLike are available on every TypedColumn[T], including NumericColumn
+results and scoped columns. They check Go assignability, not database operator
+support; TypedColumn[int64].Like(18) can compile. Database LIKE rules, including
+case sensitivity and collation, remain the caller's responsibility. Existing
+Column and package-level Like/NotLike signatures and behavior are unchanged.
+
 ### Typed arithmetic
 
 All arithmetic methods are defined on `TypedColumn[T]`:

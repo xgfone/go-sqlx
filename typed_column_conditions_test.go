@@ -117,6 +117,12 @@ func TestTypedColumnConditionNulls(t *testing.T) {
 		{"mixed null negative list", dynamic.NotIn(18, nil), `("age" NOT IN ($1, $2))`, []any{18, nil}},
 		{"explicit null range", age.BetweenExpr(Value(nil), Value(nil)), `("age" BETWEEN $1 AND $2)`, []any{nil, nil}},
 		{"explicit null list", age.NotInExpr(Value(nil)), `("age" NOT IN ($1))`, []any{nil}},
+		{"like nil pointer", age.Like(nil), `("age" LIKE $1)`, []any{nilValue}},
+		{"not like nil pointer", age.NotLike(nil), `("age" NOT LIKE $1)`, []any{nilValue}},
+		{"like nil interface", dynamic.Like(nil), `("age" LIKE $1)`, []any{nil}},
+		{"not like nil interface", dynamic.NotLike(nil), `("age" NOT LIKE $1)`, []any{nil}},
+		{"like explicit null", age.LikeExpr(Value(nil)), `("age" LIKE $1)`, []any{nil}},
+		{"not like explicit null", age.NotLikeExpr(Value(nil)), `("age" NOT LIKE $1)`, []any{nil}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkSQL(t,
@@ -187,6 +193,11 @@ func TestTypedColumnConditionDataDoesNotRenderExpressions(t *testing.T) {
 		{c.InSlice([]any{expr}), `("v" IN ($1))`, []any{expr}},
 		{c.NotInSlice([]any{expr}), `("v" NOT IN ($1))`, []any{expr}},
 		{NewTypedColumn[Expression]("v").In(expr), `("v" IN ($1))`, []any{expr}},
+		{c.Like(expr), `("v" LIKE $1)`, []any{expr}},
+		{c.NotLike(expr), `("v" NOT LIKE $1)`, []any{expr}},
+		{c.NotLike(Default()), `("v" NOT LIKE $1)`, []any{Default()}},
+		{NewTypedColumn[Expression]("v").Like(expr), `("v" LIKE $1)`, []any{expr}},
+		{NewTypedColumn[Expression]("v").NotLike(expr), `("v" NOT LIKE $1)`, []any{expr}},
 	} {
 		q := Select("v").From("t").Where(tc.c).SetDialect(dialect.Postgres)
 		checkSQL(t, q, `SELECT "v" FROM "t" WHERE `+tc.want, tc.args...)
@@ -250,6 +261,7 @@ func TestTypedColumnConditionExpressionErrors(t *testing.T) {
 			c.BetweenExpr(expr, Value(2)), c.BetweenExpr(Value(1), expr),
 			c.NotBetweenExpr(expr, Value(2)), c.NotBetweenExpr(Value(1), expr),
 			c.InExpr(expr), c.NotInExpr(expr),
+			c.LikeExpr(expr), c.NotLikeExpr(expr),
 		} {
 			q := Select("v").From("t").Where(condition)
 			checkBuildError(t, q)

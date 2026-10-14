@@ -18,10 +18,13 @@ import (
 )
 type userID int64
 type orderID int64
+type displayName string
+type searchPattern string
 var age = sqlx.Column("age").Typed[int64]()
 var name = sqlx.NewTypedColumn[string]("name")
 var user = sqlx.Column("user_id").Typed[userID]()
 var order = sqlx.Column("order_id").Typed[orderID]()
+var display = sqlx.NewTypedColumn[displayName]("display_name")
 func rejected() {
 `)
 	calls := []string{
@@ -43,6 +46,7 @@ func rejected() {
 		"Set", "ColValue", "Eq", "Ne",
 		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
 		"Add", "Sub", "Mul", "Div",
+		"Like", "NotLike",
 	} {
 		for _, value := range []string{
 			`"Alice"`, `int(18)`, `any(int64(18))`, `nil`,
@@ -54,6 +58,7 @@ func rejected() {
 	for _, method := range []string{
 		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
 		"Add", "Sub", "Mul", "Div",
+		"Like", "NotLike",
 	} {
 		calls = append(calls,
 			fmt.Sprintf("user.%s(orderID(7))", method),
@@ -72,11 +77,35 @@ func rejected() {
 	for _, method := range []string{
 		"GtExpr", "GeExpr", "LtExpr", "LeExpr", "InExpr", "NotInExpr",
 		"AddExpr", "SubExpr", "MulExpr", "DivExpr",
+		"LikeExpr", "NotLikeExpr",
 	} {
 		for _, value := range []string{
 			`18`, `"18"`, `nil`, `age`, `sqlx.Column("age")`,
 		} {
 			calls = append(calls, fmt.Sprintf("age.%s(%s)", method, value))
+		}
+	}
+
+	for _, method := range []string{"Like", "NotLike"} {
+		for _, value := range []string{
+			`18`, `[]byte("A%")`, `any("A%")`, `nil`,
+			`sqlx.Param(0)`, `sqlx.Value("A%")`, `sqlx.Column("pattern")`,
+			`sql.Named("pattern", "A%")`, `sql.NullString{}`,
+		} {
+			calls = append(calls, fmt.Sprintf("name.%s(%s)", method, value))
+		}
+		calls = append(calls,
+			fmt.Sprintf(`display.%s(string("A%%"))`, method),
+			fmt.Sprintf(`display.%s(searchPattern("A%%"))`, method),
+			fmt.Sprintf(`name.Scope("u").%s(18)`, method))
+	}
+	for _, method := range []string{"Like", "NotLike", "LikeExpr", "NotLikeExpr"} {
+		pattern := `"A%"`
+		if strings.HasSuffix(method, "Expr") {
+			pattern = `sqlx.Param(0)`
+		}
+		for _, escape := range []string{`18`, `sqlx.Value("!")`, `nil`, `[]any{"!"}...`} {
+			calls = append(calls, fmt.Sprintf("name.%s(%s, %s)", method, pattern, escape))
 		}
 	}
 

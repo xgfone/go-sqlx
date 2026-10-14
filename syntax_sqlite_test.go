@@ -23,6 +23,16 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	numericValue := NumericColumn[int64](Column("v"))
 	typedID := NewTypedColumn[int64]("id")
 	typedValue := NewTypedColumn[int64]("v")
+	typedName := NewTypedColumn[string]("name").Scope("patterns")
+	likeValues := ValuesSource("patterns",
+		[]string{"name"},
+		[]any{"a_b"},
+		[]any{"axb"},
+		[]any{"a%b"},
+		[]any{"ab"},
+		[]any{""},
+		[]any{nil},
+	)
 	seq := Select().SelectExpr(Value(1)).UnionAll(Select().SelectExpr(Expr("? + 1", Ident("n"))).From("seq").Where(Lt("n", 4)))
 	row := Tuple(Ident("id"), Ident("team"))
 	window := Window().PartitionBy("team").OrderBy("id", Asc)
@@ -54,6 +64,59 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			"returning target name with alias",
 			db.Update().TableAlias("main.t", "u").Set(Set("v", 99)).Where(Eq("u.id", 1)).Returning("t.v"),
 			[][]any{{99}},
+		},
+		{
+			"typed like literal has no implicit wildcards",
+			db.Select("patterns.name").FromSource(likeValues).Where(typedName.Like("ab")),
+			[][]any{{"ab"}},
+		},
+		{
+			"typed like empty pattern",
+			db.Select("patterns.name").FromSource(likeValues).Where(typedName.Like("")),
+			[][]any{{""}},
+		},
+		{
+			"typed like wildcard",
+			db.Select().SelectExpr(Count("*")).FromSource(likeValues).Where(typedName.Like("a_b")),
+			[][]any{{3}},
+		},
+		{
+			"typed like escape underscore",
+			db.Select("patterns.name").FromSource(likeValues).Where(typedName.Like("a!_b", "!")),
+			[][]any{{"a_b"}},
+		},
+		{
+			"typed not like escape percent preserves null semantics",
+			db.Select().SelectExpr(Count("*")).FromSource(likeValues).Where(typedName.NotLike("a!%b", "!")),
+			[][]any{{4}},
+		},
+		{
+			"typed like expression and unicode escape",
+			db.Select("patterns.name").FromSource(likeValues).
+				Where(typedName.LikeExpr(Func("LOWER", Value("A界_B")), "界")),
+			[][]any{{"a_b"}},
+		},
+		{
+			"typed not like expression",
+			db.Select("id").From("t").Where(NewTypedColumn[string]("team").
+				NotLikeExpr(Expr("? || ?", "a", "%"))),
+			[][]any{{3}},
+		},
+		{
+			"typed like column reference",
+			db.Select("id").From("t").Where(NewTypedColumn[string]("team").LikeExpr(Column("team").Ref())).OrderByAsc("id"),
+			[][]any{{1}, {2}, {3}},
+		},
+		{
+			"typed like null pattern",
+			db.Select("patterns.name").FromSource(likeValues).
+				Where(NewTypedColumn[*string]("patterns.name").Like(nil)),
+			nil,
+		},
+		{
+			"typed not like null expression",
+			db.Select("patterns.name").FromSource(likeValues).Where(typedName.NotLikeExpr(Value(nil))),
+			nil,
 		},
 		{
 			"typed ordered comparisons",

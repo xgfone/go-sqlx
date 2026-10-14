@@ -245,6 +245,27 @@ Value contents and template inputs are not checked against T; Param does not
 expand slices. InQuery/NotInQuery snapshot a one-column query without asserting
 its result type. Existing Column and package-level predicate APIs are unchanged.
 
+Typed columns also provide Like/NotLike for patterns assignable to T, and
+LikeExpr/NotLikeExpr for explicit expressions. All four accept `escape ...string`
+and delegate to the existing Column pattern matching:
+
+```go
+name := sqlx.NewTypedColumn[string]("name")
+name.Like("A%")
+name.NotLike("A!_%", "!")
+name.LikeExpr(sqlx.Column("pattern").Ref())
+name.NotLikeExpr(sqlx.Param(0))
+```
+
+Data patterns bind through Value, including ordinary Expression objects when
+T is any. Expression results and template inputs are not checked against T.
+Nil patterns preserve SQL NULL semantics without predicate rewriting. Patterns
+keep their original wildcards; no automatic wildcard insertion or escaping is
+performed. ESCAPE keeps its single-character validation, binding and snapshot
+behavior. The methods check Go assignability rather than restricting LIKE to
+string columns or validating database operator support. Existing Column and
+package-level Like/NotLike APIs are unchanged; no StringColumn type is added.
+
 ## Optional numeric columns
 
 `NumericColumn[T Number, C ~string](column C) TypedColumn[T]` is the single

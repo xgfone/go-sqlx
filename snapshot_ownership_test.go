@@ -26,6 +26,26 @@ func TestLikeEscapeSnapshot(t *testing.T) {
 				return NotLike("name", "a%", escape...)
 			},
 		},
+		{
+			"typed like", "LIKE", func(escape []string) Condition {
+				return NewTypedColumn[string]("name").Like("a%", escape...)
+			},
+		},
+		{
+			"typed not like", "NOT LIKE", func(escape []string) Condition {
+				return NewTypedColumn[string]("name").NotLike("a%", escape...)
+			},
+		},
+		{
+			"typed like expression", "LIKE", func(escape []string) Condition {
+				return NewTypedColumn[string]("name").LikeExpr(Value("a%"), escape...)
+			},
+		},
+		{
+			"typed not like expression", "NOT LIKE", func(escape []string) Condition {
+				return NewTypedColumn[string]("name").NotLikeExpr(Value("a%"), escape...)
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			escape := []string{"!"}
@@ -37,7 +57,11 @@ func TestLikeEscapeSnapshot(t *testing.T) {
 			escape[0] = "invalid"
 			condition = tc.make(escape)
 			escape[0] = "!"
-			checkBuildError(t, Select("id").Where(condition))
+			q := Select("id").Where(condition)
+			checkBuildError(t, q)
+			if _, err := q.Compile(); err == nil {
+				t.Fatal("an invalid escape at condition creation must remain invalid")
+			}
 		})
 	}
 }

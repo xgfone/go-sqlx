@@ -178,7 +178,7 @@ never invoke `driver.Valuer.Value`.
 
 ### Typed conditions
 
-Typed columns provide comparisons, inclusive ranges and membership conditions:
+Typed columns provide comparisons, inclusive ranges, membership and pattern matching:
 
 | Data methods                      | Explicit expression methods                        |
 | --------------------------------- | -------------------------------------------------- |
@@ -186,6 +186,7 @@ Typed columns provide comparisons, inclusive ranges and membership conditions:
 | Between / NotBetween(low, high T) | BetweenExpr / NotBetweenExpr(low, high Expression) |
 | In / NotIn(values ...T)           | InExpr / NotInExpr(values ...Expression)           |
 | InSlice / NotInSlice(values []T)  | Expand expression slices into InExpr / NotInExpr   |
+| Like / NotLike(pattern T)         | LikeExpr / NotLikeExpr(pattern Expression)         |
 
 ```go
 age := sqlx.NewTypedColumn[int64]("age")
@@ -227,6 +228,28 @@ Use InSlice for a data list or InExpr(exprs...) for an expression list.
 InQuery and NotInQuery snapshot a one-column query and render it in the parent's
 dialect and binding context; its output type is not checked against T. Use
 these query methods for set-valued subqueries, keeping InExpr for list elements.
+
+`Like` and `NotLike` bind a pattern assignable to T through Value. Their
+expression forms accept column references, SQL expressions, Param and explicit
+Value operands. All four methods accept an optional `escape ...string`:
+
+```go
+name := sqlx.NewTypedColumn[string]("name")
+name.Like("A%")
+name.NotLike("A!_%", "!")
+name.LikeExpr(sqlx.NewTypedColumn[string]("pattern").Ref())
+name.NotLikeExpr(sqlx.Param(0), "!")
+
+// name.Like(18)            // Does not compile.
+// name.Like(sqlx.Param(0)) // Use LikeExpr instead.
+```
+
+Patterns are passed unchanged: no wildcards are added and `%` or `_` are not
+automatically escaped. Nil patterns bind SQL NULL when T permits them; neither
+LIKE nor NOT LIKE rewrites nil to IS NULL or IS NOT NULL. ESCAPE keeps the
+existing single-character validation and snapshot behavior. These methods check
+Go assignability, not database LIKE support: even TypedColumn[int64] can call
+Like(18). Existing Column and package-level Like/NotLike APIs are unchanged.
 
 ### Typed arithmetic
 

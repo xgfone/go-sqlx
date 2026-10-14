@@ -200,6 +200,33 @@ func (c TypedColumn[T]) NotBetweenExpr(low, high Expression) Condition {
 	return c.column.NotBetween(low, high)
 }
 
+// Like matches a pattern of type T, bound as data without adding or escaping
+// wildcards. Nil binds SQL NULL when T permits it, without rewriting the predicate.
+// The optional single-character ESCAPE follows [Column.Like]. Go assignability
+// is checked; database support for LIKE on T is not checked.
+func (c TypedColumn[T]) Like(pattern T, escape ...string) Condition {
+	return c.column.Like(Value(pattern), escape...)
+}
+
+// NotLike negates a pattern match, following [TypedColumn.Like] for data binding,
+// wildcards, ESCAPE and SQL NULL semantics.
+func (c TypedColumn[T]) NotLike(pattern T, escape ...string) Condition {
+	return c.column.NotLike(Value(pattern), escape...)
+}
+
+// LikeExpr matches an explicit expression pattern, including a column reference,
+// [Param] or [Value]. Its SQL result type and runtime parameter types are not
+// checked against T. ESCAPE follows [Column.Like].
+func (c TypedColumn[T]) LikeExpr(pattern Expression, escape ...string) Condition {
+	return c.column.Like(pattern, escape...)
+}
+
+// NotLikeExpr negates an expression pattern match, following [TypedColumn.LikeExpr].
+// SQL NULL semantics are preserved.
+func (c TypedColumn[T]) NotLikeExpr(pattern Expression, escape ...string) Condition {
+	return c.column.NotLike(pattern, escape...)
+}
+
 // In tests membership in data values of type T. The slice container is copied;
 // elements are not deep-cloned. An empty list is false; NULL elements retain
 // SQL's three-valued logic and are not rewritten as IS NULL predicates.
