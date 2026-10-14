@@ -1,36 +1,26 @@
 # SQL composition
 
-Builders generate SQL for supported dialects when callers follow the dialect's
-SQL rules and the extension interfaces' contracts. They own clause placement,
-identifier quoting, parameter binding, and snapshots of builder descriptions.
-Build performs inexpensive local checks, including source modes, row widths,
-feature support, and named-window definitions. It is not a SQL semantic validator;
-successful Build does not prove that a statement is legal in the database.
+Builders handle clause placement, identifier quoting and parameter binding.
+`Build` checks statement structure, row widths, feature support and named windows;
+callers still own SQL semantics, including expression placement, column/type
+resolution and `DISTINCT ON`/`ORDER BY` compatibility. Raw SQL must suit the target
+dialect. Custom extensions must honor their borrowing and snapshot contracts
+and return errors instead of panicking.
 
-Callers own expression placement, valid clause combinations, column and type
-resolution, and matching DISTINCT ON/ORDER BY keys. Builders do not inspect
-nested expressions to enforce RETURNING or row-lock restrictions. Raw `Expr`
-and `ExpressionSource` SQL also remain the caller's responsibility, including
-database-specific functions, types, and operators. Custom implementations must
-honor their borrowing, snapshot, and output contracts and must not panic; behavior
-after a contract violation is not guaranteed. No optional semantic-validation
-mode is currently provided.
-
-Values are bound; strings in column/table APIs are identifier paths. In expression
-arguments, strings are data: use `Ident` to refer to a column.
+Builder inputs are shallow snapshots: owned containers are copied, while bound
+objects remain shared. Values are bound; strings in column/table APIs are
+identifier paths. In expression arguments, strings are data: use `Ident` for
+column references.
 
 ## Conditions and expressions
 
 `Eq`, `Ne`, `Gt`, `Ge`, `Lt`, `Le`, `Between`, `NotBetween`, `Like`, `NotLike`,
-`In`, `NotIn`, `InSlice`, `NotInSlice`, `IsNull`, `IsNotNull`, and `Not` compose
-with `And` and `Or`.
-Except for `Not`, their left operand is constrained at compile time to `Operand`
-(`~string | Expression`): an identifier path or an explicit expression. Defined
-string types also name paths; use `Value(v)` for a literal on the left. `Not`
-accepts a `Condition`. Other operand values bind normally.
-`Eq(column, nil)` and `Ne(column, nil)` produce `IS NULL`
-and `IS NOT NULL`, including typed nil pointers. Use `Value(nil)` when explicitly
-requesting an ordinary comparison against SQL NULL.
+`In`, `NotIn`, `InSlice`, `NotInSlice`, `IsNull` and `IsNotNull` compose with `And`,
+`Or` and `Not`. Predicate left operands use `Operand` (`~string | Expression`);
+defined string types name paths, and `Value(v)` makes a literal left operand.
+`Not` takes a `Condition`. `Eq`/`Ne` with `nil`, including typed `nil` pointers,
+produce `IS NULL`/`IS NOT NULL`. Use `Value(nil)` for an ordinary comparison with
+bound `NULL`. Other predicates retain their SQL `NULL` behavior.
 
 ```go
 q := sqlx.Select("id").From("users").Where(
@@ -41,206 +31,115 @@ q := sqlx.Select("id").From("users").Where(
 )
 ```
 
-`In(column)` is false and `NotIn(column)` is true. NULL elements in nonempty
-lists retain SQL's three-valued logic; `NotIn(column, 1, nil)` is not equivalent
-to `Ne(column, 1)`. Lists are variadic: expand `[]any` with `...`.
-
-`InSlice(column, values)` and `NotInSlice(column, values)` accept typed slices
-directly, including `[]int64`, `[]uint64`, `[]int`, `[]uint`, `[]string`, defined
-element types, and `[]Expression`. Matching `Column` methods are also available:
+Empty `In`/`InSlice` lists are `false`; empty `NotIn`/`NotInSlice` lists are `true`.
+`NULL` elements retain SQL's three-valued logic: `NotIn(column, 1, nil)` is not
+equivalent to `Ne(column, 1)`. `In`/`NotIn` take variadic values;
+`InSlice`/`NotInSlice` accept typed slices directly, including defined element
+types and Expressions. List containers are copied, with shallow elements.
+For a `nil` slice, specify its type so the compiler can infer the element type:
 
 ```go
 ids := []int64{1, 2, 3}
-const id sqlx.Column = "id"
-q := sqlx.Select("id").From("users").Where(
-    sqlx.InSlice("id", ids),
-    id.NotInSlice([]int64{4, 5}),
-)
+q := sqlx.Select("id").From("users").Where(sqlx.InSlice("id", ids))
 ```
 
-The slice container is copied when the condition is created; elements are not
-deep-cloned. Nil and empty slices have the same false/true semantics as empty
-`In`/`NotIn` lists. NULL elements and expressions follow the same rules as the
-variadic helpers. Pass a typed nil slice, such as `[]int64(nil)`, so the compiler
-can infer the element type.
-
-Use `Tuple(Ident("tenant"), Ident("id"))` for a row operand and `Tuple(7, 42)`
-for row values. Tuple membership checks equal widths and uses a VALUES query on
+`Tuple(Ident("tenant"), Ident("id"))` is a row operand; `Tuple(7, 42)` supplies
+row values. `Tuple` membership requires equal widths and uses a `VALUES` query on
 SQLite. `SetRow([]string{"x", "y"}, valueX, valueY)` assigns a row where supported.
 
-`Func`, `Coalesce`, `NullIf`, and `Cast` accept values or expressions. `Func`'s
-function path is trusted SQL for the selected dialect, including names such as
-`_fn` and `public._fn`; Build only rejects an empty name. `Cast`'s
-type specification is trusted SQL, not a parameter. `Case().When(condition,
-value).Else(value).End()` builds a searched CASE; `CaseValue(value)` with
-`WhenValue(match, result)` builds a simple CASE. `End` snapshots its clauses.
+`Func`, `Coalesce`, `NullIf` and `Cast` accept values or expressions. Function paths
+and `Cast` type specifications are trusted SQL; empty names/types fail `Build`.
+`Case().When(condition, value).Else(value).End()` builds a searched `CASE`;
+`CaseValue(value).WhenValue(match, result).Else(value).End()` builds a simple `CASE`.
 
-`Default()` is permitted only as a direct INSERT value or SET value when the
-dialect supports it. It cannot be embedded in an arbitrary expression. SQLite
-supports `DefaultValues()` for inserting a default row, but not per-value DEFAULT
-or `SET column = DEFAULT`.
+`Default` is permitted only as a direct `INSERT`/`SET` value where supported.
+SQLite supports `DefaultValues` for a default row, but rejects per-value `DEFAULT`
+and `SET column = DEFAULT`.
 
 ## Typed column operations
 
-Use `NewTypedColumn[T](column)` or `Column.Typed[T]()` to opt into Go field-type
-checks. `TypedColumn[T]` is an independent struct; it does not satisfy the
-string-based column constraints of existing package functions.
+`NewTypedColumn[T](column)` and `Column.Typed[T]()` declare the Go data type.
+Constructor paths accept `C ~string`, including `Column` and defined string types;
+`C` is inferred. Constructor function values specify both arguments, for example
+`NewTypedColumn[int64, string]`.
 
-The constructor's column path is constrained to `C ~string`, accepting string
-literals, `string` variables, `Column` and other defined string types. C is
-inferred, so calls still specify only the field's data type T. For example:
-
-```go
-type FieldName string
-path := "age"
-ageFromString := sqlx.NewTypedColumn[int64](path)
-ageFromColumn := sqlx.NewTypedColumn[int64](sqlx.Column(path))
-ageFromField := sqlx.NewTypedColumn[int64](FieldName(path))
-```
-
-An explicitly instantiated constructor function value can use
-`sqlx.NewTypedColumn[int64, string]`. `RuleColumn` and `TypedColumn` values
-still require explicit `.Column()` projection.
+Data methods require values assignable to `T`. An `int64` column accepts integer
+constants but needs conversion from an `int` variable; defined business types
+remain distinct. `SetFrom` and `On` require another `TypedColumn[T]`. Expression
+methods accept explicit SQL without checking its result type against `T`.
+Driver conversion is deferred; neither form validates database metadata or SQL
+operator support. Declaring `T` as `any` or an interface weakens static checking.
+Assignments use `Set`/`SetNamed`/`ColValue`; explicit SQL uses `SetExpr`/`ColValueExpr`.
+`EqExpr`/`NeExpr` provide the corresponding expression comparisons.
 
 ```go
-const ageColumn sqlx.Column = "age"
-age := ageColumn.Typed[int64]()
+age := sqlx.Column("age").Typed[int64]()
 name := sqlx.NewTypedColumn[string]("name")
-backup := sqlx.Column("backup_age").Typed[int64]()
-
+backup := sqlx.NewTypedColumn[int64]("backup_age")
 q := sqlx.Update().Table("users").Set(
     age.Set(18), name.SetNamed("name", "Alice"), backup.SetFrom(age),
 ).Where(age.Eq(18), name.Ne("Bob"))
 
-// Rendering explicit SQL does not check its result type against int64.
 q = sqlx.Update().Table("users").Set(
     age.SetExpr(sqlx.Expr("? + ?", age.Ref(), 1)),
-).Where(age.EqExpr(backup.Ref()), name.NeExpr(sqlx.Value("Bob")))
-
-insert := sqlx.Insert().Into("users").Row(
-    age.ColValue(18), name.ColValueExpr(sqlx.Func("UPPER", "alice")),
 )
+// age.Set("Alice") // Does not compile.
 ```
 
-`Set`, `SetNamed`, `ColValue` and data-taking conditions accept data assignable to T,
-including defined types, pointers and custom driver values when declared as T.
-They bind data through `Value`; driver conversion is deferred. `SetFrom` accepts
-only another `TypedColumn[T]`. Expressions use `SetExpr`, `ColValueExpr`,
-`EqExpr` or `NeExpr`, which preserve ordinary expression rendering, dialect
-validation and parameter numbering without asserting a result type.
-
-DEFAULT is valid only where the existing dialect supports the corresponding
-assignment or insert operation. `Eq` and `Ne` map nil interfaces and nil pointers
-to IS NULL and IS NOT NULL. For example, `Column("age").Typed[*int64]().Eq(nil)`
-is an IS NULL condition, while an `int64` column rejects nil data at compile time.
-Every typed column provides `IsNull` and `IsNotNull`. Nullable wrappers bind normally,
-without calling their Valuer to decide NULL predicates; `EqExpr(Value(nil))` also
-binds NULL for an ordinary comparison.
-
-`Name` returns a string path, `Ref` an untyped SQL reference and `Scope` a new
-typed column preserving T. `Column()` explicitly returns to existing operations:
-
-```go
-columns := []sqlx.Column{age.Column(), name.Column(), "legacy"}
-selectQuery := sqlx.SelectColumns(columns...).From("users")
-joinCondition := age.Scope("u").EqExpr(backup.Scope("v").Ref())
-```
-
-Column paths and T declarations do not validate model or database metadata.
-Expression types, driver-supported values and SQL constraints remain the
-caller's responsibility. Declaring T as any or an interface weakens static
-checking. Existing Column and Set semantics are unchanged; typed columns
-have their own arithmetic methods and do not carry value rules.
+`Name` returns the path, `Ref` an untyped reference, and `Scope` a new column with
+the same `T`. `Column()` projects to untyped APIs such as `SelectColumns` and value
+rules; typed columns themselves do not satisfy string-based path constraints.
+Use a nullable `T` such as `*int64` or `sql.NullInt64` when needed. `Eq`/`Ne`
+retain the `nil` rewriting described above; `IsNull`/`IsNotNull` work independently
+of `T`. Nullable wrappers bind without calling `Valuer` to determine `NULL` predicates.
 
 ### Data, Value and Param binding
 
-All typed data entry points add `Value(...)` themselves, including each list
-element and function fallback. When T is any or admits Expression values, an
-ordinary Expression passed as data stays a bound object. This also applies to
-an explicit Value wrapper: data methods do not unwrap it. Use Value in an
-expression entry point to bind its contents. In comparison, existing untyped
-Column methods render an Expression argument directly:
+Typed data methods add `Value` around each operand. Ordinary `Expression` objects,
+including `Value` wrappers, remain bound data when `T` admits them. Expression
+methods render Expressions; `Value` in an expression method binds its contents.
+For `Set`/`ColValue`, the column families differ as follows; processed `v` is
+a rule's result:
 
-```go
-column := sqlx.Column("v")
-typed := sqlx.NewTypedColumn[any](column)
-column.Set(sqlx.Value(1))     // Binds 1.
-typed.Set(1)                 // Binds 1.
-typed.Set(sqlx.Value(1))      // Binds the Expression object itself.
-typed.SetExpr(sqlx.Value(1))  // Binds 1.
-typed.Eq(sqlx.Value(nil))     // Binds the Expression object, not SQL NULL.
-typed.EqExpr(sqlx.Value(nil)) // Ordinary equality with a bound SQL NULL.
-```
+| Input                 | `Column`                       | `TypedColumn[any]`             | `RuleColumn`        |
+| --------------------- | ------------------------------ | ------------------------------ | ------------------- |
+| `v`                   | Binds `v`                      | Binds `v`                      | Binds processed `v` |
+| `Value(v)`            | Binds `v`                      | Binds the `Value` object       | Binds processed `v` |
+| `Value(Value(v))`     | Binds the inner `Value` object | Binds the outer `Value` object | Binds processed `v` |
+| Ordinary `Expression` | Renders SQL                    | Binds the expression object    | Rejects             |
+| `Param(0)`            | Template slot                  | Template slot                  | Rejects             |
+| `Value(Param(0))`     | Template slot                  | Binds the `Value` object       | Rejects             |
 
-Param is a special case in the shared binder. A direct `Param(i)` wrapped by
-Value remains a scalar template slot. Thus `typed.Set(Param(0))` also declares
-a slot through its automatic Value wrapper. For concrete T, use expression methods
-such as `SetExpr(Param(i))`, `ColValueExpr(Param(i))` or `EqExpr(Param(i))`.
-Both forms require Compile followed by Bind or template execution; ordinary
-Build with an unbound Param fails. Nested Value wrappers are not recursively
-unwrapped: `typed.Set(Value(Param(0)))` binds the Value expression object itself.
+A direct `Param` wrapped by `Value` remains a scalar template slot. Use expression
+methods for Params when concrete `T` excludes them. Slots require `Compile` followed
+by `Bind` or template execution; ordinary `Build` fails. `Bind` inputs are not checked
+against `T`, but must be data: `Expression`, `SQLBuilder` and `sql.NamedArg` are rejected.
+A bound slice does not expand a slot into an `IN` list, and runtime `nil` never
+rewrites equality to `IS NULL`.
 
-Expression results, explicit Value contents and template Bind inputs are not
-checked against T. Bind still validates its inputs as data, rejecting Expression,
-SQLBuilder and sql.NamedArg values. A Param holds one scalar value without slice
-expansion or changes to SQL structure. In particular, binding nil to an equality
-slot does not rewrite it to IS NULL.
-
-`SetNamed(name, value)` adds `sql.Named` around the typed data. Ordinary
-Expression and Value objects remain data rather than rendering SQL; dialects
-with native named parameters preserve the name, while others bind positionally.
-A direct Param as the named value is unsupported and fails both Build and
-Compile, including when name is empty. Use `SetExpr(Param(i))` for a positional
-template slot. Existing name validation and repeated-name reuse rules apply.
+`SetNamed` adds `sql.Named` around typed data. Ordinary Expressions stay data;
+native named-parameter dialects preserve the name, while others bind positionally.
+Direct `Param` named values fail `Build`/`Compile`, even with an empty name.
 
 #### RuleColumn preprocessing
 
-RuleColumn processes data before it reaches the shared binder. Apply, Set and
-ColValue recursively unwrap Value, including within sql.Named values, then apply
-the rule once to non-nil data. Nil interfaces and nil pointers become nil without
-invoking the rule. Names are retained; nested named arguments are rejected. Param,
-ordinary SQL expressions and SQL builders are rejected even inside multiple Value
-wrappers or named arguments, including an empty name.
+`Apply`, `Set` and `ColValue` recursively unwrap `Value`, including within `sql.Named`,
+then apply the rule once to non-`nil` data. Nil interfaces/pointers bypass the rule;
+argument names are retained, and nested named arguments are rejected. Expressions,
+SQL builders and Params are rejected through wrappers as well.
 
-For Set and ColValue, the following table compares ordinary data v with explicit
-wrappers. "Processed v" means the rule's result:
-
-| Input               | Column                       | TypedColumn[any]             | RuleColumn        |
-| ------------------- | ---------------------------- | ---------------------------- | ----------------- |
-| v                   | Binds v                      | Binds v                      | Binds processed v |
-| Value(v)            | Binds v                      | Binds the Value object       | Binds processed v |
-| Value(Value(v))     | Binds the inner Value object | Binds the outer Value object | Binds processed v |
-| Ordinary Expression | Renders SQL                  | Binds the expression object  | Rejects           |
-| Param(0)            | Template slot                | Template slot                | Rejects           |
-| Value(Param(0))     | Template slot                | Binds the Value object       | Rejects           |
-
-Use `.Column().Set(...)` or `.Column().ColValue(...)` for SQL expressions and
-Param slots. These base-column operations do not apply the rule. For templates,
-process ordinary runtime data with Apply before Bind or template execution;
-Build, Compile and Bind never rerun the rule or retain it in the template.
-
-`Apply(sql.Named(name, data))` returns sql.NamedArg with processed data. That
-result can be statically bound through the base column's Set or ColValue, with
-the usual dialect name support and reuse rules. Bind and template execution
-reject sql.NamedArg inputs even when name is empty: a Param slot holds data,
-not a name. For a named runtime input, apply its Value field and bind that
-result instead. Wrapping Param with Value or sql.Named never defers a rule
-until Bind; RuleColumn rejects the assignment before compilation.
+Use `Column().Set`/`ColValue` for SQL expressions or template slots. Process runtime
+data with `Apply` before `Bind`; `Build`/`Compile`/`Bind` do not retain or rerun the rule.
+`Apply(sql.Named(name, data))` returns a named argument suitable for static binding.
+For a runtime slot, apply its `Value` field instead: `Bind` rejects `sql.NamedArg`,
+including empty names.
 
 ### Typed selection, ordering and joins
 
-`Asc()` and `Desc()` return the same SortColumn as the corresponding Column
-methods. They preserve scoped paths and identifier quoting and work with
-SELECT, window Sort, Oper.WithStructSorter and supported mutation ordering.
-They do not constrain T or infer NULL placement from its Go representation.
-Set SortColumn.Nulls explicitly when needed; existing dialect checks still apply.
-
-`As(alias string)` returns a Namer for SelectNamers. The alias is quoted as one
-identifier, including embedded dots, and does not change the original column.
-`On(other TypedColumn[T])` returns a column-to-column equality Condition, requiring
-the same T, including defined-type distinctions. It does not bind the right path
-as data. SQL type compatibility remains the caller's responsibility. Use EqExpr
-with an explicit reference for comparisons between differently declared Go types:
+`Asc`/`Desc` return `SortColumn`; set `Nulls` explicitly when needed. `As(alias)`
+returns a `Namer`, quoting the alias as one identifier without changing the column.
+`On(other TypedColumn[T])` compares column references. Use `EqExpr(other.Ref())`
+when the declared Go types differ:
 
 ```go
 id := sqlx.NewTypedColumn[int64]("id").Scope("u")
@@ -252,270 +151,136 @@ q := sqlx.Select().SelectNamers(name.As("user.name")).FromAlias("users", "u").
 
 ### Typed aggregates and scalar functions
 
-Count, CountDistinct, Sum, Min, Max and Avg delegate to the corresponding Column
-methods and return Expression values. Existing aggregate Filter and Over methods
-remain available. T is not restricted to Number or comparable types; database
-operator support and SQL result types are not checked. Aggregate results can
-have a different type from T or be NULL, including on empty input sets.
+`Count`, `CountDistinct`, `Sum`, `Min`, `Max`, `Avg` and `Cast` return untyped
+Expressions. Results may differ from `T` or be `NULL`; `Filter` and `Over` remain
+available. `Cast` takes a trusted SQL type specification.
 
-`Cast(typeSQL string)` returns an Expression using a trusted SQL type specification
-such as DECIMAL(12,2). The SQL type is syntax, not a bound argument or a new Go
-field declaration. Empty type specifications retain their Build/Compile errors.
+| Data method             | Expression method                    |
+| ----------------------- | ------------------------------------ |
+| `Coalesce(values ...T)` | `CoalesceExpr(values ...Expression)` |
+| `NullIf(value T)`       | `NullIfExpr(expr Expression)`        |
 
-Coalesce and NullIf separate typed data from explicit SQL:
-
-| Data method           | Expression method                  |
-| --------------------- | ---------------------------------- |
-| Coalesce(values ...T) | CoalesceExpr(values ...Expression) |
-| NullIf(value T)       | NullIfExpr(expr Expression)        |
-
-Both Coalesce forms start with the column and require at least one fallback.
-They snapshot argument containers, with shallow bound objects. Data must be
-assignable to T and binds through Value, following the shared
-[data, Value and Param binding rules](#data-value-and-param-binding).
-Expression results, Value contents and Bind inputs are not checked against T.
-NULL follows SQL function semantics without predicate rewriting; NullIf can
-produce NULL even when T cannot represent it.
+Both `Coalesce` forms start with the column and need at least one fallback.
+Arguments follow the shared binding rules and SQL `NULL` semantics. For a nullable
+`T`, `CoalesceExpr(Value(...))` can supply a fallback with a different Go type.
 
 ```go
 amount := sqlx.NumericColumn[int64]("amount")
 q := sqlx.Select().SelectExpr(
-    amount.Count(), amount.CountDistinct(), amount.Sum(),
-    amount.Min(), amount.Max(), amount.Avg(),
-).From("orders")
-q = sqlx.Select().SelectExpr(
-    amount.Cast("DECIMAL(12,2)"), amount.Coalesce(0), amount.NullIf(0),
-    amount.CoalesceExpr(sqlx.Column("backup").Ref(), sqlx.Value(int64(0))),
+    amount.Sum(), amount.Cast("DECIMAL(12,2)"), amount.Coalesce(0),
     amount.NullIfExpr(sqlx.Param(0)),
 ).From("orders")
 ```
 
-All scalar-function results are untyped Expression values. For nullable Go
-representations, data arguments still follow T: a TypedColumn[*string] takes
-\*string fallbacks, while CoalesceExpr(Value("unknown")) explicitly permits a
-string fallback. No new typed expression or column-conversion API is introduced.
-To redeclare the field type or attach an existing value rule, keep using
-`.Column().Typed[U]()` or `.Column().WithValueRule(rule)` explicitly. Existing
-Column, builder and package-level signatures and SQL semantics are unchanged.
-
 ### Typed comparisons and membership
 
-`Gt`, `Ge`, `Lt` and `Le` accept one value of type T. `Between` and `NotBetween`
-accept two inclusive bounds of type T. `In` and `NotIn` accept `...T`, while
-`InSlice` and `NotInSlice` take `[]T` without an independent element type
-parameter. Defined types retain their distinctions; an int variable cannot be
-passed to an int64 column without conversion. These methods are available on
-all TypedColumn types, including NumericColumn results and values after Scope.
-They check Go assignability, not database ordering support or SQL type rules.
+| Data methods                          | Expression methods                                         |
+| ------------------------------------- | ---------------------------------------------------------- |
+| `Gt` / `Ge` / `Lt` / `Le(value T)`    | `GtExpr` / `GeExpr` / `LtExpr` / `LeExpr(expr Expression)` |
+| `Between` / `NotBetween(low, high T)` | `BetweenExpr` / `NotBetweenExpr(low, high Expression)`     |
+| `In` / `NotIn(values ...T)`           | `InExpr` / `NotInExpr(values ...Expression)`               |
+| `InSlice` / `NotInSlice(values []T)`  | Expand `[]Expression` into `InExpr` / `NotInExpr`          |
+
+Ranges are inclusive. List snapshots, empty-list and `NULL` behavior follow the
+untyped predicates. Mix `Value` data, column references and slots in expression
+methods:
 
 ```go
 age := sqlx.NewTypedColumn[int64]("age")
-ages := []int64{18, 20, 25}
-q := sqlx.Select("age").From("users").Where(
-    age.Ge(18), age.Between(18, 65), age.InSlice(ages), age.NotIn(30, 40),
-)
-```
-
-All data operands bind through Value, including individual list elements.
-Ordinary Expression objects in any-typed data are not rendered as SQL. Nil
-binds SQL NULL when T permits it. Only Eq/Ne rewrite nil predicates; ordered
-comparisons and BETWEEN retain their normal SQL NULL behavior. IN and NOT IN
-retain NULL elements and SQL's three-valued logic. Empty In/InSlice lists are
-false and empty NotIn/NotInSlice lists are true, including nil slices.
-
-The explicit expression methods are `GtExpr`, `GeExpr`, `LtExpr`, `LeExpr`,
-`BetweenExpr`, `NotBetweenExpr`, `InExpr` and `NotInExpr`. Each operand must be
-an Expression. Use Value for data mixed with a column reference or Param slot:
-
-```go
 minimum := sqlx.NewTypedColumn[int64]("minimum_age")
-q = sqlx.Select("age").From("users").Where(
+q := sqlx.Select("age").From("users").Where(
+    age.Ge(18), age.InSlice([]int64{18, 20, 25}),
     age.GtExpr(minimum.Ref()),
     age.BetweenExpr(sqlx.Value(int64(18)), sqlx.Param(0)),
-    age.InExpr(sqlx.Value(int64(18)), sqlx.Param(1), minimum.Ref()),
 )
 ```
 
-These methods do not check expression results, Value contents or template Bind
-inputs against T. Param is one scalar slot; a slice supplied at Bind is not
-expanded into multiple list entries. Expression slices use InExpr(exprs...) or
-NotInExpr(exprs...). Empty expression lists have the same false/true behavior as
-data lists. Both data and expression list containers are copied when conditions
-are created; elements and bound objects are not deep-cloned. DEFAULT remains
-invalid in predicates, following the existing expression validation.
-
-`InQuery(q)` and `NotInQuery(q)` take a SelectBuilder pointer instead of a list
-expression. They snapshot the query and use the parent's dialect and parameter
-numbering. The caller must provide a one-column query whose SQL type is compatible
-with T; no static output-type check is performed. Nil query pointers produce
-build/compile errors. Use these methods for a set-valued subquery; an InExpr
-element represents one list expression, not a separate IN query source.
+`InQuery`/`NotInQuery` snapshot a `SelectBuilder` pointer using the parent's dialect
+and bindings. Supply a compatible one-column query; output types are not checked.
+Nil queries fail `Build`/`Compile`. `InExpr` elements are scalar list expressions.
 
 ### Typed pattern matching
 
-`Like(pattern T, escape ...string)` and `NotLike(pattern T, escape ...string)`
-require patterns assignable to T, including defined-type distinctions. They bind
-patterns through Value, so ordinary Expression objects held in any remain data.
-Pointers, nullable wrappers and custom driver values are accepted when declared
-as T, without invoking driver conversion during Build or Compile.
-
-`LikeExpr(pattern Expression, escape ...string)` and `NotLikeExpr` accept column
-references, SQL expressions, Param slots and explicit Value operands. Their
-result types, Value contents and runtime Bind inputs are not checked against T.
-Param remains one scalar pattern slot without slice expansion, following the
-shared [binding rules](#data-value-and-param-binding):
+`Like`/`NotLike` take a pattern of type `T`; `LikeExpr`/`NotLikeExpr` take an `Expression`.
+Each accepts an optional `escape ...string`:
 
 ```go
 name := sqlx.NewTypedColumn[string]("name").Scope("u")
 q := sqlx.Select("u.name").FromAlias("users", "u").Where(
-    name.Like("A%"),
-    name.NotLike("A!_%", "!"),
+    name.Like("A%"), name.NotLike("A!_%", "!"),
     name.LikeExpr(sqlx.Column("pattern").Scope("u").Ref()),
-    name.NotLikeExpr(sqlx.Param(0)),
 )
 ```
 
-Both LIKE and NOT LIKE preserve SQL NULL semantics, including nil patterns
-when T permits them; they do not rewrite nil predicates. Patterns are not
-modified: `%` and `_` remain wildcards unless escaped by the caller, and no
-wildcards are added. All four methods reuse Column's ESCAPE behavior: omit it
-or supply one string containing one Unicode character. ESCAPE binds as data;
-its value and validation outcome are captured when the condition is created.
-Empty, multi-character or multiple ESCAPE arguments fail Build and Compile.
-
-Like/NotLike are available on every TypedColumn[T], including NumericColumn
-results and scoped columns. They check Go assignability, not database operator
-support; TypedColumn[int64].Like(18) can compile. Database LIKE rules, including
-case sensitivity and collation, remain the caller's responsibility. Existing
-Column and package-level Like/NotLike signatures and behavior are unchanged.
+Typed, `Column` and package helpers pass patterns unchanged: no wildcards are
+added or escaped. `ESCAPE` must be one string containing one Unicode character;
+invalid arguments fail `Build`/`Compile`. `ESCAPE` binds as data and is captured at
+condition creation. Nil patterns retain SQL `NULL` semantics. The database defines
+`LIKE` support, case sensitivity and collation.
 
 ### Typed arithmetic
 
-All arithmetic methods are defined on `TypedColumn[T]`:
+| Methods                                       | Operand                | SQL assignment                         |
+| --------------------------------------------- | ---------------------- | -------------------------------------- |
+| `Add` / `Sub` / `Mul` / `Div`                 | Data assignable to `T` | `column = column operator placeholder` |
+| `AddExpr` / `SubExpr` / `MulExpr` / `DivExpr` | `Expression`           | `column = column operator expression`  |
+| `Inc` / `Dec`                                 | None                   | `column = column +/- 1`                |
 
 ```go
 score := sqlx.NewTypedColumn[int64]("score")
-factor := sqlx.NewTypedColumn[float64]("factor")
-visits := sqlx.NewTypedColumn[uint64]("visits")
+balance := sqlx.NewTypedColumn[int64]("balance")
 q := sqlx.Update().Table("users").Set(
-    score.Add(2), factor.Mul(1.5), visits.Inc(),
-).Where(score.Ne(0))
-
-q = sqlx.Update().Table("users").Set(
-    score.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
-    factor.DivExpr(sqlx.Param(0)),
+    score.Add(2), balance.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
 )
 ```
 
-| Methods                               | Operand              | SQL operation                        |
-| ------------------------------------- | -------------------- | ------------------------------------ |
-| Add / Sub / Mul / Div                 | Data assignable to T | column = column operator placeholder |
-| AddExpr / SubExpr / MulExpr / DivExpr | Explicit Expression  | column = column operator expression  |
-| Inc / Dec                             | None                 | column = column +/- 1                |
-
-Typed data operands bind through Value without numeric conversion. An `int64`
-column accepts an integer constant such as `2` but rejects an `int` variable,
-string, arbitrary `any` or another defined number type. An any-typed column
-binds ordinary Expression objects as data through these methods. Expression
-methods accept column `Ref()` values and `Param` slots; use `Value(...)` for
-named arguments, nil, pointers or custom driver values. Expression results,
-explicit Value contents and template Bind inputs are not checked against T.
-Parentheses, parameter numbering, driver conversion deferral, SQL NULL
-propagation and division behavior follow the existing arithmetic helpers below.
-DEFAULT is not an arithmetic operand.
-
-These methods check assignability to T, not database operator support. A string
-TypedColumn can call Add with a string or Inc; nullable wrappers and pointers
-can be used as data when declared as T. Build does not prove that SQL arithmetic
-is valid for the column's database type. Numeric declarations add the Number
-constraint below without changing the TypedColumn method set.
+Typed operands follow the shared data/expression rules. SQL precedence, `NULL`
+propagation and division follow the arithmetic helpers below. `DEFAULT` is invalid
+as an arithmetic expression. `NumericColumn` adds a construction-time `Number`
+constraint without changing these methods.
 
 ## Numeric column declarations
 
-`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` constructs a typed
-column after checking that T satisfies Number. It accepts the same `C ~string`
-paths as NewTypedColumn, including string variables, Column and defined string
-types. C is inferred; constructor function values use both type arguments, such
-as `NumericColumn[int64, string]`.
-
-The result is a TypedColumn[T]. All assignment, predicate, arithmetic and Scope
-methods belong to that type; Scope preserves T:
+`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` requires `T` to be
+an integer other than `uintptr`, a floating-point type, or a defined type with one
+of those underlying types. It shares `NewTypedColumn`'s path constraints and
+returns `TypedColumn[T]`:
 
 ```go
 score := sqlx.NumericColumn[int64]("score")
 backup := sqlx.NewTypedColumn[int64]("backup_score")
 backup.SetFrom(score)
-score.SetFrom(backup)
-var scoped sqlx.TypedColumn[int64] = score.Scope("u")
-columns := []sqlx.Column{score.Column(), backup.Column()}
-
 // sqlx.NumericColumn[string]("name") // Does not compile.
 ```
 
-The Number constraint includes signed and unsigned integers except `uintptr`,
-floating-point types and defined types with those underlying types. It excludes
-complex numbers, pointers, nullable wrappers, struct-based decimal values and
-any. Keep those representations in TypedColumn[T] and use its arithmetic methods
-with typed data or explicit expressions. The constructor does not verify database
-column types, ranges or nullability. Existing Column and package helpers keep
-their signatures and behavior.
+Pointers, nullable wrappers and struct-based decimals can use `NewTypedColumn`
+instead. Construction does not check database ranges or nullability.
 
 ## Arithmetic updates
 
-`Add(column, value)`, `Sub(column, value)`, `Mul(column, value)` and
-`Div(column, value)` return `Updater` assignments using SQL `+`, `-`, `*` and `/`
-on the column's current value. `Inc(column)` and `Dec(column)` add or subtract
-the SQL literal `1` without binding a parameter. Column paths accept strings
-and defined string types, including `Column`. Matching methods are available
-on `Column`:
+`Add`/`Sub`/`Mul`/`Div` produce `Updater` assignments applying `+`, `-`, `*`
+and `/` to the current column value. `Inc`/`Dec` use the literal `1` without
+a parameter. Package functions and `Column` methods accept `ArithmeticOperand`
+(`Number | Expression`), using the `Number` constraint described above.
+Use `Ref`/`Ident` for column operands and `Value` for other bound representations:
 
 ```go
 const score sqlx.Column = "score"
 q := sqlx.Update().Table("users").Set(
-    score.Add(10),
-    sqlx.Mul("factor", 3),
-    sqlx.Column("ratio").Div(2),
-    sqlx.Dec("remaining"),
-).Where(sqlx.Eq("id", 7))
-
-// Subtract the entire expression: score = score - (fee + ?).
-q = sqlx.Update().Table("users").Set(
-    score.Sub(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
-).Where(sqlx.Eq("id", 7))
-```
-
-All four value-taking helpers and their generic `Column` methods constrain the
-value to `ArithmeticOperand` (`Number | Expression`). `Number` includes signed
-and unsigned integers other than `uintptr`, floating-point values and defined
-types with those underlying types; it excludes complex numbers. Direct strings,
-booleans, `Column` values, nil, pointers, `any` and custom objects are rejected
-at compile time. Use `Column.Ref()` or `Ident(...)` for column-valued operands;
-`Expr(...)` and `Param(...)` are accepted directly.
-
-Wrap other bound values explicitly with `Value(...)`:
-
-```go
+    score.Add(10), sqlx.Mul("factor", 3), sqlx.Dec("remaining"),
+    sqlx.Sub("total", sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
+)
 score.Add(sqlx.Value(decimalValue))
 score.Sub(sqlx.Value(sql.Named("delta", 2)))
-score.Mul(sqlx.Value(pointerToNumber))
-score.Div(sqlx.Value(nullableNumber))
-score.Add(sqlx.Value(nil))
 ```
 
-`Value` preserves data binding, including named arguments and `driver.Valuer`;
-it does not validate numeric types or invoke driver conversion during Build or
-Compile. Expression operands other than `Param` slots are parenthesized to
-preserve precedence. Templates bind `Param` slots normally; their runtime input
-types and expression result types are not checked by the generic constraint.
-Database column types and explicitly wrapped values remain the caller's
-responsibility. Arithmetic retains SQL's NULL propagation. `Div` emits `/`
-without casts or local zero checks, so integer division, rounding and division
-by zero follow the database's rules.
-
-The resulting updaters compose with `Batch` and can also be passed to
-`Oper.Update`, `OnConflict(...DoUpdate(...))`, or `OnDuplicateKeyUpdate`.
-For `RuleColumn`, obtain the underlying `Column` first; arithmetic does not apply
-the value rule.
+Direct strings, `Column` values, `nil`, pointers, `any` and custom objects need
+an explicit `Expression`; `Value` binds its contents without numeric validation
+or `Valuer` conversion. Non-`Param` expression operands are parenthesized.
+Arithmetic retains SQL `NULL` propagation; division emits `/` without casts
+or local zero checks, so rounding, integer division and division by zero follow
+the database. Updaters compose with `Batch`, `Oper.Update` and conflict updates.
+`RuleColumn` arithmetic uses its base `Column` and does not apply the rule.
 
 ## Sources and joins
 
@@ -532,38 +297,36 @@ q := sqlx.Select("t.id", "input.new_value").FromAlias("items", "t").
 ```
 
 `JoinSource` takes `InnerJoin`, `LeftJoin`, `RightJoin`, `FullJoin`, or
-`CrossJoinType`. `JoinSourceUsing` takes a USING column list. The existing naming
-convention also has `JoinLeftSelect`, `JoinRightSelect`, `JoinFullSelect`,
+`CrossJoinType`. `JoinSourceUsing` takes a `USING` column list. The existing
+naming convention also has `JoinLeftSelect`, `JoinRightSelect`, `JoinFullSelect`,
 `CrossJoinSelect`, and `JoinLeftUsing`/`JoinRightUsing`/`JoinFullUsing` helpers.
-MySQL rejects FULL JOIN.
+MySQL rejects `FULL JOIN`.
 
-Sources work in SELECT `FromSource`, PostgreSQL/SQLite UPDATE `FromSource`, and
-PostgreSQL DELETE `UsingSource`. Update and Delete also have source-based joins
-and derived-query convenience methods. MySQL UPDATE joins appear before SET;
-PostgreSQL/SQLite UPDATE joins belong to FROM. PostgreSQL DELETE joins belong to
-USING; MySQL DELETE joins use its multi-table form.
+Sources work in `SELECT` `FromSource`, PostgreSQL/SQLite `UPDATE` `FromSource`,
+and PostgreSQL `DELETE` `UsingSource`. `Update` and `Delete` also have source-based
+joins and derived-query convenience methods. MySQL `UPDATE` joins appear before `SET`;
+PostgreSQL/SQLite `UPDATE` joins belong to `FROM`. PostgreSQL `DELETE` joins belong
+to `USING`; MySQL `DELETE` joins use its multi-table form.
 
-`QuerySource(...).Lateral()` allows references to preceding FROM items. MySQL
+`QuerySource(...).Lateral()` allows references to preceding `FROM` items. MySQL
 requires a version profile of at least 8.0.14; SQLite rejects this capability.
 The caller remains responsible for legal correlation and join directions.
 
-VALUES sources require a nonempty alias, column list, and equal-width rows. They
-render using native VALUES on PostgreSQL, VALUES ROW on MySQL 8.0.19+, and a
-SELECT/UNION ALL source with explicit aliases on older MySQL profiles. SQLite
-uses SELECT directly for one or two rows. Larger inputs use a projection over
-native VALUES, avoiding the compound-SELECT term limit. Generated column ordinals
-are written directly without allocating a temporary name string for each column;
-caller-provided aliases remain quoted.
-SQLite does not support column alias lists on other derived/expression sources;
-alias those query outputs with `SelectAlias`/`SelectExprAlias` instead.
+`VALUES` sources require a nonempty alias, column list, and equal-width rows.
+They render using native `VALUES` on PostgreSQL, `VALUES ROW` on MySQL 8.0.19+,
+and a `SELECT`/`UNION ALL` source with explicit aliases on older MySQL profiles.
+SQLite uses `SELECT` directly for one or two rows. Larger inputs use a projection
+over native `VALUES`, avoiding the compound-`SELECT` term limit. SQLite does not
+support column alias lists on other derived/expression sources; alias those query
+outputs with `SelectAlias`/`SelectExprAlias` instead.
 
-PostgreSQL VALUES columns containing only parameters can otherwise resolve as
-TEXT when the driver leaves parameter types unspecified. `ValuesSource` casts
-ordinary bound Go values: signed integers and small unsigned integers to BIGINT,
-uint/uint64 to NUMERIC, floats to DOUBLE PRECISION, bool to BOOLEAN, strings to
-TEXT, byte slices to BYTEA, and time.Time to TIMESTAMP WITH TIME ZONE. Defined
-scalar types and pointers to these types follow the same rules. Argument values
-are still bound as data; Build does not convert them or invoke `driver.Valuer`.
+PostgreSQL `VALUES` columns containing only parameters can otherwise resolve as
+`TEXT` when the driver leaves parameter types unspecified. `ValuesSource` casts
+ordinary bound Go values: signed integers and small unsigned integers to `BIGINT`,
+`uint`/`uint64` to `NUMERIC`, floats to `DOUBLE PRECISION`, `bool` to `BOOLEAN`,
+strings to `TEXT`, byte slices to `BYTEA`, and `time.Time` to `TIMESTAMP WITH TIME ZONE`.
+Defined scalar types and pointers to these types follow the same rules. Argument values
+are still bound as data; `Build` does not convert them or invoke `driver.Valuer`.
 
 Use `ValuesSource(...).ColumnTypes("INTEGER", "TEXT")` to explicitly cast every
 cell using the corresponding column type. The list must cover every column and
@@ -571,8 +334,8 @@ contain trusted SQL type specifications valid for the selected database. This is
 required on PostgreSQL for direct `Param` and `driver.Valuer` cells, whose types
 cannot be inferred during construction; `Cast(value, typeSQL)` also works for an
 individual cell. Other explicit Expressions retain responsibility for their SQL
-types. Plain nil stays untyped, so supply ColumnTypes for an all-NULL column when
-its use requires a particular type. `ColumnTypes()` clears the explicit types.
+types. Plain `nil` stays untyped, so supply `ColumnTypes` for an all-`NULL` column
+when its use requires a particular type. `ColumnTypes()` clears the explicit types.
 
 ```go
 input := sqlx.ValuesSource("input", []string{"id", "name"},
@@ -600,68 +363,64 @@ q := sqlx.Select("id").From("events").SelectExprAlias(
 ```
 
 `WindowSpec` methods return new values. `PartitionByExpr`, `OrderByExpr`, and
-`Sort` accept computed keys and NULL ordering. `Rows`, `Range`, and `Groups`
+`Sort` accept computed keys and `NULL` ordering. `Rows`, `Range`, and `Groups`
 take frame boundaries from `CurrentRow`, `Preceding(n)`, `Following(n)`,
 `UnboundedPreceding`, and `UnboundedFollowing`. Numeric offsets are nonnegative
-integer literals. RANGE offset frames require one ordering expression.
-PostgreSQL GROUPS frames require ORDER BY (including inherited ordering).
-SQLite permits GROUPS without ordering; all rows in the partition are peers.
+integer literals. `RANGE` offset frames require one ordering expression.
+PostgreSQL `GROUPS` frames require `ORDER BY` (including inherited ordering).
+SQLite permits `GROUPS` without ordering; all rows in the partition are peers.
 
 `Exclude` accepts `ExcludeCurrentRow`, `ExcludeGroup`, `ExcludeTies`, or
-`ExcludeNoOthers`, and requires an explicit frame. MySQL supports ROWS/RANGE
-but rejects GROUPS, EXCLUDE, and aggregate FILTER. The built-in engines reject
-DISTINCT window aggregates.
+`ExcludeNoOthers`, and requires an explicit frame. MySQL supports `ROWS`/`RANGE`
+but rejects `GROUPS`, `EXCLUDE`, and aggregate `FILTER`. The built-in engines
+reject `DISTINCT` window aggregates.
 
 `RowNumber`, `Rank`, `DenseRank`, `Lag`, and `Lead` require `Over`/`OverName`.
-Lag/Lead optionally accept an offset and default. Other functions can use `Func`.
+`Lag`/`Lead` optionally accept an offset and default. Other functions can use `Func`.
 Named windows use `SelectBuilder.Window(name, spec)` and `expr.OverName(name)`.
 `Window().BasedOn(name)` derives from a named window; window definitions may
 reference only earlier definitions and cannot override inherited partitions or
 ordering or copy a window containing a frame. Window names are local to each
-SELECT, including nested queries.
+`SELECT`, including nested queries.
 
 `GroupByRollup`/`GroupByRollupExpr` generate hierarchical subtotals; the latter
-replaces the grouping clause. PostgreSQL uses ROLLUP(...), while MySQL uses
-WITH ROLLUP. `GroupingSets(GroupingSet(...), GroupingSet())`, `Cube(...)`, and
-`Rollup(...)` compose as GROUP BY expressions where supported. SQLite rejects
-these grouping extensions; MySQL supports only its ROLLUP form.
-MySQL requires 8.0.12+ to combine ROLLUP with DISTINCT or with ORDER BY on that
-SELECT. Earlier profiles reject these combinations; ordering the result of a
-compound query remains independent of an operand's ROLLUP.
+replaces the grouping clause. PostgreSQL uses `ROLLUP(...)`, while MySQL uses
+`WITH ROLLUP`. `GroupingSets(GroupingSet(...), GroupingSet())`, `Cube(...)`, and
+`Rollup(...)` compose as `GROUP BY` expressions where supported. SQLite rejects
+these grouping extensions; MySQL supports only its `ROLLUP` form.
+MySQL requires 8.0.12+ to combine `ROLLUP` with `DISTINCT` or with `ORDER BY`
+on that `SELECT`. Earlier profiles reject these combinations; ordering the result
+of a compound query remains independent of an operand's `ROLLUP`.
 
-On PostgreSQL, reuse the same helper-generated Expression value in SELECT,
-GROUP BY, HAVING, and ORDER BY. The builder retains its parameter numbers,
+On PostgreSQL, reuse the same helper-generated `Expression` value in `SELECT`,
+`GROUP BY`, `HAVING`, and `ORDER BY`. The builder retains its parameter numbers,
 including when that expression is nested inside another structured expression
 or a grouping set. This prevents fresh parameters from making an otherwise
-identical grouping or DISTINCT ordering expression different to PostgreSQL.
-Reuse is local to one SELECT; subqueries and compound operands keep their own
+identical grouping or `DISTINCT` ordering expression different to PostgreSQL.
+Reuse is local to one `SELECT`; subqueries and compound operands keep their own
 expression bindings. Independently constructed custom helper expressions are
 not assumed equivalent, and equal data values alone do not imply equivalence.
-Bare Param/Value operands inside different expressions retain independent
+Bare `Param`/`Value` operands inside different expressions retain independent
 placeholders so the server can infer a different type in each context.
 
 ## CTEs and set operations
 
 All four builders accept `With(name, query, columns...)` and
-`WithRecursive(name, query, columns...)` for SELECT bodies. Column names are
-optional and copied along with a snapshot of the query. For other CTE bodies,
+`WithRecursive(name, query, columns...)` for `SELECT` bodies. Column names are
+optional and copied along with a snapshot of the query. For other `CTE` bodies,
 materialization hints, or reusable descriptions, use
 `WithCTE(NewCTE(name, body, columns...))`; `NewCTE(...).Recursive()` enables
-WITH RECURSIVE.
+`WITH RECURSIVE`.
 
 `body` implements `CTEBody`: `WriteSQL(*strings.Builder, *BuildContext) error`,
-`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. Built-in builders and external
-implementations are supported. `NewCTE` calls `Snapshot` once and retains the
-result. Snapshots must be independent of subsequent source mutations and safe
-for concurrent rendering; bound argument objects remain shallow. Custom SQL must
-match its declared kind (`CTESelect`, `CTEInsert`, `CTEUpdate`, or `CTEDelete`)
-and the supplied dialect.
+`Snapshot() CTEBody`, and `Kind() CTEBodyKind`. `NewCTE` snapshots once; custom
+snapshots must be independent of later source mutations and safe for concurrent
+rendering. SQL must match the declared kind (`CTESelect`/`CTEInsert`/`CTEUpdate`/`CTEDelete`)
+and supplied dialect.
 
 Use `BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` to append to the
-borrowed buffer with the parent's bindings. Renderers must not reset or retain
-the buffer/context and must not panic, including from Snapshot or Kind. Returned
-rendering errors, invalid kinds, and nil bodies/snapshots become errors from the
-enclosing `Build`. NewCTE does not intercept custom Snapshot panics.
+borrowed buffer with the parent's bindings. Do not reset or retain the buffer or
+context. Rendering errors, invalid kinds and `nil` bodies/snapshots fail `Build`.
 
 ```go
 numbers := sqlx.Select().SelectExpr(sqlx.Value(1)).UnionAll(
@@ -673,13 +432,14 @@ q := sqlx.Select("n").From("numbers").WithCTE(
 ).OrderByAsc("n")
 ```
 
-PostgreSQL additionally supports INSERT/UPDATE/DELETE as CTE bodies. Such a CTE
-must belong to the top-level statement; use its RETURNING output to reference it
-as a table. SQLite RETURNING does not imply support for data-modifying CTEs.
-`Materialized`/`NotMaterialized` are PostgreSQL/SQLite CTE hints.
+PostgreSQL additionally supports `INSERT`/`UPDATE`/`DELETE` as `CTE` bodies.
+Such a `CTE` must belong to the top-level statement; use its `RETURNING` output
+to reference it as a table. SQLite `RETURNING` does not imply support for
+data-modifying CTEs. `Materialized`/`NotMaterialized` are PostgreSQL/SQLite
+`CTE` hints.
 
-MySQL places an INSERT CTE after the target: `INSERT INTO ... WITH ... SELECT`.
-An INSERT with attached CTEs therefore requires `FromSelect` on MySQL.
+MySQL places an `INSERT` `CTE` after the target: `INSERT INTO ... WITH ... SELECT`.
+An `INSERT` with attached CTEs therefore requires `FromSelect` on MySQL.
 
 `Union`, `UnionAll`, `Intersect`, `IntersectAll`, `Except`, and `ExceptAll`
 snapshot their operands. Mixed fluent operations associate left-to-right;
@@ -690,62 +450,61 @@ SQLite. Ordering and pagination on the receiving builder apply to the complete
 result. Use `FromSelect` to make a paginated left query into an operand.
 Compound queries and their operands reject row locking.
 
-MySQL INTERSECT/EXCEPT require 8.0.31+. SQLite supports their distinct forms,
-but rejects INTERSECT ALL and EXCEPT ALL. `ClearSetOperations` clears all set
-operations, including their ALL variants.
+MySQL `INTERSECT`/`EXCEPT` require 8.0.31+. SQLite supports their distinct forms,
+but rejects `INTERSECT ALL` and `EXCEPT ALL`. `ClearSetOperations` clears all set
+operations, including their `ALL` variants.
 
 ## Ordering, paging, and locks
 
 Use `SortColumn{Column: "score", Order: Desc, Nulls: NullsLast}` to explicitly
-place NULLs; the same type works in SELECT and window definitions. PostgreSQL
-and SQLite support NULLS FIRST/LAST; MySQL rejects that capability rather than
+place NULLs; the same type works in `SELECT` and window definitions. PostgreSQL
+and SQLite support `NULLS FIRST/LAST`; MySQL rejects that capability rather than
 silently changing sort semantics.
 
-`FetchWithTies(n)` keeps rows tied on ORDER BY keys and requires ORDER BY.
+`FetchWithTies(n)` keeps rows tied on `ORDER BY` keys and requires `ORDER BY`.
 `Limit(n)` restores ordinary row limiting; `ClearPagination` clears both modes.
-The built-in PostgreSQL dialect supports WITH TIES. `QueryRowContext` always
-uses ordinary limiting to return at most one row, preserving offset and LIMIT 0.
+The built-in PostgreSQL dialect supports `WITH TIES`. `QueryRowContext` always
+uses ordinary limiting to return at most one row, preserving offset and `LIMIT 0`.
 
 PostgreSQL `DistinctOn`/`DistinctOnExpr` select the first row in each key group.
-Callers must ensure leading ORDER BY keys match the DISTINCT ON keys; Build does
-not validate that relationship. Reuse the same Expression value for
-helper-generated computed keys; their SQL and parameter numbers are
-reused in SELECT and ORDER BY through the same expression cache. ORDER BY output
-aliases and ordinals are emitted as supplied, without expanding them to the
-underlying DISTINCT ON expression. PostgreSQL resolves these references.
-`ClearSelect` clears both DISTINCT forms.
-With set operations, the final ORDER BY sorts the combined result and uses its
-output names or positions; it is not matched to or rewritten as the first
-operand's DISTINCT ON keys.
+Callers must ensure leading `ORDER BY` keys match the `DISTINCT ON` keys; `Build`
+does not validate that relationship. `Reuse` computed keys as described in
+[aggregation and windows](#aggregation-and-windows). `ORDER BY` output aliases
+and ordinals are emitted as supplied, without expanding them to the underlying
+`DISTINCT ON` expression. PostgreSQL resolves these references. `ClearSelect`
+clears both `DISTINCT` forms. With set operations, the final `ORDER BY` sorts the
+combined result and uses its output names or positions; it is not matched to
+or rewritten as the first operand's `DISTINCT ON` keys.
 
 PostgreSQL `ForNoKeyUpdate` and `ForKeyShare` complement `ForUpdate` and
-`ForShare`. Lock setters replace the lock mode and OF aliases; `NoWait` and
+`ForShare`. `Lock` setters replace the lock mode and `OF` aliases; `NoWait` and
 `SkipLocked` apply to the selected lock mode. Simple checks reject locking with
-explicit DISTINCT, grouping, named-window, and set-operation clauses. Callers
+explicit `DISTINCT`, grouping, named-window, and set-operation clauses. Callers
 must follow the remaining locking rules of the target database, including
 restrictions on aggregate/window expressions and outer joins. Expressions are
 rendered without a query-level semantic check.
 
-INSERT, UPDATE, and DELETE RETURNING expressions must follow the target database's
-aggregate/window restrictions. On SQLite, use `Returning("*")`, unqualified
-column names, or the actual target table name such as `Returning("items.id")`. Qualified wildcards
-(`items.*`), target aliases, other tables, and schema-qualified column references
-are not supported by SQLite. Build does not check these RETURNING restrictions.
-PostgreSQL retains its qualified wildcard and target-alias support.
+`INSERT`, `UPDATE`, and `DELETE` `RETURNING` expressions must follow the target
+database's aggregate/window restrictions. `On` SQLite, use `Returning("*")`,
+unqualified column names, or the actual target table name such as `Returning("items.id")`.
+Qualified wildcards (`items.*`), target aliases, other tables, and schema-qualified
+column references are not supported by SQLite. `Build` does not check these `RETURNING`
+restrictions. PostgreSQL retains its qualified wildcard and target-alias support.
 
-MySQL single-table UPDATE/DELETE support `OrderBy`, `Sort`, and `Limit`.
-Single-table DELETE aliases require MySQL 8.0.16+ and the `DeleteTargetAlias`
-capability. Earlier profiles reject them at build time; multi-table DELETE
+MySQL single-table `UPDATE`/`DELETE` support `OrderBy`, `Sort`, and `Limit`.
+Single-table `DELETE` aliases require MySQL 8.0.16+ and the `DeleteTargetAlias`
+capability. Earlier profiles reject them at build time; multi-table `DELETE`
 aliases remain available on the MySQL 8.0 baseline. Multi-table and joined
 mutations reject these clauses.
 
-SQLite requires an explicit capability override and a build containing SQLITE_ENABLE_UPDATE_DELETE_LIMIT. SQLite RETURNING precedes these clauses;
-ORDER BY controls which rows are selected, not the order of returned rows.
+SQLite requires an explicit capability override and a build containing
+`SQLITE_ENABLE_UPDATE_DELETE_LIMIT`. SQLite `RETURNING` precedes these clauses;
+`ORDER BY` controls which rows are selected, not the order of returned rows.
 `ClearOrderBy` and `ClearLimit` remove the individual mutation clauses.
 
 ## Conflict handling
 
-PostgreSQL and SQLite share the structured ON CONFLICT API:
+PostgreSQL and SQLite share the structured `ON CONFLICT` API:
 
 ```go
 q := sqlx.Insert().Into("users").Columns("email", "version").Values("a@example.org", 2).
@@ -763,18 +522,18 @@ identifiers such as `Ident("t", "id")` receive expression parentheses.
 `ConflictTarget.Where` specifies partial-index inference, while
 `ConflictClause.Where` limits the rows updated. They occupy different SQL
 positions and are not interchangeable. PostgreSQL also accepts
-`ConflictConstraint(name)` for ON CONSTRAINT.
+`ConflictConstraint(name)` for `ON CONSTRAINT`.
 
-SQLite permits targetless DO UPDATE and multiple ordered conflict clauses.
+SQLite permits targetless `DO UPDATE` and multiple ordered conflict clauses.
 Only the final clause may omit a target. PostgreSQL requires a target for
-DO UPDATE and permits one conflict clause. `OnConflict` appends independent
+`DO UPDATE` and permits one conflict clause. `OnConflict` appends independent
 clauses in call order, without merging their targets or assignments. Pass all
 assignments for one action to `ConflictColumns(...).DoUpdate(...)`.
-`ClearConflict` clears both ON CONFLICT and MySQL ON DUPLICATE KEY UPDATE.
+`ClearConflict` clears both `ON CONFLICT` and MySQL `ON DUPLICATE KEY UPDATE`.
 
 `Excluded(column)` is scoped to a PostgreSQL/SQLite conflict update. `IntoAlias`
-aliases an INSERT target on those engines. MySQL instead uses
-`OnDuplicateKeyUpdate` and, from 8.0.19, the alias after VALUES:
+aliases an `INSERT` target on those engines. MySQL instead uses
+`OnDuplicateKeyUpdate` and, from 8.0.19, the alias after `VALUES`:
 
 ```go
 mysql := dialect.WithVersion(dialect.MySQL, 8, 0, 19)
@@ -785,25 +544,24 @@ q := sqlx.Insert().Into("users").Columns("id", "name").Values(1, "new name").
 ```
 
 `RowsAlias` optionally names the row's columns. `Inserted` requires the alias
-and ON DUPLICATE KEY UPDATE. The API does not generate deprecated VALUES(col)
-references. INSERT SELECT can reference its selected source columns directly.
-REPLACE rejects `RowsAlias`; use `ClearRowsAlias` when changing an aliased INSERT
-builder to REPLACE.
+and `ON DUPLICATE KEY UPDATE`. The API does not generate deprecated `VALUES(col)`
+references. `INSERT SELECT` can reference its selected source columns directly.
+`REPLACE` rejects `RowsAlias`; use `ClearRowsAlias` when changing an aliased
+`INSERT` builder to `REPLACE`.
 
-For SQLite INSERT SELECT UPSERT, the builder wraps sources needing
+For SQLite `INSERT SELECT` `UPSERT`, the builder wraps sources needing
 disambiguation in `SELECT * FROM (...) AS ... WHERE TRUE`. This includes
 compound sources and preserves their predicates, limits, and arguments without
-mutating the supplied builder. PG/MySQL sources do not require a dummy WHERE.
+mutating the supplied builder. PG/MySQL sources do not require a dummy `WHERE`.
 
 ## Dialect configuration
 
 Built-in profiles target PostgreSQL 14+, MySQL 8.0, and SQLite 3.39+.
-`WithVersion` enables later MySQL capabilities: ROLLUP with ORDER BY/DISTINCT at
-8.0.12, LATERAL at 8.0.14, single-table
-DELETE aliases at 8.0.16, new-row aliases and native VALUES tables at 8.0.19,
-and INTERSECT/EXCEPT at 8.0.31. Version selection does not inspect or modify
-the server. Specify the version your application actually targets, including
-when using MySQL 8.4 or newer.
+`WithVersion` enables later MySQL capabilities: `ROLLUP` with `ORDER BY`/`DISTINCT`
+at 8.0.12, `LATERAL` at 8.0.14, single-table `DELETE` aliases at 8.0.16, new-row
+aliases and native `VALUES` tables at 8.0.19, and `INTERSECT`/`EXCEPT` at 8.0.31.
+Version selection does not inspect or modify the server. Specify the version your
+application actually targets, including when using MySQL 8.4 or newer.
 
 `Dialect.Grammar()` selects clause placement and spelling;
 `Dialect.LexicalRules()` selects template tokenization. Both methods are required
@@ -811,30 +569,27 @@ for custom dialects, which can delegate to an existing dialect or return explici
 rule values. Decisions do not rely on the driver's registration name.
 `FeatureDialect.Supports` optionally advertises individual capabilities;
 these features remain disabled when that interface is absent.
-`Dialect.ConfigureConnection` is also required for opening driver connections;
-custom implementations may return `ConnectionResult{DSN: request.DSN}` and no
-handled keys to ignore unsupported options. Embedding an existing dialect inherits
-its behavior. Connection configuration is described in the
-[opening guide](../README.md#connection-options); SQL rendering does not invoke it.
+`Dialect.ConfigureConnection` prepares driver connections independently of SQL
+rendering. See the [opening guide](../README.md#connection-options).
 
 `WithFeatures`, `WithGrammar`, and `WithLexicalRules` return immutable wrappers.
 Apply explicit feature overrides after `WithVersion`. For SQLite, enable
 `UpdateOrderLimit`/`DeleteOrderLimit` only if the executing engine has the
 corresponding compile option.
 
-Expression scanning defaults to PostgreSQL standard_conforming_strings=on,
+Expression scanning defaults to PostgreSQL `standard_conforming_strings=on`,
 MySQL's ordinary string mode, and SQLite's literal backslashes. PostgreSQL
-recognizes E strings, dollar quotes, nested block comments, and CR or LF line
-comment terminators (`LineCommentCR`); MySQL recognizes
-hash comments and requires whitespace after `--`. Match connection SQL modes
-with `WithLexicalRules`: clear BackslashStrings for MySQL NO_BACKSLASH_ESCAPES,
-clear DoubleQuotedStrings for ANSI_QUOTES, or enable BackslashStrings for
-PostgreSQL standard_conforming_strings=off. No SET statements are issued.
+recognizes `E` strings, dollar quotes, nested block comments, and `CR` or `LF`
+line comment terminators (`LineCommentCR`); MySQL recognizes hash comments and
+requires whitespace after `--`. Match connection SQL modes with `WithLexicalRules`:
+clear `BackslashStrings` for MySQL `NO_BACKSLASH_ESCAPES`, clear `DoubleQuotedStrings`
+for `ANSI_QUOTES`, or enable `BackslashStrings` for PostgreSQL
+`standard_conforming_strings=off`. No `SET` statements are issued.
 
 ## Grammar references
 
 The query clauses follow the [PostgreSQL SELECT reference](https://www.postgresql.org/docs/14/sql-select.html).
-UPSERT targets and predicates follow [PostgreSQL INSERT](https://www.postgresql.org/docs/14/sql-insert.html)
+`UPSERT` targets and predicates follow [PostgreSQL INSERT](https://www.postgresql.org/docs/14/sql-insert.html)
 and [SQLite UPSERT](https://www.sqlite.org/lang_upsert.html).
 MySQL alias syntax follows [INSERT ON DUPLICATE KEY UPDATE](https://dev.mysql.com/doc/refman/8.0/en/insert-on-duplicate.html),
 with [versioned set operations](https://dev.mysql.com/doc/refman/8.0/en/set-operations.html)
