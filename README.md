@@ -379,12 +379,13 @@ err = oper.InsertBatch(ctx, []User{{Name: "A"}, {Name: "B"}})
 
 `Oper` has no implicit key column or ordering. `StructSorter` applies to
 `SelectStruct`/`Get`/`GetMany`/`GetList`/`GetMap` and the data query in
-`GetListWithCount`. Use `Insert`/`Update`/`Delete` for an error, or their `Result`
-variants for `(sql.Result, error)`. `GetMany(ctx, dst, pagination, conditions...)`
-binds model rows into a caller-provided destination using the configured binder
-and options. `GetList` and `GetMap` are convenience wrappers over it. Pass a
-pointer to the destination; map key types come from the destination, while the
-binder defines how keys are obtained. Named slice and map types are supported:
+`GetManyWithCount`/`GetListWithCount`. Use `Insert`/`Update`/`Delete` for an error,
+or their `Result` variants for `(sql.Result, error)`.
+`GetMany(ctx, dst, pagination, conditions...)` binds model rows into a caller-provided
+destination using the configured binder and options. `GetList` and `GetMap` are
+convenience wrappers over it. Pass a pointer to the destination; map key types
+come from the destination, while the binder defines how keys are obtained.
+Named slice and map types are supported:
 
 ```go
 type UserList []User
@@ -420,6 +421,22 @@ byID, err := oper.GetMap[int64](ctx, nil) // no pagination
 Model maps without a suitable binder fail to bind. With `NewMapIndexBinder`,
 duplicate keys are rejected by default; `BindConfig.DuplicateKeys` can select
 `DuplicateKeyFirst` or `DuplicateKeyLast`.
+
+`GetManyWithCount(ctx, dst, pagination, conditions...)` returns `(int64, error)`:
+it counts all matching rows, then binds the requested page when the count is
+positive. It uses the same destination binding and configuration as `GetMany`.
+Pagination is evaluated once and validated before either query. A zero count or
+a count-query error skips the data query and leaves the destination unchanged;
+target binding is not validated when the data query is skipped.
+A data-query or binding error is returned alongside the successful count.
+`GetListWithCount` wraps this method with a slice destination; a zero count
+returns a nil slice. Count and data are separate queries and may observe changes
+between them unless the configured executor provides appropriate isolation.
+
+```go
+var list UserList
+count, err := oper.GetManyWithCount(ctx, &list, sqlx.PageSize(1, 20))
+```
 
 `Count` returns `int64`; `Aggregate`/`AggregateValue[R]` scan aggregate expressions.
 Empty `InsertBatch` and `nil` `Update` skip execution.

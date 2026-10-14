@@ -402,8 +402,9 @@ Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
 
 There is no implicit `id` column or default ordering. Configure
 `WithStructSorter(sqlx.Column("id").Desc())` when required. It applies only to
-`SelectStruct`/`Get`/`GetMany`/`GetList`/`GetMap` and `GetListWithCount`'s data query;
-`Select`/`SelectColumns` and aggregate queries do not inherit it.
+`SelectStruct`/`Get`/`GetMany`/`GetList`/`GetMap` and the data queries in
+`GetManyWithCount`/`GetListWithCount`; `Select`/`SelectColumns` and aggregate
+queries do not inherit it.
 
 `Insert`/`Update`/`Delete`/`SoftDelete` return `error`. Use their `Result` variants
 when execution metadata is needed. `Count`/`GetListWithCount` now return `int64` counts.
@@ -427,3 +428,9 @@ caller-provided destination. `GetList` and `GetMap` wrap this method. Named slic
 use the slice fallback; named maps require an explicit suitable binder or a
 registration for their exact destination pointer type. Unlike the earlier
 slice-returning `GetMany`, this method accepts a destination and returns only error.
+
+`Oper.GetManyWithCount(ctx, dst, pagination, conditions...)` returns `(int64, error)`
+and binds the requested page using the same destination configuration as `GetMany`.
+`GetListWithCount` wraps it with a slice destination. Pagination is evaluated once
+and validated before querying. A zero count or count-query error skips the data
+query and leaves dst unchanged; a data-query or binding error retains the count.

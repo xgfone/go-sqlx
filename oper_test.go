@@ -862,3 +862,140 @@ func TestOperGetManyPreservesDestinationOnFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestOperGetManyWithCountNamedDestinations(t *testing.T) {
+	type model struct {
+		Value int64 `sql:"value"`
+	}
+	type list []model
+	type index map[int64]model
+	for _, asMap := range []bool{false, true} {
+		for _, count := range []int64{0, 5} {
+			f := &scanFixture{values: []driver.Value{count}}
+			db := fixtureDB(t, f)
+
+			registry := NewRowsBinderRegistry()
+			registry.RegisterType[*index](RowsBinderFunc(func(dst any, opts BindOptions) (RowsBinding, error) {
+				if opts.Capacity != 37 ||
+					opts.ScanOptions.Nulls != NullError ||
+					opts.DuplicateKeys != DuplicateKeyFirst {
+					t.Fatal(opts)
+				}
+				return NewMapIndexBinder[index](func(v model) int64 {
+					return v.Value
+				}).Prepare(dst, opts)
+			}))
+
+			providerCalls := 0
+			config := BindConfig{
+				RowsBinder:    registry,
+				Capacity:      37,
+				DuplicateKeys: DuplicateKeyFirst,
+				ScanOptionsFunc: func() ScanOptions {
+					providerCalls++
+					return ScanOptions{Nulls: NullError}
+				},
+			}
+			db.SetBindConfig(config)
+			o := NewOper[model]("t").WithDB(db)
+			if asMap {
+				db.SetBindConfig(BindConfig{
+					RowsBinder: RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
+						t.Fatal("DB binder used despite Oper override")
+						return nil, nil
+					}),
+				})
+				o = o.WithBindConfig(config)
+			}
+			values := list{{99}}
+			byValue := index{99: {99}}
+			var dst any = &values
+			if asMap {
+				dst = &byValue
+			}
+
+			calls := 0
+			p := operPaginationFunc(func() (int64, int64) { calls++; return 2, 4 })
+			n, err := o.GetManyWithCount(context.Background(), dst, p)
+			if err != nil || n != count || calls != 1 {
+				t.Fatal(n, err, calls)
+			}
+			if count == 0 {
+				if providerCalls != 1 ||
+					!reflect.DeepEqual(values, list{{99}}) ||
+					!reflect.DeepEqual(byValue, index{99: {99}}) {
+					t.Fatal(providerCalls, values, byValue)
+				}
+			} else {
+				if providerCalls != 2 {
+					t.Fatal(providerCalls)
+				}
+				if asMap {
+					if !reflect.DeepEqual(byValue, index{5: {5}}) {
+						t.Fatal(byValue)
+					}
+				} else if !reflect.DeepEqual(values, list{{5}}) || cap(values) != 37 {
+					t.Fatal(values, cap(values))
+				}
+			}
+		}
+	}
+}
+
+func TestOperGetManyWithCountErrors(t *testing.T) {
+	type model struct {
+		Value int64 `sql:"value"`
+	}
+
+	failure := errors.New("query failed")
+	for _, stage := range []string{
+		"count", "count_scan", "data", "data_scan", "bind",
+	} {
+		t.Run(stage, func(t *testing.T) {
+			f := &scanFixture{values: []driver.Value{int64(5)}}
+			db := fixtureDB(t, f)
+			underlying := db.Executor
+			queries := 0
+			db.Executor = templateTestExecutor{
+				query: func(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+					queries++
+					if stage == "count" || (stage == "data" && queries == 2) {
+						return nil, failure
+					}
+					if stage == "count_scan" || (stage == "data_scan" && queries == 2) {
+						f.values = []driver.Value{"invalid integer"}
+					}
+					return underlying.QueryContext(ctx, q, args...)
+				},
+			}
+
+			o := NewOper[model]("t").WithDB(db)
+			if stage == "bind" {
+				o = o.WithBinder(RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
+					return nil, failure
+				}))
+			}
+
+			values := []model{{99}}
+			var n int64
+			var err error
+			if stage == "bind" {
+				var result []model
+				n, result, err = o.GetListWithCount(context.Background(), nil)
+				if result != nil {
+					t.Fatal(result)
+				}
+			} else {
+				n, err = o.GetManyWithCount(context.Background(), &values, nil)
+			}
+			wantCount, wantQueries := int64(5), 2
+			if stage == "count" || stage == "count_scan" {
+				wantCount, wantQueries = 0, 1
+			}
+			if err == nil || (stage != "count_scan" && stage != "data_scan" && !errors.Is(err, failure)) ||
+				n != wantCount || queries != wantQueries || !reflect.DeepEqual(values, []model{{99}}) {
+				t.Fatal(n, err, queries, values)
+			}
+		})
+	}
+}

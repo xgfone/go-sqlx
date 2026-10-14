@@ -60,8 +60,9 @@ func (o Oper[T]) WithDB(db *DB) Oper[T]     { o.Table.SetDB(db); return o }
 func (o Oper[T]) WithTable(t Table) Oper[T] { o.Table = t; return o }
 
 // WithStructSorter sets default ordering for SelectStruct, Get, GetMany, GetList,
-// GetMap, and the data query in GetListWithCount. Select and SelectColumns do not
-// inherit it. A nil sorter disables default ordering on the returned operation.
+// GetMap, and the data queries in GetManyWithCount and GetListWithCount.
+// Select and SelectColumns do not inherit it. A nil sorter disables default
+// ordering on the returned operation.
 func (o Oper[T]) WithStructSorter(s Sorter) Oper[T] { o.StructSorter = s; return o }
 
 // WithBindConfig overrides the [DB] binding configuration for this operation.
@@ -295,9 +296,12 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 	return
 }
 
-// GetListWithCount counts matching rows and fetches the requested page when the count
-// is positive. [Pagination] is evaluated once and validated before querying.
-func (o Oper[T]) GetListWithCount(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
+// GetManyWithCount counts matching rows and binds the requested page into dst
+// when the count is positive. It uses the same binding configuration as GetMany.
+// Pagination is evaluated once and validated before either query. A zero count
+// or count-query error leaves dst unchanged and skips the data query and binding.
+// Data-query or binding errors are returned with the successful count.
+func (o Oper[T]) GetManyWithCount(ctx context.Context, dst any, p Pagination, cs ...Condition) (n int64, err error) {
 	q := o.SelectStruct().Where(cs...).Pagination(p)
 	if err = q.err; err != nil {
 		return
@@ -305,8 +309,15 @@ func (o Oper[T]) GetListWithCount(ctx context.Context, p Pagination, cs ...Condi
 
 	n, err = o.Count(ctx, cs...)
 	if err == nil && n > 0 {
-		err = q.QueryRowsContext(ctx).Bind(&vs)
+		err = q.QueryRowsContext(ctx).Bind(dst)
 	}
+	return
+}
+
+// GetListWithCount is GetManyWithCount with a slice destination.
+// A zero count returns a nil slice without querying model rows.
+func (o Oper[T]) GetListWithCount(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
+	n, err = o.GetManyWithCount(ctx, &vs, p, cs...)
 	return
 }
 
