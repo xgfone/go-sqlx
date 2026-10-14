@@ -59,9 +59,9 @@ func (o Oper[T]) DB() *DB       { return o.Table.DB() }
 func (o Oper[T]) WithDB(db *DB) Oper[T]     { o.Table.SetDB(db); return o }
 func (o Oper[T]) WithTable(t Table) Oper[T] { o.Table = t; return o }
 
-// WithStructSorter sets default ordering for SelectStruct, Get, GetMany, and the
-// data query in GetManyWithCount. Select and SelectColumns do not inherit it.
-// A nil sorter disables default ordering on the returned operation.
+// WithStructSorter sets default ordering for SelectStruct, Get, GetMany, GetList,
+// GetMap, and the data query in GetListWithCount. Select and SelectColumns do not
+// inherit it. A nil sorter disables default ordering on the returned operation.
 func (o Oper[T]) WithStructSorter(s Sorter) Oper[T] { o.StructSorter = s; return o }
 
 // WithBindConfig overrides the [DB] binding configuration for this operation.
@@ -265,9 +265,28 @@ func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err er
 	return
 }
 
-// GetMany returns matching model values with optional pagination and StructSorter.
-func (o Oper[T]) GetMany(ctx context.Context, p Pagination, cs ...Condition) (vs []T, err error) {
-	err = o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(&vs)
+// GetMany replaces the collection at dst with matching model rows, with optional
+// pagination and StructSorter. It uses the configured RowsBinder or default
+// RowsBinderRegistry, preserving all binding options. Destination support is
+// determined by the binder; named slices are supported by the slice fallback,
+// and maps require a suitable map binder registered for the exact destination
+// pointer type or set explicitly.
+func (o Oper[T]) GetMany(ctx context.Context, dst any, p Pagination, cs ...Condition) error {
+	return o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(dst)
+}
+
+// GetList returns matching model values with optional pagination and StructSorter.
+func (o Oper[T]) GetList(ctx context.Context, p Pagination, cs ...Condition) (vs []T, err error) {
+	err = o.GetMany(ctx, &vs, p, cs...)
+	return
+}
+
+// GetMap returns matching model values as a map, with the same pagination,
+// conditions and StructSorter as GetList. It uses the configured RowsBinder
+// or the default RowsBinderRegistry; model maps require a suitable map binder.
+// Specify K explicitly because it cannot be inferred from the arguments.
+func (o Oper[T]) GetMap[K comparable](ctx context.Context, p Pagination, cs ...Condition) (vs map[K]T, err error) {
+	err = o.GetMany(ctx, &vs, p, cs...)
 	return
 }
 
@@ -276,9 +295,9 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 	return
 }
 
-// GetManyWithCount counts matching rows and fetches the requested page when the count
+// GetListWithCount counts matching rows and fetches the requested page when the count
 // is positive. [Pagination] is evaluated once and validated before querying.
-func (o Oper[T]) GetManyWithCount(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
+func (o Oper[T]) GetListWithCount(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
 	q := o.SelectStruct().Where(cs...).Pagination(p)
 	if err = q.err; err != nil {
 		return

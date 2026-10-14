@@ -198,11 +198,11 @@ func TestOperSelectExplicitDefaults(t *testing.T) {
 	if got, ok, err := o.Get(t.Context()); err != nil || !ok || got != want {
 		t.Fatal(got, ok, err)
 	}
-	if got, err := o.GetMany(t.Context(), PageSize(1, 20)); err != nil ||
+	if got, err := o.GetList(t.Context(), PageSize(1, 20)); err != nil ||
 		!reflect.DeepEqual(got, []user{want}) {
 		t.Fatal(got, err)
 	}
-	if n, got, err := o.GetManyWithCount(t.Context(), PageSize(1, 20)); err != nil ||
+	if n, got, err := o.GetListWithCount(t.Context(), PageSize(1, 20)); err != nil ||
 		n != 7 || !reflect.DeepEqual(got, []user{want}) {
 		t.Fatal(n, got, err)
 	}

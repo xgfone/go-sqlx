@@ -60,7 +60,7 @@ func TestOperConstructorRegistration(t *testing.T) {
 				t.Fatal("constructor registered a binder")
 			}
 
-			got, err := o.GetMany(context.Background(), PageSize(1, 20))
+			got, err := o.GetList(context.Background(), PageSize(1, 20))
 			if err != nil || len(got) != 1 || got[0].ID != 7 {
 				t.Fatal("model query failed", got, err)
 			}
@@ -294,7 +294,7 @@ type operPaginationFunc func() (int64, int64)
 
 func (f operPaginationFunc) LimitOffset() (int64, int64) { return f() }
 
-func TestOperGetManyWithCountRejectsInvalidPaginationBeforeQuery(t *testing.T) {
+func TestOperGetListWithCountRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 	cases := []struct {
 		name string
 		page Pagination
@@ -310,7 +310,7 @@ func TestOperGetManyWithCountRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 			// Before the fix, a zero count hid the invalid pagination.
 			f := &scanFixture{values: []driver.Value{int64(0)}}
 			o := NewOper[struct{ Value int }]("t").WithDB(fixtureDB(t, f))
-			n, values, err := o.GetManyWithCount(context.Background(), tc.page)
+			n, values, err := o.GetListWithCount(context.Background(), tc.page)
 			if err == nil || n != 0 || values != nil || f.query != "" {
 				t.Fatal(n, values, err, f.query)
 			}
@@ -318,7 +318,7 @@ func TestOperGetManyWithCountRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 	}
 }
 
-func TestOperGetManyWithCountEvaluatesPaginationOnce(t *testing.T) {
+func TestOperGetListWithCountEvaluatesPaginationOnce(t *testing.T) {
 	type model struct {
 		Value int `sql:"value"`
 	}
@@ -353,7 +353,7 @@ func TestOperGetManyWithCountEvaluatesPaginationOnce(t *testing.T) {
 			return 2, 4
 		})
 
-		n, values, err := o.GetManyWithCount(context.Background(), p, Eq("paid", true))
+		n, values, err := o.GetListWithCount(context.Background(), p, Eq("paid", true))
 		if err != nil || n != count || calls != 1 {
 			t.Fatal(n, values, err, calls)
 		}
@@ -538,4 +538,327 @@ func TestOperStructSorterScope(t *testing.T) {
 	checkSQL(t, o.SelectColumns(Column("name")).OrderByAsc("name"), columnSQL+` ORDER BY "name" ASC`, 7)
 	checkSQL(t, o.SelectStruct().OrderByAsc("name"), modelSQL+` ORDER BY "id" DESC, "name" ASC`, 7)
 	checkSQL(t, o.SelectStruct().ClearOrderBy().OrderByAsc("name"), modelSQL+` ORDER BY "name" ASC`, 7)
+}
+
+func TestOperGetMapQuery(t *testing.T) {
+	type model struct {
+		ID int64 `sql:"id"`
+	}
+
+	f := &bindFixture{
+		columns: []string{"id"},
+		values:  [][]driver.Value{{int64(7)}, {int64(8)}},
+	}
+	db := bindTestDB(t, f)
+	underlying := db.Executor
+
+	var query string
+	db.Executor = templateTestExecutor{
+		query: func(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+			query = q
+			if !reflect.DeepEqual(args, []any{1, true}) {
+				t.Fatal(args)
+			}
+			return underlying.QueryContext(ctx, q, args...)
+		},
+	}
+
+	o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 1)).
+		WithStructSorter(Column("id").Desc()).
+		WithBinder(NewMapIndexBinder[map[string]model](func(v model) string {
+			return string(rune('a' + v.ID - 7))
+		}))
+
+	got, err := o.GetMap[string](context.Background(), nil, Eq("paid", true))
+	if err != nil || !reflect.DeepEqual(got, map[string]model{"a": {7}, "b": {8}}) {
+		t.Fatal(got, err)
+	}
+
+	want := `SELECT "id" FROM "t" WHERE (("tenant" = ?) AND ("paid" = ?)) ORDER BY "id" DESC`
+	if query != want {
+		t.Fatal(query)
+	}
+}
+
+func TestOperGetMapEmptyAndErrors(t *testing.T) {
+	type model struct {
+		ID int64 `sql:"id"`
+	}
+
+	key := func(v model) int64 { return v.ID }
+	f := &bindFixture{columns: []string{"id"}}
+	o := NewOper[model]("t").WithDB(bindTestDB(t, f)).
+		WithBinder(NewMapIndexBinder[map[int64]model](key))
+	got, err := o.GetMap[int64](context.Background(), nil)
+	if err != nil || got == nil || len(got) != 0 {
+		t.Fatal(got, err)
+	}
+
+	// Invalid pagination must not execute a query.
+	o = o.WithDB(&DB{
+		Dialect: dialect.SQLite,
+		Executor: templateTestExecutor{
+			query: func(context.Context, string, ...any) (*sql.Rows, error) {
+				t.Fatal("unexpected query")
+				return nil, nil
+			},
+		}})
+	got, err = o.GetMap[int64](context.Background(), PageSize(0, 1))
+	if err == nil || got != nil {
+		t.Fatal(got, err)
+	}
+
+	failure := errors.New("query failed")
+	o = o.WithDB(&DB{
+		Dialect: dialect.SQLite,
+		Executor: templateTestExecutor{
+			query: func(context.Context, string, ...any) (*sql.Rows, error) {
+				return nil, failure
+			},
+		}})
+	got, err = o.GetMap[int64](context.Background(), nil)
+	if !errors.Is(err, failure) || got != nil {
+		t.Fatal(got, err)
+	}
+}
+
+func TestOperGetMapAndGetListConfigurationParity(t *testing.T) {
+	type model struct {
+		ID       int64         `sql:"id"`
+		Duration time.Duration `sql:"duration"`
+	}
+
+	for _, scope := range []string{"db", "oper_override", "with_binder", "nil_binder"} {
+		t.Run(scope, func(t *testing.T) {
+			f := &bindFixture{
+				columns: []string{"id", "duration"},
+				values:  [][]driver.Value{{int64(7), int64(2)}},
+			}
+			db := bindTestDB(t, f)
+			underlying := db.Executor
+			var queries []string
+			db.Executor = templateTestExecutor{
+				query: func(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+					queries = append(queries, q)
+					if !reflect.DeepEqual(args, []any{1, true}) {
+						t.Fatal(args)
+					}
+					return underlying.QueryContext(ctx, q, args...)
+				},
+			}
+			registry := NewRowsBinderRegistry()
+
+			var options []BindOptions
+			wrap := func(b RowsBinder) RowsBinder {
+				return RowsBinderFunc(func(dst any, opts BindOptions) (RowsBinding, error) {
+					options = append(options, opts)
+					return b.Prepare(dst, opts)
+				})
+			}
+
+			mapBinder := wrap(NewMapIndexBinder[map[int64]model](func(v model) int64 { return v.ID }))
+			registry.RegisterType[*map[int64]model](mapBinder)
+			registry.RegisterType[*[]model](wrap(NewSliceRowsBinder[[]model]()))
+			providerCalls := 0
+			config := BindConfig{
+				RowsBinder:    registry,
+				Capacity:      37,
+				DuplicateKeys: DuplicateKeyFirst,
+				ScanOptionsFunc: func() ScanOptions {
+					providerCalls++
+					return ScanOptions{Nulls: NullError, DurationUnit: time.Second}
+				},
+			}
+			db.SetBindConfig(config)
+			o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 1)).
+				WithStructSorter(Column("id").Desc())
+			wantCapacity := 37
+			switch scope {
+			case "oper_override":
+				// Oper configuration replaces the DB configuration, including capacity.
+				db.SetBindConfig(BindConfig{
+					RowsBinder: RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
+						t.Fatal("DB binder used despite Oper override")
+						return nil, nil
+					}),
+				})
+				config.Capacity = 0
+				o = o.WithBindConfig(config)
+				wantCapacity = 3
+
+			case "with_binder":
+				// Override a different DB binder while preserving its other options.
+				dbConfig := config
+				dbConfig.RowsBinder = RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
+					t.Fatal("DB binder used despite WithBinder override")
+					return nil, nil
+				})
+				db.SetBindConfig(dbConfig)
+				o = o.WithBinder(registry)
+
+			case "nil_binder":
+				defaultRegistry := DefaultRowsBinderRegistry()
+				typ := reflect.TypeFor[*map[int64]model]()
+				old := defaultRegistry.Register(typ, mapBinder)
+				t.Cleanup(func() {
+					if old == nil {
+						defaultRegistry.Unregister(typ)
+					} else {
+						defaultRegistry.Register(typ, old)
+					}
+				})
+				o = o.WithBinder(nil)
+			}
+			if providerCalls != 0 {
+				t.Fatal("configuration resolved before query")
+			}
+
+			paginationCalls := 0
+			p := operPaginationFunc(func() (int64, int64) { paginationCalls++; return 3, 6 })
+			gotMap, err := o.GetMap[int64](context.Background(), p, Eq("paid", true))
+			if err != nil || !reflect.DeepEqual(gotMap, map[int64]model{7: {7, 2 * time.Second}}) {
+				t.Fatal(gotMap, err)
+			}
+
+			// Use the registry to capture slice options after testing nil restoration.
+			if scope == "nil_binder" {
+				o = o.WithBinder(registry)
+			}
+
+			gotList, err := o.GetList(context.Background(), p, Eq("paid", true))
+			if err != nil || !reflect.DeepEqual(gotList, []model{{7, 2 * time.Second}}) {
+				t.Fatal(gotList, err)
+			}
+
+			wantSQL := `SELECT "id", "duration" FROM "t" WHERE (("tenant" = ?) AND ("paid" = ?)) ORDER BY "id" DESC LIMIT 3 OFFSET 6`
+			if !reflect.DeepEqual(queries, []string{wantSQL, wantSQL}) ||
+				paginationCalls != 2 || providerCalls != 2 {
+				t.Fatal(queries, paginationCalls, providerCalls)
+			}
+			if len(options) != 2 ||
+				!reflect.DeepEqual(options[0], options[1]) ||
+				options[0].Capacity != wantCapacity ||
+				options[0].DuplicateKeys != DuplicateKeyFirst ||
+				options[0].ScanOptions.DurationUnit != time.Second {
+				t.Fatal(options)
+			}
+			if db.BindConfig().Capacity != config.Capacity && scope != "oper_override" {
+				t.Fatal("DB configuration mutated")
+			}
+		})
+	}
+}
+
+func TestOperGetManyNamedDestinations(t *testing.T) {
+	type model struct {
+		ID       int64         `sql:"id"`
+		Duration time.Duration `sql:"duration"`
+	}
+
+	type modelList []model
+	type modelKey int64
+	type modelMap map[modelKey]model
+	for _, mode := range []string{"slice_fallback", "slice_explicit", "map_explicit", "map_registry"} {
+		t.Run(mode, func(t *testing.T) {
+			f := &bindFixture{
+				columns: []string{"id", "duration"},
+				values:  [][]driver.Value{{int64(7), int64(2)}},
+			}
+			db := bindTestDB(t, f)
+			underlying := db.Executor
+			queries := 0
+			db.Executor = templateTestExecutor{
+				query: func(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+					queries++
+					want := `SELECT "id", "duration" FROM "t" WHERE (("tenant" = ?) AND ("paid" = ?)) ORDER BY "id" DESC LIMIT 3 OFFSET 6`
+					if q != want || !reflect.DeepEqual(args, []any{1, true}) {
+						t.Fatal(q, args)
+					}
+					return underlying.QueryContext(ctx, q, args...)
+				},
+			}
+
+			db.SetBindConfig(BindConfig{ScanOptions: ScanOptions{DurationUnit: time.Second}})
+			o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 1)).WithStructSorter(Column("id").Desc())
+			list := modelList{{ID: 99}}
+			index := modelMap{99: {ID: 99}}
+			var dst any = &list
+			mapBinder := NewMapIndexBinder[modelMap](func(v model) modelKey {
+				return modelKey(v.ID)
+			})
+
+			switch mode {
+			case "slice_explicit":
+				o = o.WithBinder(NewSliceRowsBinder[modelList]())
+
+			case "map_explicit":
+				dst = &index
+				o = o.WithBinder(mapBinder)
+
+			case "map_registry":
+				dst = &index
+				r := NewRowsBinderRegistry()
+				// Registering the unnamed type alone must not match the named type.
+				r.RegisterType[*map[modelKey]model](NewMapIndexBinder[map[modelKey]model](func(v model) modelKey {
+					return modelKey(v.ID)
+				}))
+
+				o = o.WithBinder(r)
+				err := o.GetMany(context.Background(), dst, PageSize(3, 3), Eq("paid", true))
+				if err == nil {
+					t.Fatal("unnamed registration matched named map")
+				}
+				r.RegisterType[*modelMap](mapBinder)
+			}
+
+			paginationCalls := 0
+			p := operPaginationFunc(func() (int64, int64) { paginationCalls++; return 3, 6 })
+			if err := o.GetMany(context.Background(), dst, p, Eq("paid", true)); err != nil {
+				t.Fatal(err)
+			}
+			if paginationCalls != 1 || queries == 0 {
+				t.Fatal(paginationCalls, queries)
+			}
+
+			if dst == &list {
+				if !reflect.DeepEqual(list, modelList{{7, 2 * time.Second}}) {
+					t.Fatal(list)
+				}
+			} else if !reflect.DeepEqual(index, modelMap{7: {7, 2 * time.Second}}) {
+				t.Fatal(index)
+			}
+		})
+	}
+}
+
+func TestOperGetManyPreservesDestinationOnFailure(t *testing.T) {
+	type model struct {
+		ID int64 `sql:"id"`
+	}
+
+	type modelList []model
+	type modelMap map[int64]model
+	for _, asMap := range []bool{false, true} {
+		f := &bindFixture{
+			columns: []string{"id"},
+			values:  [][]driver.Value{{int64(7)}, {"invalid integer"}},
+		}
+		o := NewOper[model]("t").WithDB(bindTestDB(t, f))
+		list := modelList{{99}}
+		index := modelMap{99: {99}}
+		var dst any = &list
+		if asMap {
+			dst = &index
+			o = o.WithBinder(NewMapIndexBinder[modelMap](func(v model) int64 {
+				return v.ID
+			}))
+		}
+		if err := o.GetMany(context.Background(), dst, nil); err == nil {
+			t.Fatal("missing scan error")
+		}
+		if !reflect.DeepEqual(list, modelList{{99}}) ||
+			!reflect.DeepEqual(index, modelMap{99: {99}}) {
+			t.Fatal("destination changed on failure", list, index)
+		}
+	}
 }

@@ -369,16 +369,58 @@ batches. Check `plan.AppendTo(builder, rows)` errors: a failed call appends no
 rows or columns. SQL dialect checks still happen during `Build`/`Exec`.
 
 ```go
-oper := sqlx.NewOper[User]("users").WithDB(db).
-    WithStructSorter(sqlx.Column("id").Desc())
-users, err := oper.GetMany(ctx, sqlx.PageSize(1, 20))
+oper := sqlx.NewOper[User]("users").WithDB(db).WithStructSorter(sqlx.Column("id").Desc())
+users, err := oper.GetList(ctx, sqlx.PageSize(1, 20))
+byID, err := oper.WithBinder(sqlx.NewMapIndexBinder[map[int64]User](
+    func(u User) int64 { return u.ID },
+)).GetMap[int64](ctx, sqlx.PageSize(1, 20))
 err = oper.InsertBatch(ctx, []User{{Name: "A"}, {Name: "B"}})
 ```
 
 `Oper` has no implicit key column or ordering. `StructSorter` applies to
-`SelectStruct`/`Get`/`GetMany` and the data query in `GetManyWithCount`.
-Use `Insert`/`Update`/`Delete` for an error, or their `Result` variants for
-`(sql.Result, error)`.
+`SelectStruct`/`Get`/`GetMany`/`GetList`/`GetMap` and the data query in
+`GetListWithCount`. Use `Insert`/`Update`/`Delete` for an error, or their `Result`
+variants for `(sql.Result, error)`. `GetMany(ctx, dst, pagination, conditions...)`
+binds model rows into a caller-provided destination using the configured binder
+and options. `GetList` and `GetMap` are convenience wrappers over it. Pass a
+pointer to the destination; map key types come from the destination, while the
+binder defines how keys are obtained. Named slice and map types are supported:
+
+```go
+type UserList []User
+type UserIndex map[int64]User
+
+var list UserList
+err := oper.GetMany(ctx, &list, sqlx.PageSize(1, 20))
+
+var index UserIndex
+err = oper.WithBinder(sqlx.NewMapIndexBinder[UserIndex](
+    func(u User) int64 { return u.ID },
+)).GetMany(ctx, &index, nil)
+```
+
+Named slices work with the default slice fallback. For map registry dispatch,
+register the exact destination pointer type: `*UserIndex` and `*map[int64]User`
+are different types and require separate registrations. Explicit binders can also
+support custom destination types.
+
+`GetMap[K](ctx, pagination, conditions...)` returns `map[K]T`, with the same
+filtering, pagination and default ordering as `GetList`. Specify the key type
+explicitly. Map semantics come from the configured `RowsBinder` or the default
+`RowsBinderRegistry`; `GetMap` does not infer a model key or install a binder.
+For reusable model map binding, register the exact destination pointer type:
+
+```go
+sqlx.DefaultRowsBinderRegistry().RegisterType[*map[int64]User](
+    sqlx.NewMapIndexBinder[map[int64]User](func(u User) int64 { return u.ID }),
+)
+byID, err := oper.GetMap[int64](ctx, nil) // no pagination
+```
+
+Model maps without a suitable binder fail to bind. With `NewMapIndexBinder`,
+duplicate keys are rejected by default; `BindConfig.DuplicateKeys` can select
+`DuplicateKeyFirst` or `DuplicateKeyLast`.
+
 `Count` returns `int64`; `Aggregate`/`AggregateValue[R]` scan aggregate expressions.
 Empty `InsertBatch` and `nil` `Update` skip execution.
 

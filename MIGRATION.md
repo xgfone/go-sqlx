@@ -384,13 +384,13 @@ Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
 | v0.51.1 `Oper` API                                                     | v1 replacement                                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `Sorter`, `WithSorter`                                                 | `StructSorter`, `WithStructSorter`                                             |
-| `Gets`, `CountGets`, `Exist`                                           | `GetMany`, `GetManyWithCount`, `Exists`                                        |
+| `Gets`, `CountGets`, `Exist`                                           | `GetList`, `GetListWithCount`, `Exists`                                        |
 | `SoftCondition`, `WithSoftCondition`                                   | `ActiveCondition`, `WithActiveCondition`                                       |
 | `WithRowsBinder`, `RowsBinder`, `AppendRowsBinders`                    | `WithBinder`/`WithBindConfig`; `ComposeRowsBinders` for explicit fallback      |
-| `SoftGet`, `SoftGets`, `SoftCount`, `SoftExist`, etc.                  | `Active().Get/GetMany/Count/Exists`, etc.                                      |
+| `SoftGet`, `SoftGets`, `SoftCount`, `SoftExist`, etc.                  | `Active().Get/GetList/Count/Exists`, etc.                                      |
 | `SoftSelect`, `SoftUpdate`                                             | `Active().Select/SelectStruct`, `Active().Update`                              |
-| `Query`, `CountQuery` and soft variants                                | `GetMany`/`GetManyWithCount` with `sqlx.PageSize`, optionally through `Active` |
-| `GetAll`, `SoftGetAll`                                                 | `GetMany(ctx, nil)`, optionally through `Active`                               |
+| `Query`, `CountQuery` and soft variants                                | `GetList`/`GetListWithCount` with `sqlx.PageSize`, optionally through `Active` |
+| `GetAll`, `SoftGetAll`                                                 | `GetList(ctx, nil)`, optionally through `Active`                               |
 | `Sum`, `SumInt`, `SumInt64`, `SumFloat`, `SumString` and soft variants | `Aggregate`/`AggregateValue[R]` with `sqlx.Sum`                                |
 | `CountDistinct` and soft variant                                       | `Aggregate`/`AggregateValue[R]` with `sqlx.CountDistinct`                      |
 | `Add`                                                                  | `Insert`                                                                       |
@@ -402,12 +402,12 @@ Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
 
 There is no implicit `id` column or default ordering. Configure
 `WithStructSorter(sqlx.Column("id").Desc())` when required. It applies only to
-`SelectStruct`/`Get`/`GetMany` and `GetManyWithCount`'s data query;
+`SelectStruct`/`Get`/`GetMany`/`GetList`/`GetMap` and `GetListWithCount`'s data query;
 `Select`/`SelectColumns` and aggregate queries do not inherit it.
 
 `Insert`/`Update`/`Delete`/`SoftDelete` return `error`. Use their `Result` variants
-when execution metadata is needed. `Count`/`GetManyWithCount` now return `int64` counts.
-`GetManyWithCount` does not shrink the requested page size from the count and validates
+when execution metadata is needed. `Count`/`GetListWithCount` now return `int64` counts.
+`GetListWithCount` does not shrink the requested page size from the count and validates
 pagination before querying. `Update` with a `nil` updater now skips execution.
 
 Soft-delete defaults change from `go-op` zero-date conventions to `deleted_at`
@@ -415,3 +415,15 @@ Soft-delete defaults change from `go-op` zero-date conventions to `deleted_at`
 `WithDeletedCondition` and `WithSoftDeleteUpdater` for the application's schema.
 The updater callback changes from `func(context.Context) op.Updater` to
 `func() sqlx.Updater`; use `Active().Update` for request-specific values.
+
+`Oper.GetMap[K](ctx, pagination, conditions...)` queries models into `map[K]T`.
+Filtering, pagination and default ordering match `GetList`. Specify the key type
+explicitly and configure a suitable map binder with `WithBinder`, or register it
+for the exact `*map[K]T` destination type in `RowsBinderRegistry`. The method uses
+inherited binding configuration without inferring a key or replacing the binder.
+
+`Oper.GetMany(ctx, dst, pagination, conditions...)` binds model rows into the
+caller-provided destination. `GetList` and `GetMap` wrap this method. Named slices
+use the slice fallback; named maps require an explicit suitable binder or a
+registration for their exact destination pointer type. Unlike the earlier
+slice-returning `GetMany`, this method accepts a destination and returns only error.
