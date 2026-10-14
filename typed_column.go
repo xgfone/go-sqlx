@@ -10,6 +10,7 @@ import "database/sql"
 // expression methods reuse [Expression] without checking its SQL result type.
 // T does not validate database metadata, driver support, ranges or nullability.
 // A zero TypedColumn has the same empty path as a zero [Column].
+// Use [Numeric] to enable arithmetic when T satisfies [Number].
 type TypedColumn[T any] struct {
 	column Column
 }

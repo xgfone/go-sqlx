@@ -20,6 +20,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	}
 
 	db := &DB{Dialect: dialect.SQLite}
+	numericValue := Numeric(Column("v").Typed[int64]())
 	seq := Select().SelectExpr(Value(1)).UnionAll(Select().SelectExpr(Expr("? + 1", Ident("n"))).From("seq").Where(Lt("n", 4)))
 	row := Tuple(Ident("id"), Ident("team"))
 	window := Window().PartitionBy("team").OrderBy("id", Asc)
@@ -77,6 +78,72 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			db.Update().Table("users").Set(Column("deleted_at").Typed[*string]().Set(nil)).
 				Where(Column("deleted_at").Typed[*string]().Eq(nil)).Returning("id", "deleted_at"),
 			[][]any{{1, nil}},
+		},
+		{
+			"numeric add data",
+			db.Update().Table("t").Set(numericValue.Add(2)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{12}},
+		},
+		{
+			"numeric subtract negative data",
+			db.Update().Table("t").Set(numericValue.Sub(-3)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{13}},
+		},
+		{
+			"numeric multiply data",
+			db.Update().Table("t").Set(numericValue.Mul(2)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{20}},
+		},
+		{
+			"numeric divide data",
+			db.Update().Table("t").Set(numericValue.Div(3)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{3}},
+		},
+		{
+			"numeric increment",
+			db.Update().Table("t").Set(numericValue.Inc()).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{11}},
+		},
+		{
+			"numeric decrement",
+			db.Update().Table("t").Set(numericValue.Dec()).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{9}},
+		},
+		{
+			"numeric add expression",
+			db.Update().Table("t").Set(numericValue.AddExpr(Expr("? - ?", 5, 2))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{13}},
+		},
+		{
+			"numeric subtract expression precedence",
+			db.Update().Table("t").Set(numericValue.SubExpr(Expr("? + ?", 2, 3))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{5}},
+		},
+		{
+			"numeric multiply expression precedence",
+			db.Update().Table("t").Set(numericValue.MulExpr(Expr("? + ?", 2, 3))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{50}},
+		},
+		{
+			"numeric divide expression precedence",
+			db.Update().Table("t").Set(numericValue.DivExpr(Expr("? * ?", 2, 5))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{1}},
+		},
+		{
+			"numeric explicit floating division",
+			db.Update().Table("t").Set(numericValue.DivExpr(Value(1.6))).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{6.25}},
+		},
+		{
+			"numeric division by zero follows sqlite",
+			db.Update().Table("t").Set(numericValue.Div(0)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{nil}},
+		},
+		{
+			"numeric upsert",
+			db.Insert().Into("t").Columns("id", "v").Values(1, 4).
+				OnConflict(ConflictColumns("id").DoUpdate(numericValue.AddExpr(Excluded("v")))).Returning("v"),
+			[][]any{{14}},
 		},
 		{
 			"arithmetic add expression",

@@ -221,6 +221,36 @@ semantics; nullable wrapper objects remain bound data. No database metadata or
 expression result-type checks are added, and template Bind inputs retain their
 existing dynamic validation.
 
+## Optional numeric columns
+
+`NumericColumn[T Number]` embeds `TypedColumn[T]` and enables arithmetic only
+when T is a signed integer, unsigned integer other than `uintptr`, floating-point
+type or a defined type with one of those underlying types:
+
+```go
+age := sqlx.NewTypedColumn[int64]("age")
+numericAge := sqlx.Numeric(age) // Preserves int64 and the path.
+visits := sqlx.NewNumericColumn[uint64](sqlx.Column("visits"))
+numericAge.Add(2)
+visits.Inc()
+numericAge.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2))
+numericAge.AddExpr(sqlx.Param(0))
+```
+
+`NewNumericColumn[T Number, C ~string]` accepts the same paths as `NewTypedColumn`
+and infers C. `Add`, `Sub`, `Mul` and `Div` accept data assignable to T; use
+`AddExpr`, `SubExpr`, `MulExpr` and `DivExpr` for expressions and explicit
+`Value(...)` operands. Expression results and template Bind inputs retain their
+existing dynamic checks. `Inc` and `Dec` use the SQL literal 1. All methods return
+Updater and retain existing SQL arithmetic behavior.
+
+Scope preserves `NumericColumn[T]`, including arithmetic methods. Inherited
+`SetFrom` still accepts `TypedColumn[T]`; pass `otherNumeric.TypedColumn` when
+assigning from another numeric column. `.Column()` remains the projection to
+untyped APIs. Pointer, nullable and struct-based decimal representations do not
+satisfy Number; keep them as TypedColumn and use the untyped arithmetic helpers.
+Existing Column, TypedColumn, Set and arithmetic APIs remain unchanged.
+
 ## Arithmetic update constraints
 
 `Add`, `Sub`, `Mul` and `Div` and their generic `Column` methods return `Updater`.
