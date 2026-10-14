@@ -23,6 +23,11 @@ import (
 // equality even when its runtime value is nil; use [IsNull] or an explicit
 // null-safe comparison for SQL NULL matching. IN lengths and pagination are
 // fixed when compiled. [sql.Named] cannot contain a [Param].
+//
+// A direct Param wrapped by [Value] still declares a slot, including the Value
+// added by [TypedColumn] data methods when T admits Param. For concrete data
+// types, use explicit expression methods such as [TypedColumn.SetExpr]. Bind
+// validates slot inputs as data without checking them against the column's T.
 func Param(index int) Expression {
 	e := Expr("?", templateParam(index))
 	e.node.(*expressionArgs).kind = parameterExpression

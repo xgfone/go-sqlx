@@ -8,6 +8,9 @@ import "database/sql"
 // TypedColumn pairs a column path with its declared Go data type. Data-taking
 // methods check assignability to T and bind their arguments as data. Explicit
 // expression methods reuse [Expression] without checking its SQL result type.
+// Data methods add [Value] themselves: an ordinary Expression, including a Value
+// wrapper, remains data when T admits it. A direct [Param] retains its template
+// slot behavior; use expression methods for slots when T does not admit Param.
 // T does not validate database metadata, driver support, ranges or nullability.
 // A zero TypedColumn has the same empty path as a zero [Column]. Arithmetic
 // checks Go assignability, not database operator support. Use [NumericColumn]
@@ -57,7 +60,11 @@ func (c TypedColumn[T]) Desc() SortColumn { return c.column.Desc() }
 func (c TypedColumn[T]) Set(value T) Updater { return c.column.Set(Value(value)) }
 
 // SetNamed binds a named data value of type T. Name validation, reuse and dialect
-// behavior follow [sql.Named] and [BuildContext.Add].
+// behavior follow [sql.Named] and [BuildContext.Add]. Ordinary [Expression]
+// values, including [Value] wrappers, remain named data when T admits them.
+// A direct [Param] value is unsupported inside sql.Named, even with an empty
+// name, and fails Build and Compile. Use [TypedColumn.SetExpr] with Param for a
+// positional template slot instead.
 func (c TypedColumn[T]) SetNamed(name string, value T) Updater {
 	return c.column.Set(Value(sql.Named(name, value)))
 }

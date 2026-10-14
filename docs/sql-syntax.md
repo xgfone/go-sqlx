@@ -129,17 +129,13 @@ only another `TypedColumn[T]`. Expressions use `SetExpr`, `ColValueExpr`,
 `EqExpr` or `NeExpr`, which preserve ordinary expression rendering, dialect
 validation and parameter numbering without asserting a result type.
 
-For templates use `SetExpr(Param(i))`, `ColValueExpr(Param(i))` and the expression
-comparison methods. Template Bind inputs remain dynamically typed. DEFAULT is
-valid only where the existing dialect supports the corresponding assignment or
-insert operation.
-
-`Eq` and `Ne` map nil interfaces and nil pointers to IS NULL and IS NOT NULL.
-For example, `Column("age").Typed[*int64]().Eq(nil)` is an IS NULL condition,
-while an `int64` column rejects nil data at compile time. Every typed column
-provides `IsNull` and `IsNotNull`. Nullable wrappers bind normally, without
-calling their Valuer to decide NULL predicates; `EqExpr(Value(nil))` also binds
-NULL for an ordinary comparison.
+DEFAULT is valid only where the existing dialect supports the corresponding
+assignment or insert operation. `Eq` and `Ne` map nil interfaces and nil pointers
+to IS NULL and IS NOT NULL. For example, `Column("age").Typed[*int64]().Eq(nil)`
+is an IS NULL condition, while an `int64` column rejects nil data at compile time.
+Every typed column provides `IsNull` and `IsNotNull`. Nullable wrappers bind normally,
+without calling their Valuer to decide NULL predicates; `EqExpr(Value(nil))` also
+binds NULL for an ordinary comparison.
 
 `Name` returns a string path, `Ref` an untyped SQL reference and `Scope` a new
 typed column preserving T. `Column()` explicitly returns to existing operations:
@@ -155,6 +151,47 @@ Expression types, driver-supported values and SQL constraints remain the
 caller's responsibility. Declaring T as any or an interface weakens static
 checking. Existing Column and Set semantics are unchanged; typed columns
 have their own arithmetic methods and do not carry value rules.
+
+### Data, Value and Param binding
+
+All typed data entry points add `Value(...)` themselves, including each list
+element and function fallback. When T is any or admits Expression values, an
+ordinary Expression passed as data stays a bound object. This also applies to
+an explicit Value wrapper: data methods do not unwrap it. Use Value in an
+expression entry point to bind its contents. In comparison, existing untyped
+Column methods render an Expression argument directly:
+
+```go
+column := sqlx.Column("v")
+typed := sqlx.NewTypedColumn[any](column)
+column.Set(sqlx.Value(1))     // Binds 1.
+typed.Set(1)                 // Binds 1.
+typed.Set(sqlx.Value(1))      // Binds the Expression object itself.
+typed.SetExpr(sqlx.Value(1))  // Binds 1.
+typed.Eq(sqlx.Value(nil))     // Binds the Expression object, not SQL NULL.
+typed.EqExpr(sqlx.Value(nil)) // Ordinary equality with a bound SQL NULL.
+```
+
+Param is a special case in the shared binder. A direct `Param(i)` wrapped by
+Value remains a scalar template slot. Thus `typed.Set(Param(0))` also declares
+a slot through its automatic Value wrapper. For concrete T, use expression methods
+such as `SetExpr(Param(i))`, `ColValueExpr(Param(i))` or `EqExpr(Param(i))`.
+Both forms require Compile followed by Bind or template execution; ordinary
+Build with an unbound Param fails. Nested Value wrappers are not recursively
+unwrapped: `typed.Set(Value(Param(0)))` binds the Value expression object itself.
+
+Expression results, explicit Value contents and template Bind inputs are not
+checked against T. Bind still validates its inputs as data, rejecting Expression,
+SQLBuilder and sql.NamedArg values. A Param holds one scalar value without slice
+expansion or changes to SQL structure. In particular, binding nil to an equality
+slot does not rewrite it to IS NULL.
+
+`SetNamed(name, value)` adds `sql.Named` around the typed data. Ordinary
+Expression and Value objects remain data rather than rendering SQL; dialects
+with native named parameters preserve the name, while others bind positionally.
+A direct Param as the named value is unsupported and fails both Build and
+Compile, including when name is empty. Use `SetExpr(Param(i))` for a positional
+template slot. Existing name validation and repeated-name reuse rules apply.
 
 ### Typed selection, ordering and joins
 
@@ -200,11 +237,11 @@ Coalesce and NullIf separate typed data from explicit SQL:
 
 Both Coalesce forms start with the column and require at least one fallback.
 They snapshot argument containers, with shallow bound objects. Data must be
-assignable to T and binds through Value; ordinary Expression objects held in any
-remain data. Param retains its existing scalar template-slot behavior, including
-when wrapped by Value. Expression results, Value contents and Bind inputs are
-not checked against T. NULL follows SQL function semantics without predicate
-rewriting; NullIf can produce NULL even when T cannot represent it.
+assignable to T and binds through Value, following the shared
+[data, Value and Param binding rules](#data-value-and-param-binding).
+Expression results, Value contents and Bind inputs are not checked against T.
+NULL follows SQL function semantics without predicate rewriting; NullIf can
+produce NULL even when T cannot represent it.
 
 ```go
 amount := sqlx.NumericColumn[int64]("amount")
@@ -291,8 +328,8 @@ as T, without invoking driver conversion during Build or Compile.
 `LikeExpr(pattern Expression, escape ...string)` and `NotLikeExpr` accept column
 references, SQL expressions, Param slots and explicit Value operands. Their
 result types, Value contents and runtime Bind inputs are not checked against T.
-Param remains one scalar pattern slot without slice expansion, including when
-wrapped by Value in any-typed data, following the existing template rules:
+Param remains one scalar pattern slot without slice expansion, following the
+shared [binding rules](#data-value-and-param-binding):
 
 ```go
 name := sqlx.NewTypedColumn[string]("name").Scope("u")

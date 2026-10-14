@@ -149,6 +149,26 @@ to `StatementTemplate.Bind` are not checked against T. `SetExpr(Default())`
 retains the dialect's DEFAULT support checks. `SetNamed` preserves the existing
 named-argument binding and reuse rules while checking the data value's type.
 
+Data methods add `Value(...)` themselves; they do not unwrap a caller's ordinary
+Expression or Value wrapper. Pass raw data to data methods, and use Value in an
+expression method to bind its contents:
+
+```go
+dynamic := sqlx.NewTypedColumn[any]("v")
+dynamic.Set(1)                 // Binds 1.
+dynamic.Set(sqlx.Value(1))     // Binds the Expression object itself.
+dynamic.SetExpr(sqlx.Value(1)) // Binds 1.
+```
+
+`Param(i)` retains its template-slot behavior when directly wrapped by Value,
+including the wrapper added by a data method when T permits Param. For concrete
+T, use expression methods such as `Age.SetExpr(sqlx.Param(0))`. Unbound slots
+require Compile followed by Bind or template execution; ordinary Build fails.
+Bind inputs are not checked against T. `SetNamed` binds ordinary expressions as
+named data, but a direct Param value inside `sql.Named` is unsupported and fails
+Build and Compile, even with an empty name. See the
+[binding rules](docs/sql-syntax.md#data-value-and-param-binding) for details.
+
 Choose a T that represents SQL NULL, such as `*int64` or `sql.NullInt64`:
 
 ```go

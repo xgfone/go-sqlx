@@ -209,11 +209,23 @@ with only T continue to infer C from the argument. Constructor function values
 may need an explicit C, for example `sqlx.NewTypedColumn[int64, string]`.
 Struct wrappers still require `.Column()` projection.
 
-Data-taking methods require assignability to T; they do not accept arbitrary SQL
-expressions. Use `SetExpr`, `ColValueExpr`, `EqExpr` and `NeExpr` for expressions
+Data-taking methods require assignability to T and bind through Value. When T
+admits Expression values, ordinary expressions and Value wrappers remain data;
+they are not rendered or automatically unwrapped. For example, with T = any,
+`Set(Value(1))` binds the Expression object, while `SetExpr(Value(1))` binds 1.
+Use `SetExpr`, `ColValueExpr`, `EqExpr` and `NeExpr` for explicit expressions
 and template slots. Use `.Column()` to explicitly return to untyped operations
 and to construct existing `[]Column` selections. Scope preserves T. Typed columns
 are variables and do not implicitly carry a `ValueRule`.
+
+Direct Param values retain their template-slot behavior through Value, including
+the automatic wrapper in typed data methods when T permits Param. Such slots
+require Compile and Bind or template execution; ordinary Build fails. Bind does
+not check values against T, and nested Value wrappers remain data. SetNamed
+preserves named binding for ordinary Expression objects; a direct Param as its
+value fails Build and Compile, even with an empty name. Use SetExpr(Param(i))
+for a positional slot. See the shared
+[binding rules](docs/sql-syntax.md#data-value-and-param-binding).
 
 Choose a Go representation of SQL NULL, such as a pointer or nullable wrapper.
 Nil pointers and nil interfaces in typed Eq/Ne retain IS NULL/IS NOT NULL
