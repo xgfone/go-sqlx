@@ -34,7 +34,7 @@ func BenchmarkInsertStringLimitCosts(b *testing.B) {
 
 func benchmarkStringLimitRows[T any](b *testing.B, rows []T) {
 	b.Helper()
-	plan, err := CompileInsert[T]()
+	plan, err := CompileInsertPlan[T]()
 	if err != nil {
 		b.Fatal(err)
 	}

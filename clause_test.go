@@ -98,7 +98,7 @@ func TestNativeClauseCompositionAndSnapshots(t *testing.T) {
 	assertSQL(t, sqlx.Select("id").From("t").Where(conjunction), "SELECT `id` FROM `t` WHERE ((`a` = ?) AND (`b` = ?))", 1, 2)
 
 	setters := []sqlx.Updater{sqlx.Set("a", nil), increment{"b", 2}}
-	batch := sqlx.Batch(setters...)
+	batch := sqlx.CombineUpdaters(setters...)
 	setters[0] = sqlx.Set("changed", 99)
 	assertSQL(t, sqlx.Update().Table("t").Set(batch), "UPDATE `t` SET `a`=?, `b`=`b`+?", nil, 2)
 
@@ -112,7 +112,7 @@ func TestNativeClauseCompositionAndSnapshots(t *testing.T) {
 
 func TestNativeSubqueriesShareContext(t *testing.T) {
 	inner := sqlx.Select("id").From("u").Where(tenantCondition(2)).SetDialect(dialect.MySQL)
-	q := sqlx.Select("id").From("t").Join("v", "", sqlx.Or(sqlx.On("t.id", "v.id"), tenantCondition(1))).
+	q := sqlx.Select("id").From("t").Join("v", "", sqlx.Or(sqlx.EqColumn("t.id", "v.id"), tenantCondition(1))).
 		Where(sqlx.InQuery("id", inner), sqlx.NotInQuery("id", inner), sqlx.Exists(inner), sqlx.NotExists(inner)).
 		SetDialect(dialect.Postgres)
 	inner.Where(sqlx.Eq("changed", 99))

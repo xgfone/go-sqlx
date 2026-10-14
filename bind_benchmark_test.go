@@ -51,7 +51,7 @@ func BenchmarkBind(b *testing.B) {
 					err = db.QueryRowsContext(ctx, "SELECT value").SetBinder(SliceRowsBinder{}).Bind(&dst)
 
 				case "oper_struct":
-					_, err = o.Gets(ctx, nil)
+					_, err = o.GetMany(ctx, nil)
 				}
 
 				if err != nil {

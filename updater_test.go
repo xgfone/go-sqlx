@@ -35,7 +35,7 @@ func TestArithmeticUpdates(t *testing.T) {
 			{dialect.SQLite, `UPDATE "t" SET "score"="score" + ?, "balance"="balance" - ?, "factor"="factor" * ?, "ratio"="ratio" / ?, "visits"="visits" + 1, "remaining"="remaining" - 1 WHERE ("id" = ?)`},
 		} {
 			t.Run(api.name+"/"+tc.d.Name(), func(t *testing.T) {
-				checkSQL(t, Update().Table("t").Set(Batch(api.setters...)).Where(Eq("id", 7)).SetDialect(tc.d),
+				checkSQL(t, Update().Table("t").Set(CombineUpdaters(api.setters...)).Where(Eq("id", 7)).SetDialect(tc.d),
 					tc.want, 10, 2.5, 3, 2, 7)
 			})
 		}
@@ -142,25 +142,25 @@ func TestArithmeticWrappedValues(t *testing.T) {
 	}
 }
 
-func TestBatchEmptyComposition(t *testing.T) {
+func TestCombineUpdatersEmptyComposition(t *testing.T) {
 	for _, empty := range []Updater{
-		Batch(),
-		Batch([]Updater(nil)...),
-		Batch([]Updater{}...),
+		CombineUpdaters(),
+		CombineUpdaters([]Updater(nil)...),
+		CombineUpdaters([]Updater{}...),
 	} {
 		if empty != nil {
 			t.Fatal("empty batch must return nil")
 		}
 	}
 
-	empty := Batch()
+	empty := CombineUpdaters()
 	checkSQL(t, Update().Table("t").Set(empty, Set("a", 1), empty),
 		"UPDATE `t` SET `a`=?", 1)
-	checkSQL(t, Update().Table("t").Set(Batch(empty, Set("a", 1), empty)),
+	checkSQL(t, Update().Table("t").Set(CombineUpdaters(empty, Set("a", 1), empty)),
 		"UPDATE `t` SET `a`=?", 1)
 
 	checkBuildError(t, Update().Table("t").Set(empty))
-	checkBuildError(t, Update().Table("t").Set(Batch(nil)))
+	checkBuildError(t, Update().Table("t").Set(CombineUpdaters(nil)))
 	checkBuildError(t, Insert().Into("t").Values(1).OnDuplicateKeyUpdate(empty))
 	checkBuildError(t, Insert().Into("t").Values(1).
 		OnConflict(ConflictColumns("id").DoUpdate(empty)).SetDialect(dialect.Postgres))

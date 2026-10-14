@@ -26,7 +26,7 @@ func TestReturningAndConflictPolicies(t *testing.T) {
 
 	checkBuildError(t, Insert().Into("t").Values(1).OnConflict(ConflictColumns().DoNothing()))
 	checkBuildError(t, Insert().Into("t").Values(1).Returning("id"))
-	checkSQL(t, db.Delete().From("t").Using("u", "a").Where(On("t.id", "a.id")).Returning("t.id"),
+	checkSQL(t, db.Delete().From("t").Using("u", "a").Where(EqColumn("t.id", "a.id")).Returning("t.id"),
 		`DELETE FROM "t" USING "u" AS "a" WHERE "t"."id"="a"."id" RETURNING "t"."id"`)
 
 	f := &scanFixture{values: []driver.Value{"saved"}}
@@ -49,7 +49,7 @@ func TestReturningAndConflictPolicies(t *testing.T) {
 
 func TestScalarSubqueriesInReturningAndLockedSelect(t *testing.T) {
 	e := Coalesce(Subquery(Select().SelectExpr(Sum("v")).From("other")), 0)
-	checkSQL(t, Update().Table("t").Set(Set("v", 1)).ReturningExpr(e, "total").SetDialect(dialect.Postgres),
+	checkSQL(t, Update().Table("t").Set(Set("v", 1)).ReturningExprAlias(e, "total").SetDialect(dialect.Postgres),
 		`UPDATE "t" SET "v"=$1 RETURNING COALESCE((SELECT SUM("v") FROM "other"), $2) AS "total"`, 1, 0)
 	checkSQL(t, Select().SelectExpr(e).From("t").ForUpdate().SetDialect(dialect.Postgres),
 		`SELECT COALESCE((SELECT SUM("v") FROM "other"), $1) FROM "t" FOR UPDATE`, 0)
@@ -57,13 +57,13 @@ func TestScalarSubqueriesInReturningAndLockedSelect(t *testing.T) {
 
 func TestSQLiteReturningQualification(t *testing.T) {
 	checkSQL(t, Update().TableAlias("main.t", "u").Set(Set("v", 1)).Returning("*", "t.v").
-		ReturningExpr(Coalesce(Ident("t", "v"), 0), "r").SetDialect(dialect.SQLite),
+		ReturningExprAlias(Coalesce(Ident("t", "v"), 0), "r").SetDialect(dialect.SQLite),
 		`UPDATE "main"."t" AS "u" SET "v"=? RETURNING *, "t"."v", COALESCE("t"."v", ?) AS "r"`, 1, 0)
 	checkSQL(t, Update().Table("T").Set(Set("v", 1)).Returning("t.v").SetDialect(dialect.SQLite),
 		`UPDATE "T" SET "v"=? RETURNING "t"."v"`, 1)
 	checkSQL(t, Update().TableAlias("t", "u").Set(Set("v", 1)).Returning("u.*", "u.v").SetDialect(dialect.Postgres),
 		`UPDATE "t" AS "u" SET "v"=$1 RETURNING "u".*, "u"."v"`, 1)
-	checkSQL(t, Update().Table("t").Set(Set("v", 1)).ReturningExpr(
+	checkSQL(t, Update().Table("t").Set(Set("v", 1)).ReturningExprAlias(
 		Subquery(Select("o.v").FromAlias("other", "o").Limit(1)), "r").SetDialect(dialect.SQLite),
 		`UPDATE "t" SET "v"=? RETURNING (SELECT "o"."v" FROM "other" AS "o" LIMIT 1) AS "r"`, 1)
 }

@@ -63,7 +63,7 @@ func TestCollectHonorsBinderSelection(t *testing.T) {
 			return nil, cause
 		})
 
-		registry := NewMixRowsBinder()
+		registry := NewRowsBinderRegistry()
 		if mode != "unregistered" {
 			registry.RegisterType[*[]value](binder)
 		}
@@ -74,9 +74,9 @@ func TestCollectHonorsBinderSelection(t *testing.T) {
 			rows.SetBinder(binder)
 
 		case "default":
-			old := DefaultMixRowsBinder()
-			SetDefaultMixRowsBinder(registry)
-			defer SetDefaultMixRowsBinder(old)
+			old := DefaultRowsBinderRegistry()
+			SetDefaultRowsBinderRegistry(registry)
+			defer SetDefaultRowsBinderRegistry(old)
 			rows.SetBinder(nil)
 		}
 

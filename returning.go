@@ -29,8 +29,9 @@ func (b *DeleteBuilder) Returning(columns ...string) *DeleteBuilder {
 	return b
 }
 
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *DeleteBuilder) ReturningExpr(e Expression, alias string) *DeleteBuilder {
+// ReturningExprAlias appends an output expression and optional result alias
+// on PostgreSQL or SQLite.
+func (b *DeleteBuilder) ReturningExprAlias(e Expression, alias string) *DeleteBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b
 }
@@ -48,8 +49,9 @@ func (b *InsertBuilder) Returning(columns ...string) *InsertBuilder {
 	return b
 }
 
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *InsertBuilder) ReturningExpr(e Expression, alias string) *InsertBuilder {
+// ReturningExprAlias appends an output expression and optional result alias
+// on PostgreSQL or SQLite.
+func (b *InsertBuilder) ReturningExprAlias(e Expression, alias string) *InsertBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b
 }
@@ -64,8 +66,9 @@ func (b *UpdateBuilder) Returning(columns ...string) *UpdateBuilder {
 	return b
 }
 
-// ReturningExpr appends an output expression on PostgreSQL or SQLite.
-func (b *UpdateBuilder) ReturningExpr(e Expression, alias string) *UpdateBuilder {
+// ReturningExprAlias appends an output expression and optional result alias
+// on PostgreSQL or SQLite.
+func (b *UpdateBuilder) ReturningExprAlias(e Expression, alias string) *UpdateBuilder {
 	b.returning = append(b.returning, selectedColumn{Expr: &e, Alias: alias})
 	return b
 }

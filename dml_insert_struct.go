@@ -45,7 +45,7 @@ func (b *InsertBuilder) appendStruct(s any) {
 				panic(e)
 			}
 
-			row = append(row, ColValue(col, insertField(fv, f)))
+			row = append(row, NewColumnValue(col, insertField(fv, f)))
 		}
 	} else {
 		for _, f := range meta.Fields() {
@@ -58,7 +58,7 @@ func (b *InsertBuilder) appendStruct(s any) {
 				continue
 			}
 
-			row = append(row, ColValue(f.Column, insertField(fv, &f)))
+			row = append(row, NewColumnValue(f.Column, insertField(fv, &f)))
 		}
 	}
 	b.appendNamedRow(row)

@@ -13,7 +13,7 @@ import "database/sql"
 // slot behavior; use expression methods for slots when T does not admit Param.
 // T does not validate database metadata, driver support, ranges or nullability.
 // A zero TypedColumn has the same empty path as a zero [Column]. Arithmetic
-// checks Go assignability, not database operator support. Use [NumericColumn]
+// checks Go assignability, not database operator support. Use [NewNumericColumn]
 // to require T to satisfy [Number] at construction.
 type TypedColumn[T any] struct {
 	column Column
@@ -44,9 +44,9 @@ func (c TypedColumn[T]) Qualify(qualifier string) TypedColumn[T] {
 	return NewTypedColumn[T](c.column.Qualify(qualifier))
 }
 
-// As returns a named selection for [SelectBuilder.SelectNamers]. The alias is
-// one identifier and does not change c or its declared data type.
-func (c TypedColumn[T]) As(alias string) Namer { return c.column.As(alias) }
+// As returns a named selection for [SelectBuilder.SelectNamedColumns].
+// The alias is one identifier and does not change c or its declared data type.
+func (c TypedColumn[T]) As(alias string) NamedColumn { return c.column.As(alias) }
 
 // Asc returns an ascending ordering term, following [Column.Asc].
 func (c TypedColumn[T]) Asc() SortColumn { return c.column.Asc() }
@@ -60,7 +60,7 @@ func (c TypedColumn[T]) Desc() SortColumn { return c.column.Desc() }
 func (c TypedColumn[T]) Set(value T) Updater { return c.column.Set(Value(value)) }
 
 // SetNamed binds a named data value of type T. Name validation, reuse and dialect
-// behavior follow [sql.Named] and [BuildContext.Add]. Ordinary [Expression]
+// behavior follow [sql.Named] and [BuildContext.AddArg]. Ordinary [Expression]
 // values, including [Value] wrappers, remain named data when T admits them.
 // A direct [Param] value is unsupported inside sql.Named, even with an empty
 // name, and fails Build and Compile. Use [TypedColumn.SetExpr] with Param for a
@@ -127,13 +127,13 @@ func (c TypedColumn[T]) Inc() Updater { return c.column.Inc() }
 // Database support for arithmetic on T is not checked.
 func (c TypedColumn[T]) Dec() Updater { return c.column.Dec() }
 
-// ColValue pairs an unqualified INSERT column with a data value of type T.
-func (c TypedColumn[T]) ColValue(value T) ColumnValue { return c.column.ColValue(Value(value)) }
+// InsertValue pairs an unqualified INSERT column with a data value of type T.
+func (c TypedColumn[T]) InsertValue(value T) ColumnValue { return c.column.InsertValue(Value(value)) }
 
-// ColValueExpr pairs an unqualified INSERT column with an explicit expression.
+// InsertValueExpr pairs an unqualified INSERT column with an explicit expression.
 // Its result type and runtime parameter types are not checked against T.
-func (c TypedColumn[T]) ColValueExpr(expr Expression) ColumnValue {
-	return c.column.ColValue(expr)
+func (c TypedColumn[T]) InsertValueExpr(expr Expression) ColumnValue {
+	return c.column.InsertValue(expr)
 }
 
 // Eq compares the column with data of type T. Nil interfaces and nil pointers
@@ -162,11 +162,13 @@ func (c TypedColumn[T]) EqExpr(expr Expression) Condition { return c.column.Eq(e
 // checking its SQL result type against T.
 func (c TypedColumn[T]) NeExpr(expr Expression) Condition { return c.column.Ne(expr) }
 
-// On compares two column paths for equality. Both columns must declare the same
-// T; the right operand is always a column reference, following [Column.On].
-// SQL type compatibility remains the caller's responsibility. For an untyped
-// expression comparison use [TypedColumn.EqExpr].
-func (c TypedColumn[T]) On(other TypedColumn[T]) Condition { return c.column.On(other.column) }
+// EqColumn compares two column paths for equality. Both columns must declare
+// the same T; the right operand is always a column reference, following
+// [Column.EqColumn]. SQL type compatibility remains the caller's responsibility.
+// For an untyped expression comparison use [TypedColumn.EqExpr].
+func (c TypedColumn[T]) EqColumn(other TypedColumn[T]) Condition {
+	return c.column.EqColumn(other.column)
+}
 
 // Gt compares the column with data of type T using >. Nil binds SQL NULL when
 // T permits it; only [TypedColumn.Eq] and [TypedColumn.Ne] rewrite nil predicates.

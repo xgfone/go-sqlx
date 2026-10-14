@@ -116,9 +116,9 @@ func (c Column) Asc() SortColumn { return SortColumn{Column: string(c), Order: A
 // Desc returns a descending ordering term.
 func (c Column) Desc() SortColumn { return SortColumn{Column: string(c), Order: Desc} }
 
-// On compares two column paths for equality. Unlike [Column.Eq], its right operand is
-// always a column reference. Strings and defined string types are accepted.
-func (c Column) On[C ~string](right C) Condition { return On(string(c), string(right)) }
+// EqColumn compares two column paths for equality. Unlike [Column.Eq], its right
+// operand is always a column reference. Strings and defined string types are accepted.
+func (c Column) EqColumn[C ~string](right C) Condition { return EqColumn(string(c), string(right)) }
 
 // InQuery compares the column to a one-column subquery, snapshotted at this call.
 func (c Column) InQuery(q *SelectBuilder) Condition { return InQuery(string(c), q) }
@@ -126,13 +126,14 @@ func (c Column) InQuery(q *SelectBuilder) Condition { return InQuery(string(c), 
 // NotInQuery compares the column to a one-column subquery using NOT IN.
 func (c Column) NotInQuery(q *SelectBuilder) Condition { return NotInQuery(string(c), q) }
 
-// As returns a named selection for [SelectBuilder.SelectNamers]. The alias is one identifier,
-// not a qualifying path, and does not change the column itself.
-func (c Column) As(alias string) Namer { return Namer{Name: string(c), Alias: alias} }
+// As returns a named selection for [SelectBuilder.SelectNamedColumns].
+// The alias is one identifier, not a qualifying path, and does not change
+// the column itself.
+func (c Column) As(alias string) NamedColumn { return NamedColumn{Name: string(c), Alias: alias} }
 
-// ColValue pairs the column name with an inserted value for [InsertBuilder.Row].
+// InsertValue pairs the column name with an inserted value for [InsertBuilder.Row].
 // Use an unqualified column name, as required by the INSERT column list.
-func (c Column) ColValue(v any) ColumnValue { return ColValue(string(c), v) }
+func (c Column) InsertValue(v any) ColumnValue { return NewColumnValue(string(c), v) }
 
 // Count counts non-NULL column values.
 func (c Column) Count() Expression { return Count(string(c)) }

@@ -18,9 +18,8 @@ func (t Table) NewOper[T any]() Oper[T] {
 	return NewOper[T](t.Name).WithTable(t)
 }
 
-// NewRegisteredOper creates an operation using this table and
-// registers its typed []T binder in [DefaultMixRowsBinder] unless already
-// registered.
+// NewRegisteredOper creates an operation using this table and registers its
+// typed []T binder in [DefaultRowsBinderRegistry] unless already registered.
 func (t Table) NewRegisteredOper[T any]() Oper[T] {
 	return NewRegisteredOper[T](t.Name).WithTable(t)
 }
@@ -29,14 +28,16 @@ func (t Table) String() string      { return t.Name }
 func (t Table) WithDB(db *DB) Table { t.db = db; return t }
 
 func (t *Table) SetDB(db *DB) { t.db = db }
-func (t Table) GetDB() *DB    { return getDB(t.db) }
 
-func (t Table) Insert() *InsertBuilder { return t.GetDB().Insert().Into(t.Name) }
-func (t Table) Update() *UpdateBuilder { return t.GetDB().Update().Table(t.Name) }
-func (t Table) Delete() *DeleteBuilder { return t.GetDB().Delete().From(t.Name) }
+// DB returns the configured database, or [DefaultDB] when none is configured.
+func (t Table) DB() *DB { return getDB(t.db) }
+
+func (t Table) Insert() *InsertBuilder { return t.DB().Insert().Into(t.Name) }
+func (t Table) Update() *UpdateBuilder { return t.DB().Update().Table(t.Name) }
+func (t Table) Delete() *DeleteBuilder { return t.DB().Delete().From(t.Name) }
 
 func (t Table) Select(columns ...string) *SelectBuilder {
-	return t.GetDB().Select(columns...).From(t.Name)
+	return t.DB().Select(columns...).From(t.Name)
 }
 
 // SelectColumns creates a column query using this table and its database.

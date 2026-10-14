@@ -51,7 +51,7 @@ func NotInQuery(column string, q *SelectBuilder) Condition {
 func inQuery(column string, q *SelectBuilder, operator string) Condition {
 	query := Subquery(q)
 	return conditionWriterFunc(func(buf *strings.Builder, c *BuildContext) {
-		c.WriteQuote(buf, column)
+		c.WriteQuotedPath(buf, column)
 		_, _ = buf.WriteString(operator)
 		query.writeTo(buf, c)
 	})

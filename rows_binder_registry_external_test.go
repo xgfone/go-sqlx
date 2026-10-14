@@ -9,12 +9,12 @@ import (
 	"github.com/xgfone/go-sqlx"
 )
 
-func ExampleMixRowsBinder_RegisterType() {
+func ExampleRowsBinderRegistry_RegisterType() {
 	type User struct {
 		ID int64 `sql:"id"`
 	}
 	byID := sqlx.NewMapIndexBinder[map[int64]User](func(user User) int64 { return user.ID })
-	registry := sqlx.NewMixRowsBinder()
+	registry := sqlx.NewRowsBinderRegistry()
 	registry.RegisterType[*map[int64]User](byID)
 
 	var users map[int64]User

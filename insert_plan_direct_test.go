@@ -50,7 +50,7 @@ func TestInsertPlanDirectFieldReads(t *testing.T) {
 			insertPlanBomb{},
 		},
 	}
-	p, err := CompileInsert[model]()
+	p, err := CompileInsertPlan[model]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestInsertPlanDirectExplicitOmitZero(t *testing.T) {
 	}
 
 	rows := []model{{1, insertPlanBomb{Fail: true}}}
-	p, err := CompileInsert[model]()
+	p, err := CompileInsertPlan[model]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestInsertPlanDirectProjection(t *testing.T) {
 		{[]string{"omitted", "child_V"}, insertDirectNone},
 		{[]string{"child_V", "omitted"}, insertDirectNone},
 	} {
-		p, err := CompileInsert[model](tc.columns...)
+		p, err := CompileInsertPlan[model](tc.columns...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -155,7 +155,7 @@ func TestInsertPlanDirectRollback(t *testing.T) {
 		Data []byte
 	}
 
-	p, err := CompileInsert[*model]()
+	p, err := CompileInsertPlan[*model]()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,9 +61,9 @@ func TestStreamingNativeAndCustomClauses(t *testing.T) {
 	})
 	emptySet := UpdaterWriterFunc(func(*SQLWriter) (bool, error) { return false, nil })
 	checkSQL(t,
-		Update().Table("t").Set(Batch(emptySet, Set("a", 1), set), Set("c", 3)).SetDialect(dialect.Postgres),
+		Update().Table("t").Set(CombineUpdaters(emptySet, Set("a", 1), set), Set("c", 3)).SetDialect(dialect.Postgres),
 		`UPDATE "t" SET "a"=$1, "b"=$2, "c"=$3`, 1, 2, 3)
-	checkBuildError(t, Update().Table("t").Set(Batch(emptySet)))
+	checkBuildError(t, Update().Table("t").Set(CombineUpdaters(emptySet)))
 }
 
 func TestStreamingNamedArgumentReuse(t *testing.T) {

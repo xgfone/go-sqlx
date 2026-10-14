@@ -136,7 +136,7 @@ func (b *DeleteBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 func (b *DeleteBuilder) SetDB(db *DB) *DeleteBuilder { b.db = db; return b }
 
-func (b *DeleteBuilder) GetDB() *DB { return getDB(b.db) }
+func (b *DeleteBuilder) DB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 // Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].

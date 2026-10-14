@@ -55,7 +55,7 @@ func TestDefaultMapRegistrations(t *testing.T) {
 			}
 
 			for _, value := range []any{reflect.Zero(reflect.TypeOf(want)).Interface(), want} {
-				_, err := DefaultMixRowsBinder().Prepare(value, BindOptions{})
+				_, err := DefaultRowsBinderRegistry().Prepare(value, BindOptions{})
 				if !IsUnsupportedTypeError(err) {
 					t.Fatalf("map by value must be unsupported: %v", err)
 				}
@@ -120,7 +120,7 @@ func TestDefaultMapDestinationAndCommit(t *testing.T) {
 }
 
 func TestDefaultMapRegistrationBoundaries(t *testing.T) {
-	registry := newDefaultMixRowsBinder()
+	registry := newDefaultRowsBinderRegistry()
 	type namedMap map[string]int64
 	for _, dst := range []any{
 		new(map[string]bool),
@@ -134,7 +134,7 @@ func TestDefaultMapRegistrationBoundaries(t *testing.T) {
 	}
 
 	var got map[string]int64
-	_, err := NewMixRowsBinder().Prepare(&got, BindOptions{})
+	_, err := NewRowsBinderRegistry().Prepare(&got, BindOptions{})
 	if !IsUnsupportedTypeError(err) {
 		t.Fatal("independent registry must start without map defaults", err)
 	}
@@ -160,9 +160,9 @@ func (b *countingRowsBinder) Prepare(dst any, options BindOptions) (RowsBinding,
 	return b.delegate.Prepare(dst, options)
 }
 
-func TestMixRowsBinderRegistration(t *testing.T) {
+func TestRowsBinderRegistryRegistration(t *testing.T) {
 	type amounts map[string]int64
-	var registry MixRowsBinder // The zero value also has the slice fallback.
+	var registry RowsBinderRegistry // The zero value also has the slice fallback.
 
 	binder := NewMapPairsBinder[amounts]()
 	dstType := reflect.TypeFor[*amounts]()
@@ -211,8 +211,8 @@ func TestMixRowsBinderRegistration(t *testing.T) {
 	}
 }
 
-func TestMixRowsBinderSelectedErrorsDoNotFallBack(t *testing.T) {
-	registry := NewMixRowsBinder()
+func TestRowsBinderRegistrySelectedErrorsDoNotFallBack(t *testing.T) {
+	registry := NewRowsBinderRegistry()
 	rejected := UnsupportedTypeError{Name: "custom", Type: "[]int64"}
 	registry.RegisterType[*[]int64](RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
 		return nil, rejected
@@ -245,12 +245,12 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	}
 
 	global, local, late := newBinder(), newBinder(), newBinder()
-	previous := DefaultMixRowsBinder().RegisterType[*[]model](global)
+	previous := DefaultRowsBinderRegistry().RegisterType[*[]model](global)
 	t.Cleanup(func() {
 		if previous == nil {
-			DefaultMixRowsBinder().Unregister(dstType)
+			DefaultRowsBinderRegistry().Unregister(dstType)
 		} else {
-			DefaultMixRowsBinder().Register(dstType, previous)
+			DefaultRowsBinderRegistry().Register(dstType, previous)
 		}
 	})
 
@@ -263,7 +263,7 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	})
 
 	o := NewRegisteredOper[model]("t").WithDB(db)
-	if DefaultMixRowsBinder().Get(dstType) != global {
+	if DefaultRowsBinderRegistry().Get(dstType) != global {
 		t.Fatal("NewRegisteredOper overwrote a user registration")
 	}
 
@@ -295,15 +295,15 @@ func TestDefaultRegistryAndBinderOverrides(t *testing.T) {
 	}
 
 	var got []model
-	DefaultMixRowsBinder().RegisterType[*[]model](late)
+	DefaultRowsBinderRegistry().RegisterType[*[]model](late)
 	err := o.SelectStruct().QueryRowsContext(ctx).Bind(&got)
 	if err != nil || late.calls.Load() != 1 {
 		t.Fatal("existing Oper did not observe subsequent registration", err)
 	}
 }
 
-func TestMixRowsBinderConcurrent(t *testing.T) {
-	registry := NewMixRowsBinder()
+func TestRowsBinderRegistryConcurrent(t *testing.T) {
+	registry := NewRowsBinderRegistry()
 	dstType := reflect.TypeFor[*[]int64]()
 
 	first := &countingRowsBinder{delegate: NewSliceRowsBinder[[]int64]()}
@@ -340,7 +340,7 @@ func TestMixRowsBinderConcurrent(t *testing.T) {
 }
 
 func TestRegistryReplacementDoesNotChangePreparedBinding(t *testing.T) {
-	registry := NewMixRowsBinder()
+	registry := NewRowsBinderRegistry()
 	registry.RegisterType[*[]int64](NewSliceRowsBinder[[]int64]())
 
 	var got []int64

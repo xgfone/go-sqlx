@@ -21,7 +21,7 @@ func ExampleSelectBuilder_SelectStruct() {
 
 	s := S{}
 	sb := Select().SelectStruct(s, "A")
-	columns := sb.SelectedColumns()
+	columns := sb.SelectedNames()
 	fmt.Println(columns)
 
 	err := ScanColumnsToStruct(func(values ...any) error {
@@ -105,7 +105,7 @@ func TestSelectBuilderSelectStruct(t *testing.T) {
 			}
 		}
 		return nil
-	}, b.SelectedColumns(), &expectv)
+	}, b.SelectedNames(), &expectv)
 
 	if err != nil {
 		t.Error(err)

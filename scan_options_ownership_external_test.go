@@ -90,7 +90,7 @@ func (b *interfaceScanOptionsBinder) Prepare(dst any, options sqlx.BindOptions) 
 }
 
 type embeddedRegistryScanOptionsBinder struct {
-	*sqlx.MixRowsBinder
+	*sqlx.RowsBinderRegistry
 	calls       int
 	seenLayouts []string
 }
@@ -98,16 +98,16 @@ type embeddedRegistryScanOptionsBinder struct {
 func (b *embeddedRegistryScanOptionsBinder) Prepare(dst any, options sqlx.BindOptions) (sqlx.RowsBinding, error) {
 	b.calls++
 	b.seenLayouts = options.ScanOptions.TimeLayouts
-	binding, err := b.MixRowsBinder.Prepare(dst, options)
+	binding, err := b.RowsBinderRegistry.Prepare(dst, options)
 	options.ScanOptions.TimeLayouts = slices.Clone(options.ScanOptions.TimeLayouts)
 	options.ScanOptions.TimeLayouts[0] = "changed after preparation"
 	return binding, err
 }
 
-func nestedScanOptionsBinder(binder sqlx.RowsBinder) *sqlx.MixRowsBinder {
-	var registry *sqlx.MixRowsBinder
+func nestedScanOptionsBinder(binder sqlx.RowsBinder) *sqlx.RowsBinderRegistry {
+	var registry *sqlx.RowsBinderRegistry
 	for range 3 {
-		registry = sqlx.NewMixRowsBinder()
+		registry = sqlx.NewRowsBinderRegistry()
 		registry.Register(reflect.TypeFor[*[]time.Time](), binder)
 		binder = registry
 	}
@@ -133,7 +133,7 @@ func TestEmbeddedBinderPreservesPublicPreparation(t *testing.T) {
 		}},
 		{"registry", func() (sqlx.RowsBinder, *int, *[]string) {
 			b := &embeddedRegistryScanOptionsBinder{
-				MixRowsBinder: nestedScanOptionsBinder(sqlx.NewSliceRowsBinder[[]time.Time]()),
+				RowsBinderRegistry: nestedScanOptionsBinder(sqlx.NewSliceRowsBinder[[]time.Time]()),
 			}
 			return b, &b.calls, &b.seenLayouts
 		}},

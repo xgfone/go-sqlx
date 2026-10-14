@@ -46,7 +46,7 @@ func TestScanOptionsFuncDeferredQuerySnapshots(t *testing.T) {
 			return oper.Select("value").QueryRowsContext(ctx)
 		}},
 		{"insert", func() *Rows {
-			return db.Insert().Into("t").Row(ColValue("value", 1)).Returning("value").QueryRowsContext(ctx)
+			return db.Insert().Into("t").Row(NewColumnValue("value", 1)).Returning("value").QueryRowsContext(ctx)
 		}},
 		{"update", func() *Rows {
 			return db.Update().Table("t").Set(Set("value", 1)).Returning("value").QueryRowsContext(ctx)
@@ -91,7 +91,7 @@ func TestScanOptionsFuncDeferredQuerySnapshots(t *testing.T) {
 			return db.Select("value").From("t").QueryRowContext(ctx)
 		},
 		func() Row {
-			return db.Insert().Into("t").Row(ColValue("value", 1)).Returning("value").QueryRowContext(ctx)
+			return db.Insert().Into("t").Row(NewColumnValue("value", 1)).Returning("value").QueryRowContext(ctx)
 		},
 		func() Row {
 			return db.Update().Table("t").Set(Set("value", 1)).Returning("value").QueryRowContext(ctx)

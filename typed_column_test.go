@@ -102,8 +102,8 @@ func TestTypedColumnBuilders(t *testing.T) {
 				Where(id.Eq(7)).SetDialect(tc.d), tc.update, int64(18), "Alice", userID(7))
 			checkSQL(t, Insert().Into("users").
 				Row(
-					age.ColValue(18), name.ColValue("Alice"),
-					backup.ColValueExpr(Func("LENGTH", "abc")),
+					age.InsertValue(18), name.InsertValue("Alice"),
+					backup.InsertValueExpr(Func("LENGTH", "abc")),
 				).
 				SetDialect(tc.d), tc.insert, int64(18), "Alice", "abc")
 		})
@@ -136,7 +136,7 @@ func TestTypedColumnExpressions(t *testing.T) {
 		`UPDATE "users" SET "age"=DEFAULT`)
 	checkSQL(t,
 		Insert().Into("users").
-			Row(age.ColValueExpr(Default())).
+			Row(age.InsertValueExpr(Default())).
 			SetDialect(dialect.Postgres),
 		`INSERT INTO "users" ("age") VALUES (DEFAULT)`)
 	checkBuildError(t,
@@ -146,7 +146,7 @@ func TestTypedColumnExpressions(t *testing.T) {
 
 	for _, b := range []templateBuilder{
 		Update().Table("users").Set(age.SetExpr(Expr("? + ?", 1))),
-		Insert().Into("users").Row(age.ColValueExpr(Expr("? + ?", 1))),
+		Insert().Into("users").Row(age.InsertValueExpr(Expr("? + ?", 1))),
 	} {
 		checkBuildError(t, b)
 		if _, err := b.Compile(); err == nil {
@@ -245,7 +245,7 @@ func TestTypedColumnTemplates(t *testing.T) {
 		}
 	}
 
-	insert := mustCompileTemplate(t, Insert().Into("users").Row(age.ColValueExpr(Param(0)), name.ColValue("Alice")).SetDialect(dialect.Postgres))
+	insert := mustCompileTemplate(t, Insert().Into("users").Row(age.InsertValueExpr(Param(0)), name.InsertValue("Alice")).SetDialect(dialect.Postgres))
 	query, args, err := insert.Bind(int64(18))
 	if err != nil || query != `INSERT INTO "users" ("age", "name") VALUES ($1, $2)` || !reflect.DeepEqual(args, []any{int64(18), "Alice"}) {
 		t.Fatal(query, args, err)

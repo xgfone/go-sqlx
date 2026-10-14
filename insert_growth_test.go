@@ -143,7 +143,7 @@ func TestInsertGrowthWideFailureCleanup(t *testing.T) {
 			named := make([]ColumnValue, width)
 			input := new([4096]byte)
 			for col := range width {
-				named[col] = ColValue(fmt.Sprintf("c%d", col), input)
+				named[col] = NewColumnValue(fmt.Sprintf("c%d", col), input)
 			}
 
 			named[width-1].Column = "missing"

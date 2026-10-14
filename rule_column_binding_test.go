@@ -68,7 +68,7 @@ func TestColumnFamilyBinding(t *testing.T) {
 	for _, d := range []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite} {
 		for _, tc := range cases {
 			for role, roleName := range []string{"Column", "TypedColumn", "RuleColumn"} {
-				for _, operation := range []string{"Set", "ColValue"} {
+				for _, operation := range []string{"Set", "InsertValue"} {
 					t.Run(d.Name()+"/"+roleName+"/"+operation+"/"+tc.name, func(t *testing.T) {
 						calls := 0
 						ruled := base.WithValueRule(ValueRuleFunc(func(v any) (any, error) {
@@ -96,11 +96,11 @@ func TestColumnFamilyBinding(t *testing.T) {
 							var cell ColumnValue
 							switch role {
 							case 0:
-								cell = base.ColValue(tc.input)
+								cell = base.InsertValue(tc.input)
 							case 1:
-								cell = typed.ColValue(tc.input)
+								cell = typed.InsertValue(tc.input)
 							case 2:
-								cell = ruled.ColValue(tc.input)
+								cell = ruled.InsertValue(tc.input)
 							}
 							b = Insert().Into("t").Row(cell).SetDialect(d)
 						}
@@ -195,8 +195,8 @@ func TestRuleColumnApplyTemplateBinding(t *testing.T) {
 				},
 			},
 			{
-				"ColValue", func(c Column, v any) templateBuilder {
-					return Insert().Into("t").Row(c.ColValue(v)).SetDialect(d)
+				"InsertValue", func(c Column, v any) templateBuilder {
+					return Insert().Into("t").Row(c.InsertValue(v)).SetDialect(d)
 				},
 			},
 		} {

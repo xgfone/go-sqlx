@@ -17,6 +17,7 @@ updates, sorting and pagination passed to SQLx with native clauses:
 | ------------------------------------- | --------------------------------------- |
 | `Where(op.Equal("id", id))`           | `Where(sqlx.Eq("id", id))`              |
 | `Set(op.Set("name", value))`          | `Set(sqlx.Set("name", value))`          |
+| `op.Batch(updaters...)`               | `sqlx.CombineUpdaters(updaters...)`     |
 | `Sort(op.KeyId.OrderDesc())`          | `Sort(sqlx.Column("id").Desc())`        |
 | `op.KeyId.Scope("u")`                 | `sqlx.Column("id").Qualify("u")`        |
 | `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` |
@@ -26,14 +27,6 @@ The new interfaces are independent of `go-op` operation trees. Replace
 `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` and `OpBuilderFunc`
 with implementations of `Condition` or `Updater`, or an application adapter.
 The module does not distribute a `go-op` adapter.
-
-Column qualification uses `Column.Qualify(qualifier)` and
-`TypedColumn[T].Qualify(qualifier)`. Replace the earlier v1 `Scope` method calls
-with `Qualify`; no `Scope` compatibility methods remain. Qualification prepends
-a table, alias, or dot-separated path without changing the original column or
-the typed column's `T`. Empty qualifiers leave the path unchanged; repeated calls
-prepend further qualifiers rather than replacing existing ones. For example,
-`sqlx.Column("id").Qualify("users").Qualify("app")` returns `"app.users.id"`.
 
 ## Build results and execution
 
@@ -77,29 +70,43 @@ build errors before calling the executor. Use `Query` methods for `RETURNING`;
 | `NewSelectBuilder`, `NewInsertBuilder`, etc.; `db.SelectBuilder`, etc. | Package/`DB` `Select`, `Insert`, `Update`, `Delete`                                   |
 | `Selects`, `Froms`, `Sorts`                                            | Variadic `Select`, `From`, `Sort`                                                     |
 | Package/`DB`/`Table` `SelectAlias`                                     | `Select().SelectAlias(...)`                                                           |
+| `Namer`, builder `SelectNamers`                                        | `NamedColumn`, builder `SelectNamedColumns`                                           |
+| Builder `SelectedColumns()`                                            | `SelectedNames()`                                                                     |
+| Builder `SelectedFullColumns()`                                        | `SelectedColumns()`                                                                   |
 | Package/`DB` `SelectStruct(model)`                                     | `Select().SelectStruct(model)`                                                        |
 | Package/`DB`/builder `SelectStructWithTable(model, qualifier)`         | `Select().SelectStruct(model, qualifier)` or builder `SelectStruct(model, qualifier)` |
 | `Table` `SelectStructWithTable(model, qualifier)`                      | `table.Select().SelectStruct(model, qualifier)`                                       |
 | Builder `Sum`, `SelectCount`, `SelectCountDistinct`                    | `SelectExpr(sqlx.Sum(...))`, `SelectExpr(sqlx.Count(...))`, etc.                      |
 | `JoinInner`, `JoinLeftOuter`, `JoinRightOuter`, `JoinFullOuter`        | `Join`, `JoinLeft`, `JoinRight`, `JoinFull`                                           |
-| `JoinOn`                                                               | `sqlx.Condition`; `On` compares column paths                                          |
+| `JoinOn`                                                               | `sqlx.Condition`; `EqColumn` compares column paths for equality                       |
 | `OnArg(left, right)`                                                   | `Eq(left, right)` for a bound value                                                   |
 | `Having(string...)`                                                    | `Having(Expr(sql, args...).Condition())` or native conditions                         |
 | `WhereNamedArgs`, `SetNamedArg`                                        | For each arg, `Where(Eq(arg.Name, arg.Value))` / `Set(sqlx.Set(arg.Name, arg.Value))` |
 | `IgnoreColumns`, `ForceOrderBy`                                        | Choose projection explicitly; specify ordering directly                               |
-| `Insert.NamedValues`, `Insert.Ops`                                     | `Row(ColValue(column, value), ...)` or `Columns(...).Values(...)`                     |
+| `Insert.NamedValues`, `Insert.Ops`                                     | `Row(NewColumnValue(column, value), ...)` or `Columns(...).Values(...)`               |
 | `ValuesFromStructs`                                                    | `Structs`                                                                             |
 | `GrowValues`                                                           | Removed allocation control                                                            |
 | `IgnoreInto(table)`, `ReplaceInto(table)`                              | `Into(table).Ignore()`, `Into(table).Replace()`                                       |
 | `Table.InsertInto`, `Table.DeleteFrom(conditions...)`                  | `Table.Insert()`, `Table.Delete().Where(conditions...)`                               |
 | `Table.Update(updaters...)`                                            | `Table.Update().Set(updaters...)`                                                     |
+| `Table.GetDB()`                                                        | `Table.DB()`                                                                          |
 
 `Count`, `CountDistinct` and `Sum` now return `Expression` rather than raw SQL strings.
 Pass them to `SelectExpr`, or `SelectExprAlias` when an output alias is needed.
 In the old `NamedValues`/`WhereNamedArgs`/`SetNamedArg` helpers, `sql.Named.Name`
-identified a column. Convert those pairs to `ColValue`/`Eq`/`Set` using `Name` and `Value`
+identified a column. Convert those pairs to `NewColumnValue`/`Eq`/`Set` using `Name` and `Value`
 separately. In v1, a `sql.NamedArg` supplied as a value identifies a bound SQL
 parameter, not an `INSERT` column.
+
+Custom column providers must return `[]NamedColumn` from their `Columns` method
+instead of `[]Namer`. The v0.51.1 `SelectedColumns` method becomes `SelectedNames`:
+it returns result aliases or inferred output names, using the final component of
+an unaliased column path. The v0.51.1 `SelectedFullColumns` method becomes
+`SelectedColumns`: it returns declared paths with qualifying prefixes or expression
+display texts, excluding result aliases. Both retain selection order and do not
+expand wildcards. Expression display texts may be empty; use a result alias when a
+declared name is needed, `Build` for SQL, and the result's `Columns` for actual labels.
+
 Strings supplied as columns are quoted identifier paths; raw SQL belongs in
 `Expr`. Use `Ident` for explicit references and `Value` to bind data explicitly.
 An arithmetic string that previously meant a column reference must become an
@@ -183,8 +190,8 @@ and [connection options](README.md#connection-options).
 method on custom executors; closing and `BeginTx` are separate capabilities. `DB`
 accepts `*sql.DB`, `*sql.Tx` and `*sql.Conn`. Use `db.WithExecutor(tx)` to bind
 a transaction, or `SetExecutor` for one builder. `Table`'s `DB` reference is private;
-replace direct field access with `GetDB`, `SetDB` or `WithDB`. `Table` no longer
-promotes `DB` methods; call them through `table.GetDB()`. `DB.Reset` is removed;
+replace direct field access with `DB()`, `SetDB` or `WithDB`. `Table` no longer
+promotes `DB` methods; call them through `table.DB()`. `DB.Reset` is removed;
 create a new `DB` or use the configuration setters.
 
 `DB.Interceptor`, `InterceptorFunc`, `Interceptors`, `Intercept`, `SqlCollector`
@@ -217,7 +224,7 @@ Duplicate mappings and recursive models fail preparation.
 `SelectStruct` is a generic method with its model type inferred from the argument.
 For type-only selection, use `SelectType[Model]()`; untyped `nil` is not a model.
 `ColumnProvider` output is evaluated per call. Binding uses driver result labels,
-including wildcard expansion and aliases, rather than inferred `SelectedColumns`.
+including wildcard expansion and aliases, rather than inferred `SelectedNames`.
 Unknown labels fail by default; enable `ScanOptions.IgnoreUnknownColumns` to
 ignore them. Duplicate labels mapping to the same field require explicit aliases.
 
@@ -268,12 +275,15 @@ and call cursor methods directly, including `NextResultSet` and `ColumnTypes`.
 | `DefaultRowsCap`                                                                     | Immutable `DefaultRowsCapacity`; override `Capacity` locally        |
 | `DefaultRowScanWrapper`, `RowScannerWrapper`, `WithScanner`, `WithRowScannerWrapper` | `ScanOptions`, custom `sql.Scanner`, or `RowsBinder`                |
 | `CommonSliceRowsBinder`                                                              | `SliceRowsBinder{}`                                                 |
+| `MixRowsBinder`, `NewMixRowsBinder`                                                  | `RowsBinderRegistry`, `NewRowsBinderRegistry`                       |
+| Read/assign `DefaultMixRowsBinder`                                                   | `DefaultRowsBinderRegistry()` / `SetDefaultRowsBinderRegistry(...)` |
 | `NewDegradedSliceRowsBinder[S](fallback)`                                            | `ComposeRowsBinders(NewSliceRowsBinder[S](), fallback)`             |
 | `NewMapRowsBinderForKeyValue`                                                        | `NewMapPairsBinder`                                                 |
 | `NewMapRowsBinderForValue`                                                           | `NewMapIndexBinder`                                                 |
 | `NewMapRowsBinderForKey`, `NewMapRowsBinderForKeyAndFixedValue`                      | `NewMapSetBinder` for sets; custom binders for derived/fixed values |
 | `RegisterMapRowsBinder`                                                              | `registry.RegisterType[*map[K]V](NewMapIndexBinder[map[K]V](key))`  |
 | `Row.Next`                                                                           | Removed; `Row` is not an iterator                                   |
+| `CheckErrNoRows(err)`                                                                | `RowFound(err)`; the boolean still reports whether a row was found  |
 
 `Rows` setters mutate the same result. `Row.WithColumns` retains value semantics.
 `SetColumns` overrides expire at the next result set; collection helpers consume
@@ -374,11 +384,13 @@ Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
 | v0.51.1 `Oper` API                                                     | v1 replacement                                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `Sorter`, `WithSorter`                                                 | `StructSorter`, `WithStructSorter`                                             |
+| `Gets`, `CountGets`, `Exist`                                           | `GetMany`, `GetManyWithCount`, `Exists`                                        |
+| `SoftCondition`, `WithSoftCondition`                                   | `ActiveCondition`, `WithActiveCondition`                                       |
 | `WithRowsBinder`, `RowsBinder`, `AppendRowsBinders`                    | `WithBinder`/`WithBindConfig`; `ComposeRowsBinders` for explicit fallback      |
-| `SoftGet`, `SoftGets`, `SoftCount`, `SoftExist`, etc.                  | `Active().Get/Gets/Count/Exist`, etc.                                          |
+| `SoftGet`, `SoftGets`, `SoftCount`, `SoftExist`, etc.                  | `Active().Get/GetMany/Count/Exists`, etc.                                      |
 | `SoftSelect`, `SoftUpdate`                                             | `Active().Select/SelectStruct`, `Active().Update`                              |
-| `Query`, `CountQuery` and soft variants                                | `Gets`/`CountGets` with `sqlx.PageSize`, optionally through `Active`           |
-| `GetAll`, `SoftGetAll`                                                 | `Gets(ctx, nil)`, optionally through `Active`                                  |
+| `Query`, `CountQuery` and soft variants                                | `GetMany`/`GetManyWithCount` with `sqlx.PageSize`, optionally through `Active` |
+| `GetAll`, `SoftGetAll`                                                 | `GetMany(ctx, nil)`, optionally through `Active`                               |
 | `Sum`, `SumInt`, `SumInt64`, `SumFloat`, `SumString` and soft variants | `Aggregate`/`AggregateValue[R]` with `sqlx.Sum`                                |
 | `CountDistinct` and soft variant                                       | `Aggregate`/`AggregateValue[R]` with `sqlx.CountDistinct`                      |
 | `Add`                                                                  | `Insert`                                                                       |
@@ -390,16 +402,16 @@ Replace `NewOperWithTable[T](table)` with `table.NewOper[T]()`.
 
 There is no implicit `id` column or default ordering. Configure
 `WithStructSorter(sqlx.Column("id").Desc())` when required. It applies only to
-`SelectStruct`/`Get`/`Gets` and `CountGets`' data query; `Select`/`SelectColumns`
-and aggregate queries do not inherit it.
+`SelectStruct`/`Get`/`GetMany` and `GetManyWithCount`'s data query;
+`Select`/`SelectColumns` and aggregate queries do not inherit it.
 
 `Insert`/`Update`/`Delete`/`SoftDelete` return `error`. Use their `Result` variants
-when execution metadata is needed. `Count`/`CountGets` now return `int64` counts.
-`CountGets` does not shrink the requested page size from the count and validates
+when execution metadata is needed. `Count`/`GetManyWithCount` now return `int64` counts.
+`GetManyWithCount` does not shrink the requested page size from the count and validates
 pagination before querying. `Update` with a `nil` updater now skips execution.
 
 Soft-delete defaults change from `go-op` zero-date conventions to `deleted_at`
-`IS NULL`/`IS NOT NULL` and the current time. Configure `WithSoftCondition`,
+`IS NULL`/`IS NOT NULL` and the current time. Configure `WithActiveCondition`,
 `WithDeletedCondition` and `WithSoftDeleteUpdater` for the application's schema.
 The updater callback changes from `func(context.Context) op.Updater` to
 `func() sqlx.Updater`; use `Active().Update` for request-specific values.

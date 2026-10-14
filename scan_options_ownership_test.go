@@ -19,11 +19,11 @@ func TestBindersShareImmutableScanOptions(t *testing.T) {
 	}
 
 	want := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
-	registry := NewMixRowsBinder()
+	registry := NewRowsBinderRegistry()
 	registry.RegisterType[*[]record](NewSliceRowsBinder[[]record]())
-	nested := NewMixRowsBinder()
+	nested := NewRowsBinderRegistry()
 	nested.RegisterType[*[]record](registry)
-	outer := NewMixRowsBinder()
+	outer := NewRowsBinderRegistry()
 	outer.RegisterType[*[]record](nested)
 	composition := ComposeRowsBinders(NewSliceRowsBinder[[]int](), NewSliceRowsBinder[[]record]())
 
@@ -182,9 +182,9 @@ func TestBindersShareImmutableScanOptions(t *testing.T) {
 }
 
 func TestCustomBinderDelegationCopiesBeforeModifyingLayouts(t *testing.T) {
-	registry := NewMixRowsBinder()
+	registry := NewRowsBinderRegistry()
 	registry.RegisterType[*[]time.Time](ComposeRowsBinders(NewSliceRowsBinder[[]time.Time]()))
-	nested := NewMixRowsBinder()
+	nested := NewRowsBinderRegistry()
 	nested.RegisterType[*[]time.Time](registry)
 	for _, delegate := range []RowsBinder{
 		NewSliceRowsBinder[[]time.Time](), SliceRowsBinder{},
@@ -268,9 +268,9 @@ func TestCompositionCandidatesCopyBeforeModifyingLayouts(t *testing.T) {
 
 			var binder = ComposeRowsBinders(first, second)
 			if route == "mixed_routing" {
-				inner := NewMixRowsBinder()
+				inner := NewRowsBinderRegistry()
 				inner.RegisterType[*[]time.Time](second)
-				outer := NewMixRowsBinder()
+				outer := NewRowsBinderRegistry()
 				outer.RegisterType[*[]time.Time](inner)
 				binder = ComposeRowsBinders(first, ComposeRowsBinders(outer))
 			}
@@ -320,7 +320,7 @@ func TestNestedRegistrySelectionRemainsAuthoritative(t *testing.T) {
 				return nil, cause
 			})
 			for range 3 {
-				registry := NewMixRowsBinder()
+				registry := NewRowsBinderRegistry()
 				registry.RegisterType[*[]int64](binder)
 				binder = registry
 			}
@@ -384,9 +384,9 @@ func TestCompactPoliciesPreserveProviderAndCustomBinderIsolation(t *testing.T) {
 	delegated := time.FixedZone("binder", 9*60*60)
 	changed := time.FixedZone("changed", -5*60*60)
 	typed := NewSliceRowsBinder[[]time.Time]()
-	registry := NewMixRowsBinder()
+	registry := NewRowsBinderRegistry()
 	registry.RegisterType[*[]time.Time](ComposeRowsBinders(typed))
-	outer := NewMixRowsBinder()
+	outer := NewRowsBinderRegistry()
 	outer.RegisterType[*[]time.Time](registry)
 	for _, delegate := range []RowsBinder{typed, SliceRowsBinder{}, ComposeRowsBinders(typed), outer} {
 		t.Run(reflect.TypeOf(delegate).String(), func(t *testing.T) {

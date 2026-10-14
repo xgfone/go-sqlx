@@ -35,7 +35,7 @@ func BenchmarkInsertPlanWorkloads(b *testing.B) {
 
 func runInsertPlanWorkloads[T any](b *testing.B, rows []T, width int) {
 	b.Helper()
-	p, err := CompileInsert[T]()
+	p, err := CompileInsertPlan[T]()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -52,16 +52,16 @@ func runInsertPlanWorkloads[T any](b *testing.B, rows []T, width int) {
 
 var insertPlanResult any
 
-func BenchmarkCompileInsert(b *testing.B) {
+func BenchmarkCompileInsertPlan(b *testing.B) {
 	for _, width := range []int{3, 12} {
 		b.Run(fmt.Sprintf("cols%d", width), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				var err error
 				if width == 3 {
-					insertPlanResult, err = CompileInsert[insertBenchmarkRecord]()
+					insertPlanResult, err = CompileInsertPlan[insertBenchmarkRecord]()
 				} else {
-					insertPlanResult, err = CompileInsert[insertBenchmarkWide]()
+					insertPlanResult, err = CompileInsertPlan[insertBenchmarkWide]()
 				}
 				if err != nil {
 					b.Fatal(err)
@@ -127,7 +127,7 @@ func BenchmarkInsertPlanOmitModes(b *testing.B) {
 		Value int64 `sql:",omitempty"`
 	}
 
-	plan, err := CompileInsert[record]()
+	plan, err := CompileInsertPlan[record]()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func BenchmarkInsertPlanOmitModes(b *testing.B) {
 
 func benchmarkInsertPlanInput[T any](b *testing.B, rows []T) {
 	b.Helper()
-	p, err := CompileInsert[T]()
+	p, err := CompileInsertPlan[T]()
 	if err != nil {
 		b.Fatal(err)
 	}

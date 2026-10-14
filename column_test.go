@@ -19,7 +19,7 @@ func TestColumnQualifiedQuery(t *testing.T) {
 	}
 	columns := []Column{uid, oid}
 	q := Select().SelectColumns(columns...).Select("name").
-		FromAlias("users", "u").Join("orders", "o", uid.On(oid)).Where(Eq(uid, 123)).
+		FromAlias("users", "u").Join("orders", "o", uid.EqColumn(oid)).Where(Eq(uid, 123)).
 		Sort(uid.Asc(), oid.Desc()).SetDialect(dialect.Postgres)
 
 	columns[0] = Column("changed")
@@ -40,7 +40,7 @@ func TestSelectColumnsEntrypoints(t *testing.T) {
 
 	q := oper.SelectColumns(id)
 	checkSQL(t, q, `SELECT "id" FROM "users" WHERE ("id" = $1)`, 7)
-	if q.GetDB() != db || q.bconfig != oper.bindConfig {
+	if q.DB() != db || q.bconfig != oper.bindConfig {
 		t.Fatal("SelectColumns lost operation configuration")
 	}
 	checkSQL(t, oper.SelectColumns().Select("id"),
@@ -74,11 +74,11 @@ func testSelectColumnsSlice(t *testing.T, columns []Column) {
 	checkSQL(t, db.SelectColumns(columns[:0]...).Select("id"), `SELECT "id"`)
 }
 
-func TestColumnOnStringPaths(t *testing.T) {
+func TestColumnEqColumnStringPaths(t *testing.T) {
 	const id Column = "u.id"
 	type path string
 	right := "o.user_id"
-	for _, cond := range []Condition{id.On(right), id.On(path(right)), id.On("o.user_id")} {
+	for _, cond := range []Condition{id.EqColumn(right), id.EqColumn(path(right)), id.EqColumn("o.user_id")} {
 		checkSQL(t, Select("id").Where(cond).SetDialect(dialect.Postgres),
 			`SELECT "id" WHERE "u"."id"="o"."user_id"`)
 	}
@@ -102,10 +102,10 @@ func TestColumnExpressionsAndNamedValues(t *testing.T) {
 			FromAlias("orders", "o").SetDialect(dialect.Postgres),
 		`SELECT COUNT("o"."amount"), COUNT(DISTINCT "o"."amount"), SUM("o"."amount"), MIN("o"."amount"), MAX("o"."amount"), AVG("o"."amount") FROM "orders" AS "o"`)
 	checkSQL(t,
-		Select().SelectNamers(c.As("order.amount")).FromAlias("orders", "o").SetDialect(dialect.Postgres),
+		Select().SelectNamedColumns(c.As("order.amount")).FromAlias("orders", "o").SetDialect(dialect.Postgres),
 		`SELECT "o"."amount" AS "order.amount" FROM "orders" AS "o"`)
 	checkSQL(t,
-		Insert().Into("orders").Row(amount.ColValue(12)).SetDialect(dialect.Postgres),
+		Insert().Into("orders").Row(amount.InsertValue(12)).SetDialect(dialect.Postgres),
 		`INSERT INTO "orders" ("amount") VALUES ($1)`,
 		12)
 

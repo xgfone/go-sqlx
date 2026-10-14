@@ -64,9 +64,9 @@ func ExampleInsertBuilder() {
 }
 
 func ExampleInsertBuilder_Row() {
-	v1 := ColValue("column1", "value1")
-	v2 := ColValue("column2", "value2")
-	v3 := ColValue("column3", "value3")
+	v1 := NewColumnValue("column1", "value1")
+	v2 := NewColumnValue("column2", "value2")
+	v3 := NewColumnValue("column3", "value3")
 
 	insert := Insert().Into("table").Row(v1, v2, v3)
 	sql, args := insert.MustBuild()
@@ -80,10 +80,10 @@ func ExampleInsertBuilder_Row() {
 }
 
 func TestInsertAlignmentDefaultsAndErrors(t *testing.T) {
-	checkSQL(t, Insert().Into("t").Row(ColValue("a", 1), ColValue("b", 2)).Row(ColValue("b", 3), ColValue("a", 4)),
+	checkSQL(t, Insert().Into("t").Row(NewColumnValue("a", 1), NewColumnValue("b", 2)).Row(NewColumnValue("b", 3), NewColumnValue("a", 4)),
 		"INSERT INTO `t` (`a`, `b`) VALUES (?, ?), (?, ?)", 1, 2, 4, 3)
-	checkBuildError(t, Insert().Into("t").Row(ColValue("a", 1)).Row(ColValue("b", 2)))
-	checkBuildError(t, Insert().Into("t").Row(ColValue("a", 1), ColValue("a", 2)))
+	checkBuildError(t, Insert().Into("t").Row(NewColumnValue("a", 1)).Row(NewColumnValue("b", 2)))
+	checkBuildError(t, Insert().Into("t").Row(NewColumnValue("a", 1), NewColumnValue("a", 2)))
 	checkBuildError(t, Insert().Into("t").Columns("id"))
 
 	if r, e := Insert().Into("t").Columns("id").ExecContext(context.Background()); e == nil || r != nil {

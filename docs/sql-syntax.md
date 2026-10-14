@@ -65,11 +65,11 @@ Constructor paths accept `C ~string`, including `Column` and defined string type
 
 Data methods require values assignable to `T`. An `int64` column accepts integer
 constants but needs conversion from an `int` variable; defined business types
-remain distinct. `SetFrom` and `On` require another `TypedColumn[T]`. Expression
+remain distinct. `SetFrom` and `EqColumn` require another `TypedColumn[T]`. Expression
 methods accept explicit SQL without checking its result type against `T`.
 Driver conversion is deferred; neither form validates database metadata or SQL
 operator support. Declaring `T` as `any` or an interface weakens static checking.
-Assignments use `Set`/`SetNamed`/`ColValue`; explicit SQL uses `SetExpr`/`ColValueExpr`.
+Assignments use `Set`/`SetNamed`/`InsertValue`; explicit SQL uses `SetExpr`/`InsertValueExpr`.
 `EqExpr`/`NeExpr` provide the corresponding expression comparisons.
 
 ```go
@@ -101,7 +101,7 @@ of `T`. Nullable wrappers bind without calling `Valuer` to determine `NULL` pred
 Typed data methods add `Value` around each operand. Ordinary `Expression` objects,
 including `Value` wrappers, remain bound data when `T` admits them. Expression
 methods render Expressions; `Value` in an expression method binds its contents.
-For `Set`/`ColValue`, the column families differ as follows; processed `v` is
+For `Set`/`InsertValue`, the column families differ as follows; processed `v` is
 a rule's result:
 
 | Input                 | `Column`                       | `TypedColumn[any]`             | `RuleColumn`        |
@@ -126,12 +126,12 @@ Direct `Param` named values fail `Build`/`Compile`, even with an empty name.
 
 #### RuleColumn preprocessing
 
-`Apply`, `Set` and `ColValue` recursively unwrap `Value`, including within `sql.Named`,
+`Apply`, `Set` and `InsertValue` recursively unwrap `Value`, including within `sql.Named`,
 then apply the rule once to non-`nil` data. Nil interfaces/pointers bypass the rule;
 argument names are retained, and nested named arguments are rejected. Expressions,
 SQL builders and Params are rejected through wrappers as well.
 
-Use `Column().Set`/`ColValue` for SQL expressions or template slots. Process runtime
+Use `Column().Set`/`InsertValue` for SQL expressions or template slots. Process runtime
 data with `Apply` before `Bind`; `Build`/`Compile`/`Bind` do not retain or rerun the rule.
 `Apply(sql.Named(name, data))` returns a named argument suitable for static binding.
 For a runtime slot, apply its `Value` field instead: `Bind` rejects `sql.NamedArg`,
@@ -140,16 +140,16 @@ including empty names.
 ### Typed selection, ordering and joins
 
 `Asc`/`Desc` return `SortColumn`; set `Nulls` explicitly when needed. `As(alias)`
-returns a `Namer`, quoting the alias as one identifier without changing the column.
-`On(other TypedColumn[T])` compares column references. Use `EqExpr(other.Ref())`
-when the declared Go types differ:
+returns a `NamedColumn`, quoting the alias as one identifier without changing the column.
+`EqColumn(other TypedColumn[T])` compares column references for equality.
+Use `EqExpr(other.Ref())` when the declared Go types differ:
 
 ```go
 id := sqlx.NewTypedColumn[int64]("id").Qualify("u")
-owner := sqlx.NumericColumn[int64]("user_id").Qualify("o")
+owner := sqlx.NewNumericColumn[int64]("user_id").Qualify("o")
 name := sqlx.NewTypedColumn[string]("name").Qualify("u")
-q := sqlx.Select().SelectNamers(name.As("user.name")).FromAlias("users", "u").
-    Join("orders", "o", id.On(owner)).Sort(name.Asc(), id.Desc())
+q := sqlx.Select().SelectNamedColumns(name.As("user.name")).FromAlias("users", "u").
+    Join("orders", "o", id.EqColumn(owner)).Sort(name.Asc(), id.Desc())
 ```
 
 ### Typed aggregates and scalar functions
@@ -168,7 +168,7 @@ Arguments follow the shared binding rules and SQL `NULL` semantics. For a nullab
 `T`, `CoalesceExpr(Value(...))` can supply a fallback with a different Go type.
 
 ```go
-amount := sqlx.NumericColumn[int64]("amount")
+amount := sqlx.NewNumericColumn[int64]("amount")
 q := sqlx.Select().SelectExpr(
     amount.Sum(), amount.Cast("DECIMAL(12,2)"), amount.Coalesce(0),
     amount.NullIfExpr(sqlx.Param(0)),
@@ -239,21 +239,21 @@ q := sqlx.Update().Table("users").Set(
 
 Typed operands follow the shared data/expression rules. SQL precedence, `NULL`
 propagation and division follow the arithmetic helpers below. `DEFAULT` is invalid
-as an arithmetic expression. `NumericColumn` adds a construction-time `Number`
+as an arithmetic expression. `NewNumericColumn` adds a construction-time `Number`
 constraint without changing these methods.
 
 ## Numeric column declarations
 
-`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` requires `T` to be
+`NewNumericColumn[T Number, C ~string](column C) TypedColumn[T]` requires `T` to be
 an integer other than `uintptr`, a floating-point type, or a defined type with one
 of those underlying types. It shares `NewTypedColumn`'s path constraints and
 returns `TypedColumn[T]`:
 
 ```go
-score := sqlx.NumericColumn[int64]("score")
+score := sqlx.NewNumericColumn[int64]("score")
 backup := sqlx.NewTypedColumn[int64]("backup_score")
 backup.SetFrom(score)
-// sqlx.NumericColumn[string]("name") // Does not compile.
+// sqlx.NewNumericColumn[string]("name") // Does not compile.
 ```
 
 Pointers, nullable wrappers and struct-based decimals can use `NewTypedColumn`
@@ -282,7 +282,7 @@ an explicit `Expression`; `Value` binds its contents without numeric validation
 or `Valuer` conversion. Non-`Param` expression operands are parenthesized.
 Arithmetic retains SQL `NULL` propagation; division emits `/` without casts
 or local zero checks, so rounding, integer division and division by zero follow
-the database. Updaters compose with `Batch`, `Oper.Update` and conflict updates.
+the database. Updaters compose with `CombineUpdaters`, `Oper.Update` and conflict updates.
 `RuleColumn` arithmetic uses its base `Column` and does not apply the rule.
 
 ## Sources and joins
@@ -296,7 +296,7 @@ input := sqlx.ValuesSource("input", []string{"id", "new_value"},
     []any{1, "one"}, []any{2, "two"},
 )
 q := sqlx.Select("t.id", "input.new_value").FromAlias("items", "t").
-    JoinSource(sqlx.LeftJoin, input, sqlx.On("t.id", "input.id"))
+    JoinSource(sqlx.LeftJoin, input, sqlx.EqColumn("t.id", "input.id"))
 ```
 
 `JoinSource` takes `InnerJoin`, `LeftJoin`, `RightJoin`, `FullJoin`, or
@@ -421,7 +421,7 @@ snapshots must be independent of later source mutations and safe for concurrent
 rendering. SQL must match the declared kind (`CTESelect`/`CTEInsert`/`CTEUpdate`/`CTEDelete`)
 and supplied dialect.
 
-Use `BuildContext.WriteQuote`, `WriteArg`, and `WriteValue` to append to the
+Use `BuildContext.WriteQuotedPath`, `WriteArg`, and `WriteValue` to append to the
 borrowed buffer with the parent's bindings. Do not reset or retain the buffer or
 context. Rendering errors, invalid kinds and `nil` bodies/snapshots fail `Build`.
 
@@ -488,7 +488,7 @@ restrictions on aggregate/window expressions and outer joins. Expressions are
 rendered without a query-level semantic check.
 
 `INSERT`, `UPDATE`, and `DELETE` `RETURNING` expressions must follow the target
-database's aggregate/window restrictions. `On` SQLite, use `Returning("*")`,
+database's aggregate/window restrictions. On SQLite, use `Returning("*")`,
 unqualified column names, or the actual target table name such as `Returning("items.id")`.
 Qualified wildcards (`items.*`), target aliases, other tables, and schema-qualified
 column references are not supported by SQLite. `Build` does not check these `RETURNING`

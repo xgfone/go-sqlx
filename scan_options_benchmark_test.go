@@ -37,14 +37,14 @@ func BenchmarkScanOptionsBinding(b *testing.B) {
 		{"location_zero_date_layouts", ScanOptions{Location: time.Local, AllowZeroDate: true, TimeLayouts: layouts[:2]}},
 	}
 	typed := NewSliceRowsBinder[[]scanOptionsBenchmarkRecord]()
-	inner := NewMixRowsBinder()
+	inner := NewRowsBinderRegistry()
 	inner.RegisterType[*[]scanOptionsBenchmarkRecord](typed)
-	middle := NewMixRowsBinder()
+	middle := NewRowsBinderRegistry()
 	middle.RegisterType[*[]scanOptionsBenchmarkRecord](inner)
-	outer := NewMixRowsBinder()
+	outer := NewRowsBinderRegistry()
 	outer.RegisterType[*[]scanOptionsBenchmarkRecord](middle)
 	composition := ComposeRowsBinders(NewSliceRowsBinder[[]int64](), typed)
-	mixed := NewMixRowsBinder()
+	mixed := NewRowsBinderRegistry()
 	mixed.RegisterType[*[]scanOptionsBenchmarkRecord](ComposeRowsBinders(
 		NewSliceRowsBinder[[]int64](), ComposeRowsBinders(outer),
 	))

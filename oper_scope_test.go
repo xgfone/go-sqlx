@@ -49,7 +49,7 @@ func TestOperCloneAndWhereBranches(t *testing.T) {
 	}
 	base := NewOper[model]("t").WithDB(&DB{Dialect: dialect.Postgres}).
 		WithStructSorter(Column("id").Desc()).
-		WithSoftCondition(Eq("deleted", false)).
+		WithActiveCondition(Eq("deleted", false)).
 		WithDeletedCondition(Eq("deleted", true)).
 		WithBindConfig(BindConfig{ScanOptions: ScanOptions{Nulls: NullError}})
 	// The source has spare capacity, so independently appending after Clone

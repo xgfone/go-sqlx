@@ -30,7 +30,7 @@ func TestTypedColumnArithmetic(t *testing.T) {
 		t.Run(tc.d.Name(), func(t *testing.T) {
 			checkSQL(t,
 				Update().Table("t").
-					Set(Batch(
+					Set(CombineUpdaters(
 						score.Add(-2), balance.Sub(2.5),
 						factor.Mul(3), ratio.Div(2),
 						visits.Inc(), remaining.Dec(),

@@ -89,7 +89,8 @@ func (b *SelectBuilder) SelectExprAlias(e Expression, alias string) *SelectBuild
 	return b
 }
 
-func (b *SelectBuilder) SelectNamers(cols ...Namer) *SelectBuilder {
+// SelectNamedColumns appends column paths with optional result aliases.
+func (b *SelectBuilder) SelectNamedColumns(cols ...NamedColumn) *SelectBuilder {
 	for _, c := range cols {
 		b.SelectAlias(c.Name, c.Alias)
 	}
@@ -221,9 +222,12 @@ func (b *SelectBuilder) Reset() *SelectBuilder {
 	return b
 }
 
-// SelectedColumns reports declared output names. Actual query binding uses the
-// driver's column metadata, including wildcard expansion and computed names.
-func (b *SelectBuilder) SelectedColumns() []string {
+// SelectedNames returns one inferred output name per selection, in selection order.
+// A result alias takes precedence; otherwise column paths use their final component
+// and expression display names are inferred from the stored text. Expressions
+// without a display name may yield an empty string. Wildcards are not expanded.
+// For actual result labels, including computed names, use [Rows.Columns].
+func (b *SelectBuilder) SelectedNames() []string {
 	out := make([]string, len(b.columns))
 	for i, c := range b.columns {
 		if c.Alias != "" {
@@ -235,7 +239,12 @@ func (b *SelectBuilder) SelectedColumns() []string {
 	return out
 }
 
-func (b *SelectBuilder) SelectedFullColumns() []string {
+// SelectedColumns returns one declared column path or expression display text
+// per selection, in selection order. Paths retain their qualifying prefixes;
+// result aliases are excluded. Expression texts come from [Expression.String]
+// and may be empty. These are not rendered SQL, and wildcards are not expanded.
+// Use [SelectBuilder.Build] for SQL and [Rows.Columns] for actual result labels.
+func (b *SelectBuilder) SelectedColumns() []string {
 	out := make([]string, len(b.columns))
 	for i, c := range b.columns {
 		out[i] = c.Column
@@ -360,7 +369,7 @@ func (b *SelectBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 func (b *SelectBuilder) SetDB(db *DB) *SelectBuilder { b.db = db; return b }
 
-func (b *SelectBuilder) GetDB() *DB { return getDB(b.db) }
+func (b *SelectBuilder) DB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 // Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].

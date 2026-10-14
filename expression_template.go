@@ -14,7 +14,7 @@ import (
 //
 //   - ? consumes the next argument. An [Expression] (including [Ident], [Value] and
 //     [Subquery]) is rendered in the same build context. Any other value is bound
-//     through [BuildContext.Add], which obtains its placeholder from the dialect
+//     through [BuildContext.AddArg], which obtains its placeholder from the dialect
 //     (for example, ? for MySQL or $1, $2, ... for PostgreSQL).
 //   - ?? emits a literal ? without consuming an argument. This escapes SQL
 //     operators containing ?, such as PostgreSQL's JSON operators: ??, ??| and
@@ -24,7 +24,7 @@ import (
 // These are the only template markers. Native placeholders such as $1, :name
 // and @name are copied unchanged; they do not consume args and are not rebound.
 // To supply a named value, pass [sql.Named](name, value) as an argument to ?;
-// [BuildContext.Add] handles the dialect's named-parameter support.
+// [BuildContext.AddArg] handles the dialect's named-parameter support.
 //
 // Markers in quoted text and comments are ignored according to the dialect's
 // [dialect.LexicalRules]. PostgreSQL recognizes E'...' strings, nested comments, and

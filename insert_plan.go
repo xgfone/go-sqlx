@@ -13,9 +13,9 @@ import (
 )
 
 // InsertPlan is an immutable field-extraction plan for a struct or pointer to
-// struct T. [CompileInsert] creates a plan; its zero value is not usable. A plan
-// may be shared across goroutines using separate builders and safe input values.
-// It retains no input rows, [DB], dialect, SQL or [driver.Valuer] results.
+// struct T. [CompileInsertPlan] creates a plan; its zero value is not usable.
+// A plan may be shared across goroutines using separate builders and safe input
+// values. It retains no input rows, [DB], dialect, SQL or [driver.Valuer] results.
 type InsertPlan[T any] struct {
 	model    reflect.Type
 	fields   []structInsertField
@@ -33,14 +33,15 @@ const (
 	insertDirectAlways                           // Direct reads support implicit columns too.
 )
 
-// CompileInsert resolves mapped columns, field paths and value capabilities.
+// CompileInsertPlan resolves mapped columns, field paths and value capabilities.
 // With no columns it selects all mapped fields in declaration order; omitted
-// zero values use DEFAULT, as with [InsertBuilder.Structs]. Explicit columns select and order
-// fields and include zero values. Columns are copied and must be unique.
-// T must be a struct (except [time.Time]) or a pointer chain to one, not an interface.
-// Compilation does not read values or call an IsZero method or [driver.Valuer.Value].
-// It validates and caches string limit options in SQL tags.
-func CompileInsert[T any](columns ...string) (plan *InsertPlan[T], err error) {
+// zero values use DEFAULT, as with [InsertBuilder.Structs]. Explicit columns
+// select and order fields and include zero values. Columns are copied and must
+// be unique. T must be a struct (except [time.Time]) or a pointer chain to one,
+// not an interface. Compilation does not read values or call an IsZero method
+// or [driver.Valuer.Value]. It validates and caches string limit options in SQL
+// tags.
+func CompileInsertPlan[T any](columns ...string) (plan *InsertPlan[T], err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			plan, err = nil, insertPlanError(r)

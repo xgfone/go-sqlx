@@ -29,7 +29,7 @@ func TestPrivateRecursiveFieldsAcrossModelAPIs(t *testing.T) {
 	checkSQL(t, Insert().Into("t").Struct(value), "INSERT INTO `t` (`id`) VALUES (?)", int64(7))
 	checkSQL(t, Insert().Into("t").Structs([]model{value}), "INSERT INTO `t` (`id`) VALUES (?)", int64(7))
 
-	plan, err := CompileInsert[model]()
+	plan, err := CompileInsertPlan[model]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestStructFieldConsistencyAndPointers(t *testing.T) {
 
 type dynamicColumns struct{ column string }
 
-func (v dynamicColumns) Columns(q string) []Namer { return []Namer{{Name: v.column}} }
+func (v dynamicColumns) Columns(q string) []NamedColumn { return []NamedColumn{{Name: v.column}} }
 
 type pointerValue struct{ Number int }
 

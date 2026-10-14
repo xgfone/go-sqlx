@@ -14,7 +14,7 @@ import (
 func BenchmarkRowsBinderRegistry(b *testing.B) {
 	for _, size := range []int{16, 256} {
 		b.Run(fmt.Sprintf("types_%d", size), func(b *testing.B) {
-			registry := NewMixRowsBinder()
+			registry := NewRowsBinderRegistry()
 			keys := make([]reflect.Type, size)
 			for i := range keys {
 				keys[i] = reflect.PointerTo(reflect.ArrayOf(i+1, reflect.TypeFor[int64]()))

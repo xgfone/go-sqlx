@@ -29,7 +29,7 @@ func writeColumns(buf *strings.Builder, ctx *BuildContext, cols []selectedColumn
 		if c.Expr != nil {
 			c.Expr.writeTo(buf, ctx)
 		} else {
-			ctx.WriteQuote(buf, c.Column)
+			ctx.WriteQuotedPath(buf, c.Column)
 		}
 
 		if c.Alias != "" {

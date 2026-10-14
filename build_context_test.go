@@ -17,7 +17,7 @@ func TestBuildContextNamedBindings(t *testing.T) {
 	for _, d := range []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite} {
 		t.Run(d.Name(), func(t *testing.T) {
 			c := NewBuildContext(d)
-			p := c.Add(sql.Named("id", 7))
+			p := c.AddArg(sql.Named("id", 7))
 			expected := d.Placeholder(1)
 			var arg any = 7
 			if d == dialect.SQLite {
@@ -27,19 +27,19 @@ func TestBuildContextNamedBindings(t *testing.T) {
 			if p != expected || !reflect.DeepEqual(c.Args(), []any{arg}) {
 				t.Fatalf("%s: %q %#v", d.Name(), p, c.Args())
 			}
-			if p = c.Add(sql.Named("", 8)); p != d.Placeholder(2) {
+			if p = c.AddArg(sql.Named("", 8)); p != d.Placeholder(2) {
 				t.Fatal(p)
 			}
 			if d == dialect.SQLite {
-				if c.Add(sql.Named("id", 7)) != "@id" || len(c.Args()) != 2 {
+				if c.AddArg(sql.Named("id", 7)) != "@id" || len(c.Args()) != 2 {
 					t.Fatal("repeated name did not reuse binding")
 				}
-				mustPanic(t, func() { c.Add(sql.Named("id", 9)) })
+				mustPanic(t, func() { c.AddArg(sql.Named("id", 9)) })
 				if len(c.Args()) != 2 {
-					t.Fatal("failed Add mutated args")
+					t.Fatal("failed AddArg mutated args")
 				}
 			}
-			mustPanic(t, func() { c.Add(sql.Named("x); DROP TABLE t; --", 9)) })
+			mustPanic(t, func() { c.AddArg(sql.Named("x); DROP TABLE t; --", 9)) })
 		})
 	}
 }
@@ -58,7 +58,7 @@ func TestBuildResultsOwnArguments(t *testing.T) {
 		}
 		for i := 0; i < 10; i++ {
 			c := acquireBuildContext(dialect.Postgres)
-			c.Add(99)
+			c.AddArg(99)
 			releaseBuildContext(c)
 		}
 		if !reflect.DeepEqual(args, []any{7}) {
@@ -77,7 +77,7 @@ func TestBuildResultsOwnArguments(t *testing.T) {
 
 func TestBuildContextPoolCleanup(t *testing.T) {
 	c := acquireBuildContext(dialect.SQLite)
-	c.Add(sql.Named("id", &struct{}{}))
+	c.AddArg(sql.Named("id", &struct{}{}))
 	c.expressionCache = expressionCachePool.Get().(*expressionCache)
 	c.expressionCache.add(Value(&struct{}{}), "$1")
 	c.windows = map[string]WindowSpec{"w": Window()}

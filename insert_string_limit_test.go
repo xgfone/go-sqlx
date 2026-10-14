@@ -28,12 +28,12 @@ func TestInsertStringLimitsAllEntrypoints(t *testing.T) {
 	alias := "你好"
 	model := insertLimitedRecord{"你好呀", "你😀a", &alias}
 	original := model
-	plan, err := CompileInsert[insertLimitedRecord]()
+	plan, err := CompileInsertPlan[insertLimitedRecord]()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	pointerPlan, err := CompileInsert[*insertLimitedRecord]()
+	pointerPlan, err := CompileInsertPlan[*insertLimitedRecord]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestInsertStringLimitsProjectionAndDefaults(t *testing.T) {
 	checkSQL(t, Insert().Into("t").Struct(model).SetDialect(dialect.Postgres),
 		`INSERT INTO "t" ("ID", "name", "profile_name") VALUES ($1, $2, $3)`, 1, "", nil)
 
-	plan, err := CompileInsert[record]("name", "ID")
+	plan, err := CompileInsertPlan[record]("name", "ID")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestInsertStringLimitsPointerSnapshots(t *testing.T) {
 		Insert().Into("t").Struct(model).SetDialect(dialect.Postgres),
 		`INSERT INTO "t" ("name") VALUES ($1)`, nil)
 
-	plan, err := CompileInsert[record]()
+	plan, err := CompileInsertPlan[record]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestInsertStringLimitPlanRollback(t *testing.T) {
 		Name string `sql:"name,maxlen=2"`
 	}
 
-	plan, err := CompileInsert[record]()
+	plan, err := CompileInsertPlan[record]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestInsertStringLimitSharedPlan(t *testing.T) {
 		Name string `sql:"name,maxlen=3,overflow=truncate"`
 	}
 
-	plan, err := CompileInsert[record]()
+	plan, err := CompileInsertPlan[record]()
 	if err != nil {
 		t.Fatal(err)
 	}

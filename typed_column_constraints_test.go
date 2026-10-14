@@ -37,19 +37,19 @@ func rejected() {
 		`age.SetFrom(sqlx.NewTypedColumn[int]("backup_age"))`,
 		`age.Qualify("u").Set("Alice")`, `age.Qualify("u").SetFrom(name.Qualify("v"))`,
 		`user.Set(orderID(7))`, `user.SetFrom(order)`, `user.Eq(orderID(7))`,
-		`age.EqExpr(18)`, `age.NeExpr("Alice")`, `age.ColValueExpr(18)`,
+		`age.EqExpr(18)`, `age.NeExpr("Alice")`, `age.InsertValueExpr(18)`,
 		`sqlx.Set(age, 18)`, `sqlx.Eq(age, 18)`, `sqlx.SelectColumns(age)`,
-		`sqlx.ColValue(age, 18)`, `sqlx.Add(age, 1)`,
+		`sqlx.NewColumnValue(age, 18)`, `sqlx.Add(age, 1)`,
 		`age.Inc(1)`, `age.Dec(1)`,
-		`age.On(name)`, `age.On(sqlx.Column("backup_age"))`, `age.On("backup_age")`,
-		`age.On(age.Ref())`, `age.On(18)`, `age.On(nil)`,
-		`age.On(sqlx.NewTypedColumn[int]("backup_age"))`,
-		`age.On(sqlx.NewTypedColumn[*int64]("backup_age"))`,
-		`user.On(order)`, `age.Qualify("u").On(name.Qualify("v"))`,
+		`age.EqColumn(name)`, `age.EqColumn(sqlx.Column("backup_age"))`, `age.EqColumn("backup_age")`,
+		`age.EqColumn(age.Ref())`, `age.EqColumn(18)`, `age.EqColumn(nil)`,
+		`age.EqColumn(sqlx.NewTypedColumn[int]("backup_age"))`,
+		`age.EqColumn(sqlx.NewTypedColumn[*int64]("backup_age"))`,
+		`user.EqColumn(order)`, `age.Qualify("u").EqColumn(name.Qualify("v"))`,
 		`age.Asc(1)`, `age.Desc(1)`, `age.As(18)`, `age.Cast(18)`,
 	}
 	for _, method := range []string{
-		"Set", "ColValue", "Eq", "Ne",
+		"Set", "InsertValue", "Eq", "Ne",
 		"Gt", "Ge", "Lt", "Le", "In", "NotIn",
 		"Add", "Sub", "Mul", "Div",
 		"Like", "NotLike",
@@ -71,7 +71,7 @@ func rejected() {
 		calls = append(calls,
 			fmt.Sprintf("user.%s(orderID(7))", method),
 			fmt.Sprintf(`age.Qualify("u").%s("18")`, method),
-			fmt.Sprintf(`sqlx.NumericColumn[int64]("age").Qualify("u").%s("18")`, method))
+			fmt.Sprintf(`sqlx.NewNumericColumn[int64]("age").Qualify("u").%s("18")`, method))
 	}
 	for _, method := range []string{"Add", "Sub", "Mul", "Div"} {
 		for _, value := range []string{

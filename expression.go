@@ -369,7 +369,7 @@ func renderValue(c *BuildContext, v any) string {
 	if e, ok := v.(Expression); ok {
 		return e.render(c)
 	}
-	return c.Add(v)
+	return c.AddArg(v)
 }
 
 func writeValue(buf *strings.Builder, c *BuildContext, v any) {

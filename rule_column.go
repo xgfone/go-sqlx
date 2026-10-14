@@ -10,7 +10,7 @@ import (
 )
 
 // RuleColumn pairs a column with a reusable value rule. [RuleColumn.Set] and
-// [RuleColumn.ColValue] apply the rule immediately and retain only its result
+// [RuleColumn.InsertValue] apply the rule immediately and retain only its result
 // or error. Value preprocessing and template limits follow [RuleColumn.Apply].
 // [SQLBuilder.Build], [InsertBuilder.Compile], [UpdateBuilder.Compile],
 // [StatementTemplate.Bind] and execution never reapply it. Use [RuleColumn.Name]
@@ -40,7 +40,7 @@ func (c RuleColumn) Column() Column { return c.column }
 // wrappers are recursively unwrapped, including inside [sql.Named]; the name
 // is retained, but nested named arguments are rejected. [Param], ordinary SQL
 // expressions and SQL builders are rejected even inside Value or sql.Named. Use
-// [RuleColumn.Column] with [Column.Set] or [Column.ColValue] for SQL expressions
+// [RuleColumn.Column] with [Column.Set] or [Column.InsertValue] for SQL expressions
 // and template slots, and process runtime data with Apply before binding.
 //
 // Apply(sql.Named(name, data)) returns a [sql.NamedArg] for static binding.
@@ -114,10 +114,10 @@ func (c RuleColumn) Set(value any) Updater {
 	return c.column.Set(value)
 }
 
-// ColValue processes value now and pairs it with an unqualified INSERT column.
+// InsertValue processes value now and pairs it with an unqualified INSERT column.
 // [InsertBuilder.Row] saves any rule error on the builder for [InsertBuilder.Build],
 // [InsertBuilder.Compile] or execution.
-func (c RuleColumn) ColValue(value any) ColumnValue {
+func (c RuleColumn) InsertValue(value any) ColumnValue {
 	value, err := c.Apply(value)
 	return ColumnValue{Column: c.Name(), Value: value, err: err}
 }

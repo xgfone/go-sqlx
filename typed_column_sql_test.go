@@ -29,8 +29,8 @@ func TestTypedColumnSelectionJoinOrdering(t *testing.T) {
 		{dialect.SQLite, `SELECT "u"."name" AS "user.name" FROM "users" AS "u" INNER JOIN "orders" AS "o" ON "u"."id"="o"."user_id" WHERE ("u"."id" = ?) ORDER BY "u"."id" ASC, "o"."user_id" DESC, "u"."name" ASC`},
 	} {
 		t.Run(tc.d.Name(), func(t *testing.T) {
-			q := Select().SelectNamers(name.As("user.name")).FromAlias("users", "u").
-				Join("orders", "o", id.On(owner)).Where(id.Eq(7)).
+			q := Select().SelectNamedColumns(name.As("user.name")).FromAlias("users", "u").
+				Join("orders", "o", id.EqColumn(owner)).Where(id.Eq(7)).
 				Sort(id.Asc(), owner.Desc(), name.Asc()).SetDialect(tc.d)
 			checkSQL(t, q, tc.want, userID(7))
 		})
@@ -38,8 +38,8 @@ func TestTypedColumnSelectionJoinOrdering(t *testing.T) {
 
 	quoted := NewTypedColumn[*string](`n"ame`).Qualify(`u"x`)
 	other := NewTypedColumn[*string]("backup").Qualify("o")
-	checkSQL(t, Select().SelectNamers(quoted.As(`result."name`)).
-		FromAlias("users", `u"x`).Join("other", "o", quoted.On(other)).Sort(quoted.Desc()).
+	checkSQL(t, Select().SelectNamedColumns(quoted.As(`result."name`)).
+		FromAlias("users", `u"x`).Join("other", "o", quoted.EqColumn(other)).Sort(quoted.Desc()).
 		SetDialect(dialect.Postgres),
 		`SELECT "u""x"."n""ame" AS "result.""name" FROM "users" AS "u""x" INNER JOIN "other" AS "o" ON "u""x"."n""ame"="o"."backup" ORDER BY "u""x"."n""ame" DESC`)
 	if name.Name() != "u.name" || name.Column().Typed[string]() != name {
@@ -48,7 +48,7 @@ func TestTypedColumnSelectionJoinOrdering(t *testing.T) {
 }
 
 func TestTypedColumnOrderingEntrypoints(t *testing.T) {
-	age := NumericColumn[int64]("age")
+	age := NewNumericColumn[int64]("age")
 	name := NewTypedColumn[string]("name")
 	checkSQL(t, Select().SelectExpr(RowNumber().Over(Window().Sort(age.Desc(), name.Asc()))).
 		From("users").SetDialect(dialect.Postgres),

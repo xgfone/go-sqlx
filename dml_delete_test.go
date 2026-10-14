@@ -36,6 +36,6 @@ func TestDeleteTargetAliasCapabilities(t *testing.T) {
 	checkSQL(t, query(dialect.SQLite), `DELETE FROM "users" AS "u" WHERE ("u"."id" = ?)`, 1)
 	checkSQL(t, Delete().From("users").Where(Eq("id", 1)).SetDialect(dialect.MySQL),
 		"DELETE FROM `users` WHERE (`id` = ?)", 1)
-	checkSQL(t, query(dialect.MySQL).Join("roles", "r", On("u.role_id", "r.id")),
+	checkSQL(t, query(dialect.MySQL).Join("roles", "r", EqColumn("u.role_id", "r.id")),
 		"DELETE `u` FROM `users` AS `u` INNER JOIN `roles` AS `r` ON `u`.`role_id`=`r`.`id` WHERE (`u`.`id` = ?)", 1)
 }

@@ -58,7 +58,7 @@ func TestDistinctOnFetchAndMutationLimits(t *testing.T) {
 		Delete().From("t").OrderByDesc("id").Limit(0),
 		"DELETE FROM `t` ORDER BY `id` DESC LIMIT 0")
 
-	checkBuildError(t, Update().Table("t").Join("u", "", On("t.id", "u.id")).Set(Set("v", 1)).Limit(1))
+	checkBuildError(t, Update().Table("t").Join("u", "", EqColumn("t.id", "u.id")).Set(Set("v", 1)).Limit(1))
 	checkBuildError(t, Delete().From("t").Limit(1).SetDialect(dialect.SQLite))
 	checkBuildError(t, Delete().From("t").Limit(1).SetDialect(dialect.Postgres))
 	optional := dialect.WithFeatures(dialect.SQLite, []dialect.Feature{dialect.DeleteOrderLimit}, nil)

@@ -87,7 +87,7 @@ func TestCapturedDefaultDialect(t *testing.T) {
 	}
 
 	dialect.SetDefault(dialect.MySQL)
-	if ctx.Quote("id") != `"id"` || ctx.Add(7) != "$1" {
+	if ctx.QuotePath("id") != `"id"` || ctx.AddArg(7) != "$1" {
 		t.Fatal("a default change altered an existing build context")
 	}
 	query, args, err := template.Bind(7)

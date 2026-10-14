@@ -74,12 +74,12 @@ func (o *BindOptions) capacity() int {
 
 // BindConfig is query binding configuration.
 //
-// A nil [BindConfig.RowsBinder] uses [DefaultMixRowsBinder]; map types without a default
-// registration require an explicit binder or registration. Configure a [DB]
-// with [DB.SetBindConfig] or [DB.WithBindConfig], override a builder/[Oper], or customize
-// an individual result. Configurations copy option values and share immutable
-// [ScanOptions.TimeLayouts] storage; custom [RowsBinder] implementations must
-// be safe to share.
+// A nil [BindConfig.RowsBinder] uses [DefaultRowsBinderRegistry]; map types
+// without a default registration require an explicit binder or registration.
+// Configure a [DB] with [DB.SetBindConfig] or [DB.WithBindConfig], override a
+// builder/[Oper], or customize an individual result. Configurations copy option
+// values and share immutable [ScanOptions.TimeLayouts] storage;
+// custom [RowsBinder] implementations must be safe to share.
 type BindConfig struct {
 	// ScanOptionsFunc supplies the complete scan policy for each successful
 	// query result. When non-nil, it replaces ScanOptions, including with a

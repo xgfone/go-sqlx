@@ -285,8 +285,8 @@ func TestTypedColumnQueryConditions(t *testing.T) {
 	}
 }
 
-func TestNumericColumnConditions(t *testing.T) {
-	v := NumericColumn[int64]("v").Qualify("t")
+func TestNewNumericColumnConditions(t *testing.T) {
+	v := NewNumericColumn[int64]("v").Qualify("t")
 	checkSQL(t,
 		Select("t.v").From("t").Where(
 			v.Gt(0), v.Between(1, 3), v.InSlice([]int64{1, 2}), v.LeExpr(Value(3)),

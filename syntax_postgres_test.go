@@ -167,7 +167,7 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 		},
 		{
 			"values numeric join",
-			Select("t.v").From("t").JoinSource(InnerJoin, source, On("t.v", "d.v")).
+			Select("t.v").From("t").JoinSource(InnerJoin, source, EqColumn("t.v", "d.v")).
 				OrderByAsc("t.v").SetDialect(dialect.Postgres),
 			[][]any{{2}, {2}, {10}},
 		},
@@ -186,7 +186,7 @@ func TestPostgresExpressionSemanticsExecution(t *testing.T) {
 		{
 			"returning aggregate subquery",
 			Update().Table("t").Set(Set("v", 1)).Where(Eq("v", 10)).
-				ReturningExpr(scalar, "total").SetDialect(dialect.Postgres),
+				ReturningExprAlias(scalar, "total").SetDialect(dialect.Postgres),
 			[][]any{{3}},
 		},
 		{

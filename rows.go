@@ -202,7 +202,7 @@ func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 
 	binder := r.config.RowsBinder
 	if binder == nil {
-		binder = DefaultMixRowsBinder()
+		binder = DefaultRowsBinderRegistry()
 	}
 
 	if nilBindingValue(binder) {
@@ -211,7 +211,7 @@ func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 
 	// Resolve only our concrete dispatchers. User wrappers still receive their
 	// public Prepare call and remain authoritative, including on failure.
-	if registry, ok := binder.(*MixRowsBinder); ok && fallback != nil {
+	if registry, ok := binder.(*RowsBinderRegistry); ok && fallback != nil {
 		binder = registry.Get(reflect.TypeOf(dst))
 		if binder == nil {
 			binder = fallback

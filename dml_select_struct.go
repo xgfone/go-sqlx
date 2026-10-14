@@ -9,13 +9,13 @@ import (
 	"strings"
 )
 
-// Namer identifies a selected column and optional result alias.
-type Namer struct{ Name, Alias string }
+// NamedColumn identifies a selected column and optional result alias.
+type NamedColumn struct{ Name, Alias string }
 
 // ColumnProvider can supply per-instance columns. Its result is never cached.
 // Returned columns are explicit selections, unaffected by select=explicit tags.
 type ColumnProvider interface {
-	Columns(qualifier string) []Namer
+	Columns(qualifier string) []NamedColumn
 }
 
 var columnProviderType = reflect.TypeFor[ColumnProvider]()
@@ -40,7 +40,7 @@ func (b *SelectBuilder) SelectStruct[T any](s T, qualifier ...string) *SelectBui
 		// Box an instance only when its dynamic Columns implementation is
 		// actually needed. Ordinary models use type metadata directly.
 		if t != nil && t.Implements(columnProviderType) {
-			b.SelectNamers(any(s).(ColumnProvider).Columns(q)...)
+			b.SelectNamedColumns(any(s).(ColumnProvider).Columns(q)...)
 			return
 		}
 		b.selectStructType(t, q)

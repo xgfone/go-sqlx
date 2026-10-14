@@ -58,11 +58,11 @@ func (w *SQLWriter) Ident(parts ...string) {
 }
 
 // Path quotes a dotted identifier path, preserving a trailing wildcard.
-func (w *SQLWriter) Path(path string) { w.start(); w.ctx.WriteQuote(w.buf, path) }
+func (w *SQLWriter) Path(path string) { w.start(); w.ctx.WriteQuotedPath(w.buf, path) }
 
 // Arg binds data and writes its placeholder. [Param] slots and named arguments
-// follow [BuildContext.Add]; use [SQLWriter.Expr] or [SQLWriter.Value] to render other
-// expressions.
+// follow [BuildContext.AddArg]; use [SQLWriter.Expr] or [SQLWriter.Value] to
+// render other expressions.
 func (w *SQLWriter) Arg(value any) { w.start(); w.ctx.writeArg(w.buf, value) }
 
 // Expr renders an expression in the current statement's context.

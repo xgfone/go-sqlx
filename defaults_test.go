@@ -98,8 +98,8 @@ func TestDefaultDBLookup(t *testing.T) {
 	table := NewTable("users")
 	oper := NewOper[struct{}]("users")
 	SetDefaultDB(second)
-	if DefaultDB() != second || unbound.GetDB() != second || bound.GetDB() != first ||
-		table.GetDB() != second || oper.GetDB() != second {
+	if DefaultDB() != second || unbound.DB() != second || bound.DB() != first ||
+		table.DB() != second || oper.DB() != second {
 		t.Fatal("replacing the default DB changed an explicit binding or missed a default lookup")
 	}
 	checkSQL(t, unbound, `SELECT "id" WHERE ("id" = $1)`, 7)
@@ -112,25 +112,25 @@ func TestDefaultDBLookup(t *testing.T) {
 	}
 }
 
-func TestDefaultMixRowsBinderLookupAndCapture(t *testing.T) {
-	previous := DefaultMixRowsBinder()
-	t.Cleanup(func() { SetDefaultMixRowsBinder(previous) })
-	first, second := NewMixRowsBinder(), NewMixRowsBinder()
+func TestDefaultRowsBinderRegistryLookupAndCapture(t *testing.T) {
+	previous := DefaultRowsBinderRegistry()
+	t.Cleanup(func() { SetDefaultRowsBinderRegistry(previous) })
+	first, second := NewRowsBinderRegistry(), NewRowsBinderRegistry()
 	firstBinder := &countingRowsBinder{delegate: NewSliceRowsBinder[[]int64]()}
 	secondBinder := &countingRowsBinder{delegate: NewSliceRowsBinder[[]int64]()}
 	first.RegisterType[*[]int64](firstBinder)
 	second.RegisterType[*[]int64](secondBinder)
-	SetDefaultMixRowsBinder(first)
+	SetDefaultRowsBinderRegistry(first)
 	implicit, _ := bindTestRows(t, int64(7))
 	explicit, _ := bindTestRows(t, int64(7))
 	explicit.SetBinder(first)
 	var prepared []int64
-	binding, err := DefaultMixRowsBinder().Prepare(&prepared, BindOptions{Columns: []string{"value"}})
+	binding, err := DefaultRowsBinderRegistry().Prepare(&prepared, BindOptions{Columns: []string{"value"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	SetDefaultMixRowsBinder(second)
+	SetDefaultRowsBinderRegistry(second)
 	for _, rows := range []*Rows{implicit, explicit} {
 		var got []int64
 		if err := rows.Bind(&got); err != nil || len(got) != 1 || got[0] != 7 {
@@ -158,8 +158,8 @@ func TestDefaultMixRowsBinderLookupAndCapture(t *testing.T) {
 		t.Fatal("constructor did not register in the current default registry")
 	}
 
-	mustPanic(t, func() { SetDefaultMixRowsBinder(nil) })
-	if DefaultMixRowsBinder() != second {
+	mustPanic(t, func() { SetDefaultRowsBinderRegistry(nil) })
+	if DefaultRowsBinderRegistry() != second {
 		t.Fatal("a rejected binder changed the default")
 	}
 }
@@ -167,16 +167,16 @@ func TestDefaultMixRowsBinderLookupAndCapture(t *testing.T) {
 func TestDefaultGlobalsConcurrent(t *testing.T) {
 	previousDB := DefaultDB()
 	previousConfigs := DefaultConfigs()
-	previousBinder := DefaultMixRowsBinder()
+	previousBinder := DefaultRowsBinderRegistry()
 	t.Cleanup(func() {
 		SetDefaultConfigs(previousConfigs...)
 		SetDefaultDB(previousDB)
-		SetDefaultMixRowsBinder(previousBinder)
+		SetDefaultRowsBinderRegistry(previousBinder)
 	})
 
 	configs := [][]Config{{MaxOpenConns(3), MaxOpenConns(7)}, {MaxOpenConns(5)}}
 	databases := []*DB{{Dialect: dialect.MySQL}, {Dialect: dialect.Postgres}}
-	registries := []*MixRowsBinder{NewMixRowsBinder(), NewMixRowsBinder()}
+	registries := []*RowsBinderRegistry{NewRowsBinderRegistry(), NewRowsBinderRegistry()}
 	causes := []error{errors.New("first registry"), errors.New("second registry")}
 	for i, registry := range registries {
 		registry.RegisterType[*[]int64](RowsBinderFunc(func(any, BindOptions) (RowsBinding, error) {
@@ -186,7 +186,7 @@ func TestDefaultGlobalsConcurrent(t *testing.T) {
 
 	SetDefaultConfigs(configs[0]...)
 	SetDefaultDB(databases[0])
-	SetDefaultMixRowsBinder(registries[0])
+	SetDefaultRowsBinderRegistry(registries[0])
 	query := Select("id").Where(Eq("id", 7))
 	start := make(chan struct{})
 	var wg sync.WaitGroup
@@ -195,7 +195,7 @@ func TestDefaultGlobalsConcurrent(t *testing.T) {
 		for i := range 1000 {
 			SetDefaultConfigs(configs[i%2]...)
 			SetDefaultDB(databases[i%2])
-			SetDefaultMixRowsBinder(registries[i%2])
+			SetDefaultRowsBinderRegistry(registries[i%2])
 		}
 	})
 	for range 8 {
@@ -232,7 +232,7 @@ func TestDefaultGlobalsConcurrent(t *testing.T) {
 					return
 				}
 
-				_, err = DefaultMixRowsBinder().Prepare(new([]int64), BindOptions{})
+				_, err = DefaultRowsBinderRegistry().Prepare(new([]int64), BindOptions{})
 				if err != causes[0] && err != causes[1] {
 					t.Error("unexpected default binder", err)
 					return

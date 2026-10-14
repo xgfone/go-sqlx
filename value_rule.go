@@ -3,12 +3,12 @@
 
 package sqlx
 
-// ValueRule validates or transforms data when [RuleColumn.Apply], [RuleColumn.Set] or
-// [RuleColumn.ColValue] is called. [ValueRule.Apply] must not panic, mutate input data, or
-// return SQL
-// expressions. Shared rules must be immutable and safe for concurrent use.
-// [RuleColumn] passes nil through without calling the rule. Neither inputs
-// nor outputs are deep-copied; rules must own any mutable results they create.
+// ValueRule validates or transforms data when [RuleColumn.Apply], [RuleColumn.Set]
+// or [RuleColumn.InsertValue] is called. [ValueRule.Apply] must not panic, mutate
+// input data, or return SQL expressions. Shared rules must be immutable and safe
+// for concurrent use. [RuleColumn] passes nil through without calling the rule.
+// Neither inputs nor outputs are deep-copied; rules must own any mutable results
+// they create.
 type ValueRule interface {
 	Apply(any) (any, error)
 }

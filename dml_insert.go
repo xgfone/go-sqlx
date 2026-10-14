@@ -15,16 +15,18 @@ import (
 )
 
 // ColumnValue names an inserted column. It is distinct from [sql.NamedArg] bindings.
-// Construct values with [ColValue] or [RuleColumn.ColValue]; [InsertBuilder.Row] also checks
-// any
-// write-rule error saved with the value before appending the row.
+// Construct values with [NewColumnValue] or [RuleColumn.InsertValue]; [InsertBuilder.Row]
+// also checks any write-rule error saved with the value before appending the row.
 type ColumnValue struct {
 	Column string
 	Value  any
 	err    error
 }
 
-func ColValue[C ~string](column C, value any) ColumnValue {
+// NewColumnValue pairs an unqualified INSERT column with a value or [Expression]
+// for [InsertBuilder.Row]. Strings, [Column] and other defined string types are
+// accepted.
+func NewColumnValue[C ~string](column C, value any) ColumnValue {
 	return ColumnValue{Column: string(column), Value: value}
 }
 
@@ -346,7 +348,7 @@ func (b *InsertBuilder) writeTo(s *strings.Builder, c *BuildContext) {
 
 func (b *InsertBuilder) SetDB(db *DB) *InsertBuilder { b.db = db; return b }
 
-func (b *InsertBuilder) GetDB() *DB { return getDB(b.db) }
+func (b *InsertBuilder) DB() *DB { return getDB(b.db) }
 
 // SetExecutor overrides execution without changing the SQL dialect.
 // Non-nil executors use the interceptor set by [SetDefaultExecutorInterceptor].

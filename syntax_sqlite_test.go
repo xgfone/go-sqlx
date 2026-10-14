@@ -20,7 +20,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	}
 
 	db := &DB{Dialect: dialect.SQLite}
-	numericValue := NumericColumn[int64](Column("v"))
+	numericValue := NewNumericColumn[int64](Column("v"))
 	typedID := NewTypedColumn[int64]("id")
 	typedValue := NewTypedColumn[int64]("v")
 	typedName := NewTypedColumn[string]("name").Qualify("patterns")
@@ -69,8 +69,8 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		},
 		{
 			"typed selection alias and join",
-			db.Select().SelectNamers(typedID.Qualify("t").As("user.id")).From("t").
-				Join("other", "o", typedID.Qualify("t").On(NewTypedColumn[int64]("id").Qualify("o"))).
+			db.Select().SelectNamedColumns(typedID.Qualify("t").As("user.id")).From("t").
+				Join("other", "o", typedID.Qualify("t").EqColumn(NewTypedColumn[int64]("id").Qualify("o"))).
 				Sort(typedID.Qualify("t").Desc()),
 			[][]any{{2}},
 		},
@@ -269,9 +269,9 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		},
 		{
 			"typed insert values",
-			db.Insert().Into("t").Row(Column("id").Typed[int64]().ColValue(4),
-				Column("team").Typed[string]().ColValue("c"),
-				Column("v").Typed[int64]().ColValueExpr(Expr("? + ?", 20, 2))).Returning("id", "v"),
+			db.Insert().Into("t").Row(Column("id").Typed[int64]().InsertValue(4),
+				Column("team").Typed[string]().InsertValue("c"),
+				Column("v").Typed[int64]().InsertValueExpr(Expr("? + ?", 20, 2))).Returning("id", "v"),
 			[][]any{{4, 22}},
 		},
 		{
@@ -415,7 +415,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"returning scalar aggregate subquery",
 			db.Insert().IntoAlias("t", "u").Columns("id", "team", "v").Values(4, "c", 40).
-				ReturningExpr(Coalesce(Subquery(Select().SelectExpr(Sum("id")).From("other")), 0), "total"),
+				ReturningExprAlias(Coalesce(Subquery(Select().SelectExpr(Sum("id")).From("other")), 0), "total"),
 			[][]any{{6}},
 		},
 		{
@@ -635,7 +635,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"update values source",
 			db.Update().Table("t").FromSource(ValuesSource("q", []string{"id", "v"}, []any{2, 200})).
-				Set(Set("v", Ident("q", "v"))).Where(On("t.id", "q.id")).Returning("id", "v"),
+				Set(Set("v", Ident("q", "v"))).Where(EqColumn("t.id", "q.id")).Returning("id", "v"),
 			[][]any{{2, 200}},
 		},
 		{
@@ -647,7 +647,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		{
 			"left derived join",
 			db.Select("t.id", "q.v").From("t").JoinLeftSelect(Select("id", "v").
-				From("t").Where(Eq("id", 2)), "q", On("t.id", "q.id")).OrderByAsc("t.id"),
+				From("t").Where(Eq("id", 2)), "q", EqColumn("t.id", "q.id")).OrderByAsc("t.id"),
 			[][]any{{1, nil}, {2, 20}, {3, nil}},
 		},
 		{
@@ -793,7 +793,7 @@ func TestSQLiteExecution(t *testing.T) {
 			From("filtered").UnionAll(Select().SelectExpr(Value(9))), [][]any{{1}, {9}}},
 		{db.Insert().Into("archive").Columns("id").FromSelect(Select("id").From("t").
 			Where(Eq("id", 1))).Returning("id"), [][]any{{1}}},
-		{db.Select("a.id").FromAlias("t", "a").Join("archive", "b", On("a.id", "b.id")), [][]any{{1}}},
+		{db.Select("a.id").FromAlias("t", "a").Join("archive", "b", EqColumn("a.id", "b.id")), [][]any{{1}}},
 		{db.Delete().From("t").Where(InQuery("id", Select("id").From("archive"))).Returning("id"), [][]any{{1}}},
 		{db.Insert().Into("t").DefaultValues().Returning("v"), [][]any{{"default"}}},
 	}

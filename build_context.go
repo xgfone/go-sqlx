@@ -127,23 +127,23 @@ func (a *BuildContext) Dialect() Dialect {
 	return resolveDialect(a.dialect)
 }
 
-// Quote quotes a dotted identifier path, preserving a trailing wildcard.
+// QuotePath quotes a dotted identifier path, preserving a trailing wildcard.
 // [Expression] values must be supplied through an explicit expression API.
-func (a *BuildContext) Quote(name string) string {
+func (a *BuildContext) QuotePath(name string) string {
 	return quotePath(a.Dialect(), name)
 }
 
-// WriteQuote appends a quoted identifier path, like [BuildContext.Quote], without an
+// WriteQuotedPath appends a quoted identifier path, like [BuildContext.QuotePath], without an
 // intermediate string for built-in dialects.
-func (a *BuildContext) WriteQuote(buf *strings.Builder, name string) {
+func (a *BuildContext) WriteQuotedPath(buf *strings.Builder, name string) {
 	writeQuotedPath(buf, a.Dialect(), name)
 }
 
-// Add appends an argument and returns its placeholder. Named arguments are
+// AddArg appends an argument and returns its placeholder. Named arguments are
 // preserved when the dialect supports them; otherwise they bind positionally.
 // Repeated native names reuse a binding only if their values are deeply equal.
 // Invalid names and conflicting repeated values panic before appending.
-func (a *BuildContext) Add(arg any) string {
+func (a *BuildContext) AddArg(arg any) string {
 	d := a.Dialect()
 	arg, placeholder, named := a.namedArg(d, arg)
 	if named {
@@ -155,15 +155,15 @@ func (a *BuildContext) Add(arg any) string {
 	return placeholder
 }
 
-// WriteArg binds arg and appends its placeholder, like [BuildContext.Add], without an
-// intermediate string for built-in positional placeholders. Invalid named
-// arguments panic; the enclosing builder reports the panic as a build error.
+// WriteArg binds arg and appends its placeholder, like [BuildContext.AddArg],
+// without an intermediate string for built-in positional placeholders. Invalid
+// named arguments panic; the enclosing builder reports the panic as a build error.
 func (a *BuildContext) WriteArg(buf *strings.Builder, arg any) {
 	a.writeArg(buf, arg)
 }
 
-// writeArg shares named-argument validation with [BuildContext.Add], while positional
-// placeholders can be written without allocating an intermediate string.
+// writeArg shares named-argument validation with [BuildContext.AddArg], while
+// positional placeholders can be written without allocating an intermediate string.
 func (a *BuildContext) writeArg(buf *strings.Builder, arg any) {
 	d := a.Dialect()
 	arg, placeholder, named := a.namedArg(d, arg)
@@ -259,9 +259,10 @@ func validParameterName(name string) bool {
 	return name != ""
 }
 
-// Value renders an [Expression] in this context or binds any other value. Adapters
-// should use [BuildContext.Value] for operands that may contain expressions or subqueries and
-// [BuildContext.Add] when a value must always be bound as data.
+// Value renders an [Expression] in this context or binds any other value.
+// Adapters should use [BuildContext.Value] for operands that may contain
+// expressions or subqueries and [BuildContext.AddArg] when a value must
+// always be bound as data.
 func (a *BuildContext) Value(value any) string { return renderValue(a, value) }
 
 // WriteValue appends an [Expression] in this context or binds any other value,

@@ -219,7 +219,7 @@ func TestOperAndDirectBindingCapacity(t *testing.T) {
 
 	ctx := context.Background()
 	oper := NewOper[record]("t").WithDB(db)
-	got, err := oper.Gets(ctx, PageSize(1, 1000))
+	got, err := oper.GetMany(ctx, PageSize(1, 1000))
 	if err != nil || len(got) != 1 || got[0].Value != 7 || cap(got) != 100 {
 		t.Fatal(got, cap(got), err)
 	}

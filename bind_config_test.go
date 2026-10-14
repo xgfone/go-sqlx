@@ -29,7 +29,7 @@ func TestBindingConfigInheritanceAndCopies(t *testing.T) {
 			return NewOper[time.Duration]("t").WithDB(db).Select("value").QueryRowsContext(context.Background())
 		},
 		func() *Rows {
-			return db.Insert().Into("t").Row(ColValue("value", 1)).Returning("value").QueryRowsContext(context.Background())
+			return db.Insert().Into("t").Row(NewColumnValue("value", 1)).Returning("value").QueryRowsContext(context.Background())
 		},
 		func() *Rows {
 			return db.Update().Table("t").Set(Set("value", 1)).Returning("value").QueryRowsContext(context.Background())

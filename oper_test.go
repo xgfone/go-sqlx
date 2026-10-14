@@ -22,7 +22,7 @@ func TestOperConstructorRegistration(t *testing.T) {
 	}
 
 	dstType := reflect.TypeFor[*[]model]()
-	t.Cleanup(func() { DefaultMixRowsBinder().Unregister(dstType) })
+	t.Cleanup(func() { DefaultRowsBinderRegistry().Unregister(dstType) })
 	db := bindTestDB(t, &bindFixture{
 		columns: []string{"id"},
 		values:  [][]driver.Value{{int64(7)}},
@@ -40,38 +40,38 @@ func TestOperConstructorRegistration(t *testing.T) {
 	}
 	for _, constructor := range constructors {
 		t.Run(constructor.name, func(t *testing.T) {
-			DefaultMixRowsBinder().Unregister(dstType)
+			DefaultRowsBinderRegistry().Unregister(dstType)
 			o := constructor.create()
-			if o.Table != table || o.GetDB() != db {
+			if o.Table != table || o.DB() != db {
 				t.Fatal("constructor lost table or database")
 			}
-			if o.SoftCondition == nil || o.DeletedCondition == nil || o.SoftDeleteUpdater == nil {
+			if o.ActiveCondition == nil || o.DeletedCondition == nil || o.SoftDeleteUpdater == nil {
 				t.Fatal("constructor lost soft-delete defaults")
 			}
-			if binder := DefaultMixRowsBinder().Get(dstType); constructor.register {
+			if binder := DefaultRowsBinderRegistry().Get(dstType); constructor.register {
 				if _, ok := binder.(typedSliceRowsBinder[[]model, model]); !ok {
 					t.Fatal("missing typed model binder")
 				}
 				constructor.create()
-				if DefaultMixRowsBinder().Get(dstType) != binder {
+				if DefaultRowsBinderRegistry().Get(dstType) != binder {
 					t.Fatal("constructor replaced existing binder")
 				}
 			} else if binder != nil {
 				t.Fatal("constructor registered a binder")
 			}
 
-			got, err := o.Gets(context.Background(), PageSize(1, 20))
+			got, err := o.GetMany(context.Background(), PageSize(1, 20))
 			if err != nil || len(got) != 1 || got[0].ID != 7 {
 				t.Fatal("model query failed", got, err)
 			}
-			if !constructor.register && DefaultMixRowsBinder().Get(dstType) != nil {
+			if !constructor.register && DefaultRowsBinderRegistry().Get(dstType) != nil {
 				t.Fatal("query registered a binder")
 			}
 
 			custom := &countingRowsBinder{delegate: NewSliceRowsBinder[[]model]()}
-			DefaultMixRowsBinder().Register(dstType, custom)
+			DefaultRowsBinderRegistry().Register(dstType, custom)
 			constructor.create()
-			if DefaultMixRowsBinder().Get(dstType) != custom {
+			if DefaultRowsBinderRegistry().Get(dstType) != custom {
 				t.Fatal("constructor overwrote a user registration")
 			}
 		})
@@ -124,7 +124,7 @@ func TestTableOperAndSoftDeleteScopes(t *testing.T) {
 	o := NewOper[Model]("t")
 	db := &DB{Dialect: dialect.Postgres}
 	o.SetDB(db)
-	if o.GetDB() != db {
+	if o.DB() != db {
 		t.Fatal("SetDB")
 	}
 
@@ -132,7 +132,7 @@ func TestTableOperAndSoftDeleteScopes(t *testing.T) {
 	checkSQL(t, o.Active().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted_at" IS NULL)`)
 	checkSQL(t, o.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted_at" IS NOT NULL)`)
 
-	custom := o.WithSoftCondition(Eq("deleted", false)).WithDeletedCondition(Eq("deleted", true))
+	custom := o.WithActiveCondition(Eq("deleted", false)).WithDeletedCondition(Eq("deleted", true))
 	checkSQL(t, custom.Active().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted" = $1)`, false)
 	checkSQL(t, custom.Deleted().Select("value"), `SELECT "value" FROM "t" WHERE ("deleted" = $1)`, true)
 	checkSQL(t, o.Select("value"), `SELECT "value" FROM "t"`)
@@ -254,7 +254,7 @@ func TestOperMutations(t *testing.T) {
 				}}
 
 				o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 7)).
-					WithSoftCondition(Eq("deleted", false)).
+					WithActiveCondition(Eq("deleted", false)).
 					WithSoftDeleteUpdater(func() Updater {
 						updaterCalls++
 						return Set("deleted", true)
@@ -294,7 +294,7 @@ type operPaginationFunc func() (int64, int64)
 
 func (f operPaginationFunc) LimitOffset() (int64, int64) { return f() }
 
-func TestOperCountGetsRejectsInvalidPaginationBeforeQuery(t *testing.T) {
+func TestOperGetManyWithCountRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 	cases := []struct {
 		name string
 		page Pagination
@@ -310,7 +310,7 @@ func TestOperCountGetsRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 			// Before the fix, a zero count hid the invalid pagination.
 			f := &scanFixture{values: []driver.Value{int64(0)}}
 			o := NewOper[struct{ Value int }]("t").WithDB(fixtureDB(t, f))
-			n, values, err := o.CountGets(context.Background(), tc.page)
+			n, values, err := o.GetManyWithCount(context.Background(), tc.page)
 			if err == nil || n != 0 || values != nil || f.query != "" {
 				t.Fatal(n, values, err, f.query)
 			}
@@ -318,7 +318,7 @@ func TestOperCountGetsRejectsInvalidPaginationBeforeQuery(t *testing.T) {
 	}
 }
 
-func TestOperCountGetsEvaluatesPaginationOnce(t *testing.T) {
+func TestOperGetManyWithCountEvaluatesPaginationOnce(t *testing.T) {
 	type model struct {
 		Value int `sql:"value"`
 	}
@@ -353,7 +353,7 @@ func TestOperCountGetsEvaluatesPaginationOnce(t *testing.T) {
 			return 2, 4
 		})
 
-		n, values, err := o.CountGets(context.Background(), p, Eq("paid", true))
+		n, values, err := o.GetManyWithCount(context.Background(), p, Eq("paid", true))
 		if err != nil || n != count || calls != 1 {
 			t.Fatal(n, values, err, calls)
 		}

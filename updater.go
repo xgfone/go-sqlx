@@ -97,9 +97,9 @@ func Dec[C ~string](column C) Updater {
 	return Set(column, Expr("? - 1", Column(column).Ref()))
 }
 
-// Batch combines assignments. It returns nil when no updaters are supplied.
+// CombineUpdaters combines assignments. It returns nil when no updaters are supplied.
 // A nonempty batch that emits no assignments is an error, including in upserts.
-func Batch(updaters ...Updater) Updater {
+func CombineUpdaters(updaters ...Updater) Updater {
 	if len(updaters) == 0 {
 		return nil
 	}

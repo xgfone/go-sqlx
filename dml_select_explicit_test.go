@@ -30,8 +30,8 @@ func TestSelectExplicitDefaults(t *testing.T) {
 		table.NewOper[selectExplicitUser]().SelectStruct(),
 	} {
 		checkSQL(t, q, "SELECT `id`, `name` FROM `users`")
-		if !reflect.DeepEqual(q.SelectedColumns(), []string{"id", "name"}) {
-			t.Fatal(q.SelectedColumns())
+		if !reflect.DeepEqual(q.SelectedNames(), []string{"id", "name"}) {
+			t.Fatal(q.SelectedNames())
 		}
 	}
 
@@ -49,7 +49,7 @@ func TestSelectExplicitOverridesAreQueryLocal(t *testing.T) {
 	for _, q := range []*SelectBuilder{
 		base.Clone().Select("password"),
 		base.Clone().SelectColumns(Column("password")),
-		base.Clone().SelectNamers(Namer{Name: "password"}),
+		base.Clone().SelectNamedColumns(NamedColumn{Name: "password"}),
 		base.Clone().SelectExpr(Ident("password")),
 	} {
 		checkSQL(t, q, "SELECT `id`, `name`, `password` FROM `users`")
@@ -121,8 +121,8 @@ func TestSelectExplicitNestedFields(t *testing.T) {
 
 type selectExplicitProvider struct{ selectExplicitUser }
 
-func (selectExplicitProvider) Columns(q string) []Namer {
-	return []Namer{Column("password").Qualify(q).As("hash")}
+func (selectExplicitProvider) Columns(q string) []NamedColumn {
+	return []NamedColumn{Column("password").Qualify(q).As("hash")}
 }
 
 func TestSelectExplicitColumnProvider(t *testing.T) {
@@ -140,7 +140,7 @@ func TestSelectExplicitInsertAndScan(t *testing.T) {
 	checkSQL(t, Insert().Into("users").Columns("password").Struct(want),
 		"INSERT INTO `users` (`password`) VALUES (?)", want.Password)
 
-	plan, err := CompileInsert[selectExplicitUser]()
+	plan, err := CompileInsertPlan[selectExplicitUser]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,11 +198,11 @@ func TestOperSelectExplicitDefaults(t *testing.T) {
 	if got, ok, err := o.Get(t.Context()); err != nil || !ok || got != want {
 		t.Fatal(got, ok, err)
 	}
-	if got, err := o.Gets(t.Context(), PageSize(1, 20)); err != nil ||
+	if got, err := o.GetMany(t.Context(), PageSize(1, 20)); err != nil ||
 		!reflect.DeepEqual(got, []user{want}) {
 		t.Fatal(got, err)
 	}
-	if n, got, err := o.CountGets(t.Context(), PageSize(1, 20)); err != nil ||
+	if n, got, err := o.GetManyWithCount(t.Context(), PageSize(1, 20)); err != nil ||
 		n != 7 || !reflect.DeepEqual(got, []user{want}) {
 		t.Fatal(n, got, err)
 	}

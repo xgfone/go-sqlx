@@ -26,7 +26,7 @@ func TestUpdateJoinAndDeleteGrammar(t *testing.T) {
 	}
 
 	mustPanic(t, func() { from.SetDB(&DB{Dialect: dialect.MySQL}).MustBuild() })
-	deletion := Delete().FromAlias("t", "a").Join("u", "b", On("a.id", "b.id"))
+	deletion := Delete().FromAlias("t", "a").Join("u", "b", EqColumn("a.id", "b.id"))
 	q, _ = deletion.MustBuild()
 	if q != "DELETE `a` FROM `t` AS `a` INNER JOIN `u` AS `b` ON `a`.`id`=`b`.`id`" {
 		t.Fatal(q)
@@ -42,7 +42,7 @@ func TestNestedBindingsAndJoinConditions(t *testing.T) {
 	sub := Select("id").From("u").Where(Eq("active", true))
 	b := pg.Select().SelectExpr(Expr("COALESCE(?, ?)", Ident("a", "name"), "unknown")).
 		FromSelect(sub, "a").
-		JoinLeft("v", "b", Or(On("a.id", "b.id"), ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
+		JoinLeft("v", "b", Or(EqColumn("a.id", "b.id"), ConditionWriterFunc(func(w *SQLWriter) (bool, error) {
 			w.Path("b.score")
 			w.Raw(">")
 			w.Arg(10)
@@ -96,7 +96,7 @@ func TestReusableSourcesAndJoinKinds(t *testing.T) {
 	sub := Select("id").From("r").Where(Eq("v", 4))
 	checkSQL(t,
 		Select("a.id").FromAlias("a", "a").
-			JoinLeftSelect(sub, "b", On("a.id", "b.id")).
+			JoinLeftSelect(sub, "b", EqColumn("a.id", "b.id")).
 			SetDialect(dialect.Postgres),
 		`SELECT "a"."id" FROM "a" AS "a" LEFT JOIN (SELECT "id" FROM "r" WHERE ("v" = $1)) AS "b" ON "a"."id"="b"."id"`,
 		4)

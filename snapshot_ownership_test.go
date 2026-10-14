@@ -117,7 +117,7 @@ func TestWindowBranchesKeepSnapshots(t *testing.T) {
 
 func TestInsertPlanColumnAppendsStayIndependent(t *testing.T) {
 	type model struct{ A, B, C int }
-	p, err := CompileInsert[model]()
+	p, err := CompileInsertPlan[model]()
 	if err != nil {
 		t.Fatal(err)
 	}

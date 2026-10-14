@@ -34,7 +34,7 @@ func TestStructsEvaluationOrder(t *testing.T) {
 	}
 	var calls []int64
 	a, b := batchOrderedZero{1, &calls}, batchOrderedZero{2, &calls}
-	q := Insert().Into("t").Row(ColValue("b", 0), ColValue("a", 0))
+	q := Insert().Into("t").Row(NewColumnValue("b", 0), NewColumnValue("a", 0))
 	q.Structs([]any{first{a, b}, reversed{b, a}, first{a, b}})
 	checkSQL(t, q, "INSERT INTO `t` (`b`, `a`) VALUES (?, ?), (?, DEFAULT), (DEFAULT, ?), (?, DEFAULT)", 0, 0, b, a, b)
 	if !reflect.DeepEqual(calls, []int64{1, 2, 2, 1, 1, 2}) {
@@ -74,7 +74,7 @@ func TestStructsProjectionAndOwnership(t *testing.T) {
 		"INSERT INTO `t` (`a`, `b`) VALUES (?, ?), (?, ?), (?, ?)", 1, "one", 2, "two", 3, "three")
 	checkSQL(t, Insert().Into("t").Columns("b").Structs([]any{first{1, "one"}, reordered{"two", 2}}),
 		"INSERT INTO `t` (`b`) VALUES (?), (?)", "one", "two")
-	checkSQL(t, Insert().Into("t").Row(ColValue("b", "zero"), ColValue("a", 0)).Structs([]first{{1, "one"}}),
+	checkSQL(t, Insert().Into("t").Row(NewColumnValue("b", "zero"), NewColumnValue("a", 0)).Structs([]first{{1, "one"}}),
 		"INSERT INTO `t` (`b`, `a`) VALUES (?, ?), (?, ?)", "zero", 0, "one", 1)
 
 	checkBuildError(t, Insert().Into("t").Columns("a", "a").Structs([]first{{1, "one"}}))
@@ -87,7 +87,7 @@ func TestStructsProjectionAndOwnership(t *testing.T) {
 }
 
 func TestNamedRowOwnsArgumentSlice(t *testing.T) {
-	values := []ColumnValue{ColValue("a", 1), ColValue("b", "one")}
+	values := []ColumnValue{NewColumnValue("a", 1), NewColumnValue("b", "one")}
 	b := Insert().Into("t").Row(values...)
 	values[0].Value = 99
 

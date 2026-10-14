@@ -66,7 +66,7 @@ func TestSQLWriterEmissionAndSingleEvaluation(t *testing.T) {
 				return false, nil
 			})
 			got, args, err := Update().Table("t").
-				Set(noSet, Batch(noSet, set, noSet), Set("v", 3), noSet).
+				Set(noSet, CombineUpdaters(noSet, set, noSet), Set("v", 3), noSet).
 				SetDialect(d).Build()
 			want, wargs, _ := Update().Table("t").
 				Set(Set("n", Expr("? + ?", Ident("n"), 2)), Set("v", 3)).

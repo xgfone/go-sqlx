@@ -61,7 +61,7 @@ func (n pathComparison) WriteCondition(w *SQLWriter) (bool, error) {
 
 func (n pathComparison) writeCondition(buf *strings.Builder, c *BuildContext) {
 	_ = buf.WriteByte('(')
-	c.WriteQuote(buf, n.left)
+	c.WriteQuotedPath(buf, n.left)
 	writeComparisonRight(buf, c, n.right, n.op)
 }
 
@@ -80,7 +80,7 @@ func (n pathEquality) WriteCondition(w *SQLWriter) (bool, error) {
 
 func (n pathEquality) writeCondition(buf *strings.Builder, c *BuildContext) {
 	_ = buf.WriteByte('(')
-	c.WriteQuote(buf, n.left)
+	c.WriteQuotedPath(buf, n.left)
 	writeComparisonRight(buf, c, n.right, compareEqual)
 }
 
@@ -346,11 +346,12 @@ func inSlice[L Operand, V any](left L, not bool, values []V) Condition {
 	}
 }
 
-// On compares identifier paths. Other comparisons can use [Eq], [Gt], or [Expr].
-func On(left, right string) Condition {
+// EqColumn compares two column paths for equality, treating both as references.
+// Other comparisons can use [Eq], [Gt], or [Expr].
+func EqColumn(left, right string) Condition {
 	return conditionWriterFunc(func(s *strings.Builder, c *BuildContext) {
-		c.WriteQuote(s, left)
+		c.WriteQuotedPath(s, left)
 		_ = s.WriteByte('=')
-		c.WriteQuote(s, right)
+		c.WriteQuotedPath(s, right)
 	})
 }

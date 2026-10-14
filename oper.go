@@ -22,7 +22,7 @@ type Oper[T any] struct {
 
 	// StructSorter supplies default ordering for SelectStruct and its convenience queries.
 	StructSorter      Sorter
-	SoftCondition     Condition
+	ActiveCondition   Condition
 	DeletedCondition  Condition
 	SoftDeleteUpdater func() Updater
 
@@ -39,28 +39,28 @@ func NewOper[T any](name string) Oper[T] {
 	return Oper[T]{
 		Table: NewTable(name),
 
-		SoftCondition:     Eq("deleted_at", nil),
+		ActiveCondition:   Eq("deleted_at", nil),
 		DeletedCondition:  IsNotNull("deleted_at"),
 		SoftDeleteUpdater: softDeleteUpdater,
 	}
 }
 
-// NewRegisteredOper creates an operation and registers the typed []T
-// binder in [DefaultMixRowsBinder] unless that destination is already registered.
+// NewRegisteredOper creates an operation and registers the typed []T binder in
+// [DefaultRowsBinderRegistry] unless that destination is already registered.
 // The registration is shared by all queries using the default registry.
 func NewRegisteredOper[T any](name string) Oper[T] {
-	DefaultMixRowsBinder().registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
+	DefaultRowsBinderRegistry().registerDefault(reflect.TypeFor[*[]T](), NewSliceRowsBinder[[]T]())
 	return NewOper[T](name)
 }
 
 func (o *Oper[T]) SetDB(db *DB) { o.Table.SetDB(db) }
-func (o Oper[T]) GetDB() *DB    { return o.Table.GetDB() }
+func (o Oper[T]) DB() *DB       { return o.Table.DB() }
 
 func (o Oper[T]) WithDB(db *DB) Oper[T]     { o.Table.SetDB(db); return o }
 func (o Oper[T]) WithTable(t Table) Oper[T] { o.Table = t; return o }
 
-// WithStructSorter sets default ordering for SelectStruct, Get, Gets, and the
-// data query in CountGets. Select and SelectColumns do not inherit it.
+// WithStructSorter sets default ordering for SelectStruct, Get, GetMany, and the
+// data query in GetManyWithCount. Select and SelectColumns do not inherit it.
 // A nil sorter disables default ordering on the returned operation.
 func (o Oper[T]) WithStructSorter(s Sorter) Oper[T] { o.StructSorter = s; return o }
 
@@ -83,10 +83,11 @@ func (o Oper[T]) binding() BindConfig {
 	if o.bindConfig != nil {
 		return *o.bindConfig
 	}
-	return o.GetDB().binding()
+	return o.DB().binding()
 }
 
-func (o Oper[T]) WithSoftCondition(c Condition) Oper[T]    { o.SoftCondition = c; return o }
+// WithActiveCondition sets the predicate applied by [Oper.Active] on the returned operation.
+func (o Oper[T]) WithActiveCondition(c Condition) Oper[T]  { o.ActiveCondition = c; return o }
 func (o Oper[T]) WithDeletedCondition(c Condition) Oper[T] { o.DeletedCondition = c; return o }
 func (o Oper[T]) WithSoftDeleteUpdater(f func() Updater) Oper[T] {
 	o.SoftDeleteUpdater = f
@@ -153,7 +154,7 @@ func cloneOperConditions(prefix, suffix []Condition) []Condition {
 }
 
 func (o Oper[T]) ClearWhere() Oper[T] { o.conditions = nil; return o }
-func (o Oper[T]) Active() Oper[T]     { return o.Where(o.SoftCondition) }
+func (o Oper[T]) Active() Oper[T]     { return o.Where(o.ActiveCondition) }
 func (o Oper[T]) Deleted() Oper[T]    { return o.Where(o.DeletedCondition) }
 
 // Select creates a column query without applying StructSorter.
@@ -264,7 +265,8 @@ func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err er
 	return
 }
 
-func (o Oper[T]) Gets(ctx context.Context, p Pagination, cs ...Condition) (vs []T, err error) {
+// GetMany returns matching model values with optional pagination and StructSorter.
+func (o Oper[T]) GetMany(ctx context.Context, p Pagination, cs ...Condition) (vs []T, err error) {
 	err = o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(&vs)
 	return
 }
@@ -274,9 +276,9 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 	return
 }
 
-// CountGets counts matching rows and fetches the requested page when the count
+// GetManyWithCount counts matching rows and fetches the requested page when the count
 // is positive. [Pagination] is evaluated once and validated before querying.
-func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
+func (o Oper[T]) GetManyWithCount(ctx context.Context, p Pagination, cs ...Condition) (n int64, vs []T, err error) {
 	q := o.SelectStruct().Where(cs...).Pagination(p)
 	if err = q.err; err != nil {
 		return
@@ -289,7 +291,8 @@ func (o Oper[T]) CountGets(ctx context.Context, p Pagination, cs ...Condition) (
 	return
 }
 
-func (o Oper[T]) Exist(ctx context.Context, cs ...Condition) (bool, error) {
+// Exists reports whether any row matches the conditions.
+func (o Oper[T]) Exists(ctx context.Context, cs ...Condition) (bool, error) {
 	var n int
 	return o.Select().SelectExpr(Expr("1")).Where(cs...).QueryRowContext(ctx).Bind(&n)
 }

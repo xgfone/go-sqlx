@@ -102,15 +102,32 @@ update := sqlx.Update().Table("users").Set(UserName.Set("Alice")).
 It accepts a table, alias, or dot-separated qualifying path. An empty qualifier
 leaves the column unchanged; repeated calls prepend further qualifiers.
 Use `Ref()` for a column on the right of a comparison or assignment;
-an ordinary right-hand `Column` binds as data. `On` compares column paths:
+an ordinary right-hand `Column` binds as data. `EqColumn` compares column paths:
 
 ```go
-join := UserID.Qualify("u").On(sqlx.Column("user_id").Qualify("o"))
+join := UserID.Qualify("u").EqColumn(sqlx.Column("user_id").Qualify("o"))
 ```
 
 `SelectColumns` accepts `...Column`, including an expanded `[]Column`.
+`As(alias)` returns a `NamedColumn` for `SelectNamedColumns`.
 Use `Name()` with string-taking APIs and `Column()` to obtain a base column
 from a typed or rule column. Names are not validated against a database schema.
+
+`SelectedColumns()` returns the declared column paths, preserving qualifying
+prefixes and excluding result aliases. Expression selections return their
+`Expression.String()` display text, which may be empty. `SelectedNames()` returns
+result aliases when present; otherwise it infers output names from those texts,
+using the final component of a column path. Both return one string per selection
+in selection order, without expanding wildcards.
+
+```go
+selected := sqlx.Select("u.id").SelectAlias("u.name", "username")
+selected.SelectedColumns() // []string{"u.id", "u.name"}
+selected.SelectedNames()   // []string{"id", "username"}
+```
+
+These methods report declared or inferred metadata. Use `Build()` for SQL and the
+result's `Columns()` for actual labels, including wildcard expansion and computed names.
 
 ## Typed columns
 
@@ -135,10 +152,12 @@ Data methods include assignments, comparisons, ranges, membership, pattern
 matching, arithmetic, `Coalesce` and `NullIf`. Their `Expr` counterparts accept
 explicit SQL expressions and `Param` slots. Data methods bind ordinary
 `Expression` objects held in `any` as data; expression methods render them.
+The `Expr` suffix describes expression inputs, not the return type:
+`AddExpr` returns an `Updater`, while aggregate methods return an `Expression`.
 Use `.Column()` to enter untyped APIs such as `SelectColumns`.
 
-`SetFrom` and `On` require another `TypedColumn[T]`. Ordering, aliases and
-aggregate methods return the existing `SortColumn`, `Namer` and `Expression`
+`SetFrom` and `EqColumn` require another `TypedColumn[T]`. Ordering, aliases and
+aggregate methods return the existing `SortColumn`, `NamedColumn` and `Expression`
 types. SQL expression results and template `Bind` inputs are not checked against `T`.
 Use a concrete `T` for useful checking, and a nullable `T` such as `*int64` or
 `sql.NullInt64` when needed. Driver conversion and SQL type compatibility remain
@@ -146,14 +165,14 @@ execution-time concerns. See [typed column operations](docs/sql-syntax.md#typed-
 
 ## Numeric columns
 
-`NumericColumn[T]` returns the same `TypedColumn[T]` with a `Number` constraint
+`NewNumericColumn[T]` returns the same `TypedColumn[T]` with a `Number` constraint
 on construction. `Number` permits integers except `uintptr`, floating-point types,
 and their defined types:
 
 ```go
-visits := sqlx.NumericColumn[uint64]("visits")
+visits := sqlx.NewNumericColumn[uint64]("visits")
 update := db.Update().Table("users").Set(visits.Inc())
-// sqlx.NumericColumn[string]("name") // Does not compile.
+// sqlx.NewNumericColumn[string]("name") // Does not compile.
 ```
 
 Untyped `Column` and package helpers also provide `Add`, `Sub`, `Mul`, `Div`,
@@ -170,11 +189,11 @@ var UserName = sqlx.Column("name").WithValueRule(sqltype.StringLimit{
 })
 
 update := sqlx.Update().Table("users").Set(UserName.Set(input))
-insert := sqlx.Insert().Into("users").Row(UserName.ColValue(input))
+insert := sqlx.Insert().Into("users").Row(UserName.InsertValue(input))
 query := sqlx.SelectColumns(UserName.Column()).From("users")
 ```
 
-`Set` and `ColValue` retain the processed value or error; `Build` and execution
+`Set` and `InsertValue` retain the processed value or error; `Build` and execution
 do not rerun the rule. Use `Apply(input)` to receive the error immediately.
 Comparisons and database-computed assignments use the base `Column()`.
 Rules reject SQL expressions and Params; apply runtime data before binding
@@ -217,8 +236,8 @@ be positive.
 
 ```go
 builder := db.Insert().Into("users").
-    Row(sqlx.ColValue("id", 1), sqlx.ColValue("name", "A")).
-    Row(sqlx.ColValue("name", "B"), sqlx.ColValue("id", 2))
+    Row(sqlx.NewColumnValue("id", 1), sqlx.NewColumnValue("name", "A")).
+    Row(sqlx.NewColumnValue("name", "B"), sqlx.NewColumnValue("id", 2))
 ```
 
 `Row` aligns values by name; every row must have the same column set.
@@ -229,7 +248,7 @@ nonempty rows, `FromSelect`, or explicit `DefaultValues`.
 
 PostgreSQL/SQLite use `OnConflict(ConflictColumns(...).DoNothing())` or
 `DoUpdate(...)`; MySQL provides `OnDuplicateKeyUpdate`, `Ignore` and `Replace`.
-Use `Returning`/`ReturningExpr` with `Query` methods on supported dialects;
+Use `Returning`/`ReturningExprAlias` with `Query` methods on supported dialects;
 `Exec` rejects `RETURNING`. See [conflict handling](docs/sql-syntax.md#conflict-handling).
 
 ## Binding results
@@ -260,7 +279,7 @@ Other slices have a reflection fallback; other maps need an explicit binder
 or registration:
 
 ```go
-sqlx.DefaultMixRowsBinder().RegisterType[*map[int64]User](
+sqlx.DefaultRowsBinderRegistry().RegisterType[*map[int64]User](
     sqlx.NewMapIndexBinder[map[int64]User](func(u User) int64 { return u.ID }),
 )
 ```
@@ -345,26 +364,27 @@ Length tags `maxlen=N`, `overflow=reject|truncate` and `lenunit=runes|utf8bytes`
 apply during struct insertion, preserving the model. They support string fields
 and pointers, exclude `Valuer` fields, and never transform scan results.
 
-`CompileInsert[T](columns...)` prepares a reusable field projection for repeated
+`CompileInsertPlan[T](columns...)` prepares a reusable field projection for repeated
 batches. Check `plan.AppendTo(builder, rows)` errors: a failed call appends no
 rows or columns. SQL dialect checks still happen during `Build`/`Exec`.
 
 ```go
 oper := sqlx.NewOper[User]("users").WithDB(db).
     WithStructSorter(sqlx.Column("id").Desc())
-users, err := oper.Gets(ctx, sqlx.PageSize(1, 20))
+users, err := oper.GetMany(ctx, sqlx.PageSize(1, 20))
 err = oper.InsertBatch(ctx, []User{{Name: "A"}, {Name: "B"}})
 ```
 
 `Oper` has no implicit key column or ordering. `StructSorter` applies to
-`SelectStruct`/`Get`/`Gets` and the data query in `CountGets`. Use `Insert`/`Update`/`Delete`
-for an error, or their `Result` variants for `(sql.Result, error)`.
+`SelectStruct`/`Get`/`GetMany` and the data query in `GetManyWithCount`.
+Use `Insert`/`Update`/`Delete` for an error, or their `Result` variants for
+`(sql.Result, error)`.
 `Count` returns `int64`; `Aggregate`/`AggregateValue[R]` scan aggregate expressions.
 Empty `InsertBatch` and `nil` `Update` skip execution.
 
 `Where`, `Active` and `Deleted` create independent scopes. `Active`/`Deleted` default
 to `deleted_at IS NULL`/`IS NOT NULL`; `SoftDelete` defaults to the current time.
-Use `WithSoftCondition`/`WithDeletedCondition`/`WithSoftDeleteUpdater` to change them.
+Use `WithActiveCondition`/`WithDeletedCondition`/`WithSoftDeleteUpdater` to change them.
 For in-place `AppendWhere`, `Clone` first when an independent copy is needed.
 `NewOper` uses slice fallback; `NewRegisteredOper` opts into shared typed binder
 registration. Existing tables provide corresponding generic constructor methods.
@@ -410,7 +430,7 @@ Connection options are independent of `ScanOptions`.
 A builder's explicit dialect takes precedence over its `DB` and the default.
 Opened DBs retain their selected dialect.
 
-`DefaultConfigs()`, `DefaultDB()` and `DefaultMixRowsBinder()` have corresponding
+`DefaultConfigs()`, `DefaultDB()` and `DefaultRowsBinderRegistry()` have corresponding
 `SetDefault` setters. Getter/setter pairs support concurrent use; configure shared
 `DB` fields before concurrent access. `DB` `Set` methods mutate; `With` methods
 return copies. Binder registrations remain shared.

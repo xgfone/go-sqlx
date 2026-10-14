@@ -55,7 +55,7 @@ func TestTypedColumnLikeData(t *testing.T) {
 		NewTypedColumn[sql.NullString]("name").NotLike(nullable),
 		NewTypedColumn[templateValuer]("name").Like(valuer),
 		NewTypedColumn[string]("name").NotLikeExpr(Value(valuer)),
-		NumericColumn[int64]("id").Like(18),
+		NewNumericColumn[int64]("id").Like(18),
 	).SetDialect(dialect.Postgres)
 	want := []any{&pattern, nullable, valuer, valuer, int64(18)}
 	checkSQL(t, q, `SELECT "name" FROM "users" WHERE (("name" LIKE $1) AND ("name" NOT LIKE $2) AND ("name" LIKE $3) AND ("name" NOT LIKE $4) AND ("id" LIKE $5))`, want...)

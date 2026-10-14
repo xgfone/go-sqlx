@@ -38,9 +38,9 @@ func TestTypedColumnDataExpressionBinding(t *testing.T) {
 					1,
 				},
 				{
-					"ColValue",
-					func(v any) templateBuilder { return Insert().Into("t").Row(c.ColValue(v)).SetDialect(d) },
-					func(e Expression) templateBuilder { return Insert().Into("t").Row(c.ColValueExpr(e)).SetDialect(d) },
+					"InsertValue",
+					func(v any) templateBuilder { return Insert().Into("t").Row(c.InsertValue(v)).SetDialect(d) },
+					func(e Expression) templateBuilder { return Insert().Into("t").Row(c.InsertValueExpr(e)).SetDialect(d) },
 					1,
 				},
 				{

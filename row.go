@@ -89,7 +89,7 @@ func (r Row) WithScanOptions(options ScanOptions) Row {
 
 // Bind returns false, nil for an empty result. Conversion errors are preserved.
 func (r Row) Bind(dst ...any) (bool, error) {
-	return CheckErrNoRows(r.Scan(dst...))
+	return RowFound(r.Scan(dst...))
 }
 
 // Scan uses the same conversion rules as [Rows.Scan] and returns [sql.ErrNoRows]
@@ -132,21 +132,21 @@ func (r Row) Err() error { return r.result().Err() }
 
 func (r Row) Close() error { return r.result().Close() }
 
-// CheckErrNoRows extracts the error [sql.ErrNoRows] as the bool, which returns
+// RowFound converts a single-row scan error into a found flag and any other error:
 //
 //   - (true, nil)  if err is equal to nil
 //   - (false, nil) if err is equal to [sql.ErrNoRows]
 //   - (false, err) if err is equal to others
-func CheckErrNoRows(err error) (exist bool, e error) {
+func RowFound(err error) (found bool, otherErr error) {
 	switch err {
 	case nil:
-		exist = true
+		found = true
 
 	case sql.ErrNoRows:
-		e = nil
+		otherErr = nil
 
 	default:
-		e = err
+		otherErr = err
 	}
 
 	return

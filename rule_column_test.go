@@ -25,7 +25,7 @@ func TestRuleColumnEagerAssignments(t *testing.T) {
 		return limit.Apply(v)
 	}))
 
-	setter, row := name.Set("你好吗"), name.ColValue(Value("你好吗"))
+	setter, row := name.Set("你好吗"), name.InsertValue(Value("你好吗"))
 	if calls != 2 || row.Value != "你好" {
 		t.Fatal("rules must run at assignment", calls, row)
 	}
@@ -83,7 +83,7 @@ func TestRuleColumnErrors(t *testing.T) {
 		return nil, sentinel
 	}))
 
-	setter, row := name.Set("ab"), name.ColValue("ab")
+	setter, row := name.Set("ab"), name.InsertValue("ab")
 	if calls != 2 {
 		t.Fatal("failed rules must also run immediately", calls)
 	}
@@ -108,7 +108,7 @@ func TestRuleColumnErrors(t *testing.T) {
 	}}
 
 	update := db.Update().Table("users").Set(setter)
-	insert := db.Insert().Into("users").Row(ColValue("id", 1), row)
+	insert := db.Insert().Into("users").Row(NewColumnValue("id", 1), row)
 	if len(insert.columns) != 0 || insert.values.rows != 0 {
 		t.Fatal("failed Row changed columns or appended data")
 	}
@@ -119,9 +119,9 @@ func TestRuleColumnErrors(t *testing.T) {
 		ExecContext(context.Context) (sql.Result, error)
 	}{
 		update, update.Clone(), insert, insert.Clone(),
-		db.Update().Table("users").Set(Batch(Set("id", 1), setter)),
-		db.Insert().Into("users").Row(ColValue("id", 1)).OnConflict(ConflictColumns("id").DoUpdate(setter)),
-		db.Insert().Into("users").Row(ColValue("id", 1)).OnDuplicateKeyUpdate(setter).SetDialect(dialect.MySQL),
+		db.Update().Table("users").Set(CombineUpdaters(Set("id", 1), setter)),
+		db.Insert().Into("users").Row(NewColumnValue("id", 1)).OnConflict(ConflictColumns("id").DoUpdate(setter)),
+		db.Insert().Into("users").Row(NewColumnValue("id", 1)).OnDuplicateKeyUpdate(setter).SetDialect(dialect.MySQL),
 	} {
 		query, args, err := b.Build()
 		checkError(err)
@@ -172,7 +172,7 @@ func TestRuleColumnInputValues(t *testing.T) {
 			t.Fatalf("Apply(%#v) = %#v, %v; want %#v", tc.input, got, err, tc.want)
 		}
 
-		row := name.ColValue(tc.input)
+		row := name.InsertValue(tc.input)
 		checkSQL(t, Insert().Into("users").Row(row).SetDialect(dialect.SQLite),
 			insertRuleSQL(tc.want), tc.want)
 	}
@@ -208,7 +208,7 @@ func TestRuleColumnRejectsSQLInputs(t *testing.T) {
 			Compile() (*StatementTemplate, error)
 		}{
 			Update().Table("users").Set(name.Set(value)),
-			Insert().Into("users").Row(name.ColValue(value)),
+			Insert().Into("users").Row(name.InsertValue(value)),
 		} {
 			checkBuildError(t, b)
 			if _, err := b.Compile(); err == nil {

@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-func TestNumericColumnConstraints(t *testing.T) {
+func TestNewNumericColumnConstraints(t *testing.T) {
 	var source strings.Builder
 	source.WriteString(`package numericcolumn_test
 import (
     "database/sql"
     sqlx "github.com/xgfone/go-sqlx"
 )
-var age = sqlx.NumericColumn[int64]("age")
+var age = sqlx.NewNumericColumn[int64]("age")
 func rejected() {
 `)
 	var calls []string
@@ -24,13 +24,13 @@ func rejected() {
 		"string", "bool", "complex64", "complex128", "uintptr",
 		"any", "*int64", "sql.NullInt64", "sqlx.Expression",
 	} {
-		calls = append(calls, fmt.Sprintf(`sqlx.NumericColumn[%s]("v")`, dataType))
+		calls = append(calls, fmt.Sprintf(`sqlx.NewNumericColumn[%s]("v")`, dataType))
 	}
 	for _, column := range []string{
 		`18`, `true`, `nil`, `any("age")`, `new(string)`,
 		`age`, `sqlx.NewTypedColumn[int64]("other")`, `sqlx.Ident("age")`,
 	} {
-		calls = append(calls, fmt.Sprintf(`sqlx.NumericColumn[int64](%s)`, column))
+		calls = append(calls, fmt.Sprintf(`sqlx.NewNumericColumn[int64](%s)`, column))
 	}
 	expected := make(map[int]string, len(calls))
 	for _, call := range calls {

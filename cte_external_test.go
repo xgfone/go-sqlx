@@ -275,7 +275,7 @@ func TestBuiltinCTEBodyWriteSQL(t *testing.T) {
 		var buf strings.Builder
 		buf.WriteString("prefix: ")
 		ctx := sqlx.NewBuildContext(dialect.Postgres)
-		ctx.Add(0)
+		ctx.AddArg(0)
 		if err := tc.body.WriteSQL(&buf, ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -301,7 +301,7 @@ func TestBuiltinCTEBodyWriteSQL(t *testing.T) {
 func TestBuildContextPublicWriters(t *testing.T) {
 	ctx := sqlx.NewBuildContext(dialect.Postgres)
 	var buf strings.Builder
-	ctx.WriteQuote(&buf, `t.a"b`)
+	ctx.WriteQuotedPath(&buf, `t.a"b`)
 	buf.WriteByte('=')
 	ctx.WriteArg(&buf, 7)
 	buf.WriteString(" AND ")

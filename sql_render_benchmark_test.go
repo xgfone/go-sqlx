@@ -122,7 +122,7 @@ func BenchmarkSQLFixes(b *testing.B) {
 				}{
 					"returning",
 					Update().Table("t").Set(Set("v", 1)).
-						ReturningExpr(Coalesce(Ident("t", "v"), 0), "v").
+						ReturningExprAlias(Coalesce(Ident("t", "v"), 0), "v").
 						SetDialect(d),
 				})
 			}

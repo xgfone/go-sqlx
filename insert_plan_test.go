@@ -19,7 +19,7 @@ import (
 
 func compareInsertPlan[T any](t *testing.T, rows []T, columns ...string) {
 	t.Helper()
-	p, err := CompileInsert[T](columns...)
+	p, err := CompileInsertPlan[T](columns...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,12 +104,12 @@ func TestInsertPlanBuilderCompatibility(t *testing.T) {
 		B int `sql:"b,omitempty"`
 	}
 
-	p, err := CompileInsert[model]()
+	p, err := CompileInsertPlan[model]()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	q := Insert().Into("t").Row(ColValue("a", 1), ColValue("b", 2))
+	q := Insert().Into("t").Row(NewColumnValue("a", 1), NewColumnValue("b", 2))
 	if err := p.AppendTo(q, []model{{}, {3, 4}}); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestInsertPlanBuilderCompatibility(t *testing.T) {
 	}
 
 	checkSQL(t, q, "INSERT INTO `t` (`a`, `b`) VALUES (?, ?), (?, ?)", 1, 2, 0, 0)
-	explicit, err := CompileInsert[model]("b", "a")
+	explicit, err := CompileInsertPlan[model]("b", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,13 +162,13 @@ func TestInsertPlanBuilderCompatibility(t *testing.T) {
 
 func TestInsertPlanValidation(t *testing.T) {
 	for name, compile := range map[string]func() error{
-		"interface":    func() error { _, e := CompileInsert[any](); return e },
-		"scalar":       func() error { _, e := CompileInsert[int](); return e },
-		"time":         func() error { _, e := CompileInsert[time.Time](); return e },
-		"empty":        func() error { _, e := CompileInsert[struct{}](); return e },
-		"missing":      func() error { _, e := CompileInsert[insertBenchmarkRecord]("missing"); return e },
-		"duplicate":    func() error { _, e := CompileInsert[insertBenchmarkRecord]("ID", "ID"); return e },
-		"empty column": func() error { _, e := CompileInsert[insertBenchmarkRecord](""); return e },
+		"interface":    func() error { _, e := CompileInsertPlan[any](); return e },
+		"scalar":       func() error { _, e := CompileInsertPlan[int](); return e },
+		"time":         func() error { _, e := CompileInsertPlan[time.Time](); return e },
+		"empty":        func() error { _, e := CompileInsertPlan[struct{}](); return e },
+		"missing":      func() error { _, e := CompileInsertPlan[insertBenchmarkRecord]("missing"); return e },
+		"duplicate":    func() error { _, e := CompileInsertPlan[insertBenchmarkRecord]("ID", "ID"); return e },
+		"empty column": func() error { _, e := CompileInsertPlan[insertBenchmarkRecord](""); return e },
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := compile(); err == nil {
@@ -178,7 +178,7 @@ func TestInsertPlanValidation(t *testing.T) {
 	}
 
 	type recursive struct{ Next *recursive }
-	if _, err := CompileInsert[recursive](); err == nil {
+	if _, err := CompileInsertPlan[recursive](); err == nil {
 		t.Fatal("recursive model accepted")
 	}
 
@@ -186,7 +186,7 @@ func TestInsertPlanValidation(t *testing.T) {
 		A int `sql:"a"`
 		B int `sql:"a"`
 	}
-	if _, err := CompileInsert[duplicate](); err == nil {
+	if _, err := CompileInsertPlan[duplicate](); err == nil {
 		t.Fatal("duplicate mapping accepted")
 	}
 
@@ -196,7 +196,7 @@ func TestInsertPlanValidation(t *testing.T) {
 		}
 	}
 
-	p, _ := CompileInsert[insertBenchmarkRecord]()
+	p, _ := CompileInsertPlan[insertBenchmarkRecord]()
 	if err := p.AppendTo(nil, nil); err == nil {
 		t.Fatal("nil builder accepted")
 	}
@@ -228,7 +228,7 @@ func TestInsertPlanRollbackAndCleanup(t *testing.T) {
 		B insertPlanBomb `sql:",omitempty"`
 	}
 
-	p, err := CompileInsert[row]()
+	p, err := CompileInsertPlan[row]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestInsertPlanRollbackAndCleanup(t *testing.T) {
 	for _, existing := range []bool{false, true} {
 		b := Insert().Into("t")
 		if existing {
-			b.Row(ColValue("A", "old"), ColValue("B", 1))
+			b.Row(NewColumnValue("A", "old"), NewColumnValue("B", 1))
 		}
 
 		before := b.Clone()
@@ -270,7 +270,7 @@ func TestInsertPlanRollbackAndCleanup(t *testing.T) {
 		}
 	}
 
-	ptrPlan, _ := CompileInsert[*row]()
+	ptrPlan, _ := CompileInsertPlan[*row]()
 	b := Insert().Into("t")
 	err = ptrPlan.AppendTo(b, []*row{{A: "one"}, nil})
 	if err == nil || b.values.rows != 0 || len(b.columns) != 0 {
@@ -310,7 +310,7 @@ func TestInsertPlanIsZeroOrder(t *testing.T) {
 		{batchOrderedZero{1, &calls}, batchOrderedZero{2, &calls}},
 		{batchOrderedZero{3, &calls}, batchOrderedZero{4, &calls}},
 	}
-	p, err := CompileInsert[row]()
+	p, err := CompileInsertPlan[row]()
 	if err != nil || len(calls) != 0 {
 		t.Fatal(err, calls)
 	}
@@ -331,7 +331,7 @@ func TestInsertPlanIsZeroOrder(t *testing.T) {
 	}
 
 	calls = nil
-	explicit, _ := CompileInsert[row]("b", "a")
+	explicit, _ := CompileInsertPlan[row]("b", "a")
 	if err := explicit.AppendTo(Insert(), rows); err != nil || len(calls) != 0 {
 		t.Fatal(err, calls)
 	}
@@ -341,7 +341,7 @@ func TestInsertPlanIsZeroOrder(t *testing.T) {
 		V any `sql:",omitempty"`
 	}
 
-	pd, _ := CompileInsert[dynamic]()
+	pd, _ := CompileInsertPlan[dynamic]()
 	err = pd.AppendTo(Insert(), []dynamic{{rows[0].A}})
 	if err != nil || !slices.Equal(calls, []int64{1}) {
 		t.Fatal(err, calls)
@@ -369,7 +369,7 @@ func TestInsertPlanSnapshotAndValuer(t *testing.T) {
 	calls := 0
 	rows := []row{{1, []byte("abc"), insertPlanValuer{2, &calls}, &insertPlanValuer{3, &calls}}}
 	columns := []string{"ID", "Data", "V", "P"}
-	p, err := CompileInsert[row](columns...)
+	p, err := CompileInsertPlan[row](columns...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +419,7 @@ func TestInsertPlanConcurrentAndStatementTemplate(t *testing.T) {
 		Name string `sql:"name"`
 	}
 
-	p, err := CompileInsert[row]()
+	p, err := CompileInsertPlan[row]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,13 +468,13 @@ func TestInsertPlanConcurrentAndStatementTemplate(t *testing.T) {
 	}
 }
 
-func ExampleCompileInsert() {
+func ExampleCompileInsertPlan() {
 	type User struct {
 		ID   int64  `sql:"id"`
 		Name string `sql:"name"`
 	}
 
-	plan, err := CompileInsert[User]("name", "id")
+	plan, err := CompileInsertPlan[User]("name", "id")
 	if err != nil {
 		panic(err)
 	}
@@ -515,7 +515,7 @@ func TestInsertPlanSnapshotBeforeIsZero(t *testing.T) {
 			if pointers {
 				ptrs := []*row{&rows[0]}
 				if compiled {
-					p, _ := CompileInsert[*row]()
+					p, _ := CompileInsertPlan[*row]()
 					if err := p.AppendTo(b, ptrs); err != nil {
 						t.Fatal(err)
 					}
@@ -524,7 +524,7 @@ func TestInsertPlanSnapshotBeforeIsZero(t *testing.T) {
 				}
 			} else {
 				if compiled {
-					p, _ := CompileInsert[row]()
+					p, _ := CompileInsertPlan[row]()
 					if err := p.AppendTo(b, rows); err != nil {
 						t.Fatal(err)
 					}

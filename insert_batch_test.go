@@ -19,7 +19,7 @@ func TestInsertBatchMixedRowsAndClone(t *testing.T) {
 		q := Insert().SetDialect(d).Into("t").Columns("A", "B").Values(input...)
 		input[0] = 99
 
-		q.Row(ColValue("B", "two"), ColValue("A", 2)).
+		q.Row(NewColumnValue("B", "two"), NewColumnValue("A", 2)).
 			Structs([]row{{3, "three"}}).Struct(row{4, "four"}).
 			Values(Expr("? + ?", 5, 6), Subquery(Select().SelectExpr(Value(7))))
 		_, args, err := q.Build()
@@ -122,7 +122,7 @@ func TestInsertBatchSizeOverflow(t *testing.T) {
 
 	b = Insert()
 	b.values.rows = maxInt
-	if b.Row(ColValue("id", 1)) != b || b.err == nil {
+	if b.Row(NewColumnValue("id", 1)) != b || b.err == nil {
 		t.Fatal("named row overflow broke the fluent builder")
 	}
 }
@@ -139,7 +139,7 @@ func TestInsertNamedRowFailureCleanup(t *testing.T) {
 		// Equal column counts pass the initial check. The first value is written
 		// before the missing second column causes an ordinary error return.
 		input := new(int)
-		if b.Row(ColValue("a", input), ColValue("c", 3)) != b ||
+		if b.Row(NewColumnValue("a", input), NewColumnValue("c", 3)) != b ||
 			b.err == nil || !strings.Contains(b.err.Error(), `missing column "b"`) {
 			t.Fatal(n, b.err)
 		}
@@ -163,9 +163,9 @@ func TestInsertNamedRowValidationErrors(t *testing.T) {
 		want   string
 	}{
 		{"empty", nil, "sqlx: empty named row; use DefaultValues explicitly"},
-		{"duplicate", []ColumnValue{ColValue("a", 1), ColValue("a", 2)}, `sqlx: duplicate column "a"`},
-		{"count", []ColumnValue{ColValue("a", 1)}, "sqlx: named row columns do not match"},
-		{"missing", []ColumnValue{ColValue("a", 1), ColValue("c", 2)}, `sqlx: missing column "b"`},
+		{"duplicate", []ColumnValue{NewColumnValue("a", 1), NewColumnValue("a", 2)}, `sqlx: duplicate column "a"`},
+		{"count", []ColumnValue{NewColumnValue("a", 1)}, "sqlx: named row columns do not match"},
+		{"missing", []ColumnValue{NewColumnValue("a", 1), NewColumnValue("c", 2)}, `sqlx: missing column "b"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := Insert().Into("t").Columns("a", "b").Values(7, 8)
@@ -177,7 +177,7 @@ func TestInsertNamedRowValidationErrors(t *testing.T) {
 			}
 
 			first := b.err
-			b.Row(ColValue("b", 10), ColValue("a", 9))
+			b.Row(NewColumnValue("b", 10), NewColumnValue("a", 9))
 			b.Row()
 			if b.err != first || b.values.rows != 2 ||
 				!slices.Equal(b.values.clone().cells, []any{7, 8, 9, 10}) {
@@ -192,7 +192,7 @@ func TestInsertNamedRowValidationErrors(t *testing.T) {
 
 func TestInsertBatchChunkBoundaries(t *testing.T) {
 	type record struct{ A, B int }
-	plan, err := CompileInsert[record]()
+	plan, err := CompileInsertPlan[record]()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestInsertBatchChunkBoundaries(t *testing.T) {
 				q.Values(i, i+1000)
 
 			case 1:
-				q.Row(ColValue("A", i), ColValue("B", i+1000))
+				q.Row(NewColumnValue("A", i), NewColumnValue("B", i+1000))
 
 			case 2:
 				q.Structs([]record{{i, i + 1000}})
@@ -228,7 +228,7 @@ func TestInsertBatchChunkBoundaries(t *testing.T) {
 		}
 
 		// A failed append can leave an empty reserved tail after full chunks.
-		bad, _ := CompileInsert[*record]()
+		bad, _ := CompileInsertPlan[*record]()
 		if err := bad.AppendTo(q, []*record{{9, 10}, nil}); err == nil {
 			t.Fatal("nil row accepted")
 		}
