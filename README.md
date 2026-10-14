@@ -132,15 +132,15 @@ sqlx.NewTypedColumn[int64](FieldName(name))
 ```
 
 An explicitly instantiated constructor function value can use
-`sqlx.NewTypedColumn[int64, string]`. Struct wrappers such as `RuleColumn`,
-`TypedColumn` and `NumericColumn` still require an explicit `.Column()` projection.
+`sqlx.NewTypedColumn[int64, string]`. `RuleColumn` and `TypedColumn` values
+still require an explicit `.Column()` projection.
 
-`Set`, `SetNamed(name, value)`, `ColValue` and data-taking condition methods
-require values assignable to T. Integer constants can initialize `int64`; an
-`int` variable needs an explicit conversion. Defined business types such as
-`UserID` and `OrderID` remain distinct. Data methods bind through `Value` and
-do not render ordinary SQL expressions held in an `any` value as SQL. Use a
-concrete T for useful checking; `any` and interface types weaken that check.
+Data-taking assignment, condition and arithmetic methods require values
+assignable to T. Integer constants can initialize `int64`; an `int` variable
+needs an explicit conversion. Defined business types such as `UserID` and
+`OrderID` remain distinct. Data methods bind through `Value` and do not render
+ordinary SQL expressions held in an `any` value as SQL. Use a concrete T for
+useful checking; `any` and interface types weaken that check.
 
 `SetFrom` requires another `TypedColumn[T]`. `SetExpr`, `ColValueExpr`, `EqExpr`
 and `NeExpr` accept ordinary `Expression` values, including explicit column
@@ -165,8 +165,8 @@ their Valuer at build time; use `IsNull`/`IsNotNull` to test SQL NULL explicitly
 
 `Name`, `Column`, `Ref` and `Scope` reuse existing identifier semantics. `Scope`
 returns a new typed column with the same T. Use `.Column()` to explicitly enter
-untyped APIs, including `SelectColumns(Age.Column(), Name.Column())`, sorting,
-arithmetic and value-rule operations. Existing `Column`, package `Set` and
+untyped APIs, including `SelectColumns(Age.Column(), Name.Column())`, sorting
+and value-rule operations. Existing `Column`, package `Set` and
 `SelectColumns(...Column)` behavior is unchanged. Typed columns have no value
 rule; `.Column().WithValueRule(rule)` returns the existing untyped `RuleColumn`.
 
@@ -211,7 +211,8 @@ The data methods bind every operand through `Value`, including each list
 element, so ordinary Expression objects held in `any` remain data. Comparisons
 are not limited to Number or comparable Go types: strings, time.Time and custom
 driver values can be declared as T. Database ordering and type compatibility
-remain the caller's responsibility. NumericColumn inherits these conditions.
+remain the caller's responsibility. Columns created by NumericColumn expose
+the same conditions.
 
 Nil operands in ordered comparisons, ranges and lists bind SQL NULL when T
 permits them. Only Eq/Ne rewrite nil into IS NULL/IS NOT NULL. NULL list elements
@@ -227,36 +228,36 @@ InQuery and NotInQuery snapshot a one-column query and render it in the parent's
 dialect and binding context; its output type is not checked against T. Use
 these query methods for set-valued subqueries, keeping InExpr for list elements.
 
-## Numeric columns
+### Typed arithmetic
 
-`NumericColumn[T Number]` embeds `TypedColumn[T]` and adds arithmetic updates.
-Convert an existing numeric typed column with `Numeric(column)`, preserving T,
-or declare one directly with `NewNumericColumn[T](column)`:
+`TypedColumn[T]` provides all arithmetic methods:
 
 ```go
 age := sqlx.NewTypedColumn[int64]("age")
-numericAge := sqlx.Numeric(age)
-visits := sqlx.NewNumericColumn[uint64](sqlx.Column("visits"))
-ratio := sqlx.NewNumericColumn[float64]("ratio")
+visits := sqlx.NewTypedColumn[uint64]("visits")
+ratio := sqlx.NewTypedColumn[float64]("ratio")
 
 update := db.Update().Table("users").Set(
-    numericAge.Add(2), visits.Inc(), ratio.Div(1.5),
-).Where(numericAge.Eq(18))
+    age.Add(2), visits.Inc(), ratio.Div(1.5),
+).Where(age.Eq(18))
 
 // Explicit expressions use separate entry points.
 update = db.Update().Table("users").Set(
-    numericAge.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
+    age.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2)),
     visits.AddExpr(sqlx.Param(0)),
 )
 
-// sqlx.Numeric(sqlx.NewTypedColumn[string]("name")) // Does not compile.
-// numericAge.Add("2")                             // Does not compile.
-// numericAge.Add(int(2))                           // Needs int64 conversion.
-// numericAge.Add(sqlx.Param(0))                    // Use AddExpr instead.
+// age.Add("2")          // Does not compile.
+// age.Add(int(2))        // Needs int64 conversion.
+// age.Add(sqlx.Param(0)) // Use AddExpr instead.
 ```
 
 `Add`, `Sub`, `Mul` and `Div` require data assignable to T, retaining the same
-constant conversion and defined-type distinctions as `TypedColumn.Set`.
+constant conversion and defined-type distinctions as `TypedColumn.Set`. Data
+operands bind through Value, so ordinary Expression objects held in any remain
+data. Pointers, nullable wrappers and custom driver values are accepted when
+declared as T, with driver conversion deferred.
+
 `AddExpr`, `SubExpr`, `MulExpr` and `DivExpr` accept `Expression`, including
 column references, `Param` slots and explicit `Value(...)` operands for named
 arguments or custom driver values. These methods return `Updater` and reuse the
@@ -264,28 +265,48 @@ existing arithmetic binding, parentheses and SQL division rules. Expression
 results and template Bind inputs are not checked against T. `Inc` and `Dec`
 use the SQL literal `1` without adding a parameter.
 
-`Scope` returns `NumericColumn[T]`, preserving arithmetic methods and T.
-Assignment, INSERT and predicate methods are inherited from `TypedColumn[T]`.
-Use the embedded `.TypedColumn` where an existing API requires that exact type:
+Arithmetic methods check Go assignability, not whether the database supports
+arithmetic on T. A string column can call Add with string data or Inc; Build
+does not validate the SQL operator's applicability. Use a concrete numeric T
+for numeric data checking and NumericColumn to require Number at construction.
+
+## Numeric columns
+
+`NumericColumn` constructs a `TypedColumn[T]` with a compile-time Number constraint:
 
 ```go
-backup := sqlx.NewTypedColumn[int64]("backup_age")
-backup.SetFrom(numericAge.TypedColumn)
-numericAge.SetFrom(backup)
-source := numericAge.Scope("u").Ref()
+func NumericColumn[T Number, C ~string](column C) TypedColumn[T]
 ```
 
-`NewNumericColumn[T Number, C ~string]` accepts the same string paths, `Column` and
-defined string types as `NewTypedColumn`; C is inferred. A constructor function
-value can use `sqlx.NewNumericColumn[int64, string]`.
+It accepts string literals, string variables, `Column` and defined string types.
+C is inferred when only T is specified. The result uses the same assignment,
+predicate, arithmetic and Scope methods as any other TypedColumn:
+
+```go
+age := sqlx.NumericColumn[int64]("age")
+visits := sqlx.NumericColumn[uint64](sqlx.Column("visits"))
+backup := sqlx.NewTypedColumn[int64]("backup_age")
+backup.SetFrom(age)
+age.SetFrom(backup)
+age.Add(2)
+visits.Inc()
+var scoped sqlx.TypedColumn[int64] = age.Scope("u")
+
+// sqlx.NumericColumn[string]("name") // Does not compile.
+```
+
+The constructor adds no wrapper or separate type. Scope preserves T and returns
+TypedColumn[T]. Values with the same T can be assigned or passed to SetFrom
+directly. Constructor function values specify both type arguments, for example
+`sqlx.NumericColumn[int64, string]`. To redeclare an existing typed column's path,
+pass its `.Column()` projection.
 
 `Number` permits integers other than `uintptr`, floating-point types and their
 defined types. Pointers, nullable wrappers, struct-based decimal values and
-`any` cannot be numeric column types. For such Go representations, retain
-`TypedColumn[T]` and use `.Column()` for explicit untyped arithmetic. Declaring a
-numeric T does not check database metadata or SQL nullability. Existing
-`TypedColumn[T]` has no arithmetic methods; existing `Column` and package-level
-helpers retain their signatures and behavior.
+`any` cannot be T for this constructor. Such Go representations can still use
+TypedColumn[T] arithmetic with data of type T or explicit expression operands.
+The constructor does not check database metadata or SQL nullability. Existing
+Column and package-level helpers retain their signatures and behavior.
 
 ## Arithmetic updates
 

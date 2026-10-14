@@ -99,8 +99,8 @@ ageFromField := sqlx.NewTypedColumn[int64](FieldName(path))
 ```
 
 An explicitly instantiated constructor function value can use
-`sqlx.NewTypedColumn[int64, string]`. `RuleColumn`, `TypedColumn` and
-`NumericColumn` inputs still require explicit `.Column()` projection.
+`sqlx.NewTypedColumn[int64, string]`. `RuleColumn` and `TypedColumn` values
+still require explicit `.Column()` projection.
 
 ```go
 const ageColumn sqlx.Column = "age"
@@ -153,8 +153,8 @@ joinCondition := age.Scope("u").EqExpr(backup.Scope("v").Ref())
 Column paths and T declarations do not validate model or database metadata.
 Expression types, driver-supported values and SQL constraints remain the
 caller's responsibility. Declaring T as any or an interface weakens static
-checking. Existing Column and Set semantics are unchanged; typed columns do not
-implicitly inherit arithmetic methods or value rules.
+checking. Existing Column and Set semantics are unchanged; typed columns
+have their own arithmetic methods and do not carry value rules.
 
 ### Typed comparisons and membership
 
@@ -163,7 +163,7 @@ accept two inclusive bounds of type T. `In` and `NotIn` accept `...T`, while
 `InSlice` and `NotInSlice` take `[]T` without an independent element type
 parameter. Defined types retain their distinctions; an int variable cannot be
 passed to an int64 column without conversion. These methods are available on
-all TypedColumn types and inherited by NumericColumn, including after Scope.
+all TypedColumn types, including NumericColumn results and values after Scope.
 They check Go assignability, not database ordering support or SQL type rules.
 
 ```go
@@ -209,19 +209,14 @@ with T; no static output-type check is performed. Nil query pointers produce
 build/compile errors. Use these methods for a set-valued subquery; an InExpr
 element represents one list expression, not a separate IN query source.
 
-## Numeric column operations
+### Typed arithmetic
 
-`NumericColumn[T Number]` embeds `TypedColumn[T]` and adds arithmetic methods
-only for Go numeric types. `Numeric(column)` converts a `TypedColumn[T]` while
-preserving its T and path. `NewNumericColumn[T](column)` accepts the same
-`C ~string` column paths as `NewTypedColumn`, including `Column` and defined
-string types. C is inferred; an explicitly instantiated constructor function
-value can use `NewNumericColumn[int64, string]`.
+All arithmetic methods are defined on `TypedColumn[T]`:
 
 ```go
-score := sqlx.Numeric(sqlx.NewTypedColumn[int64]("score"))
-factor := sqlx.NewNumericColumn[float64](sqlx.Column("factor"))
-visits := sqlx.NewNumericColumn[uint64]("visits")
+score := sqlx.NewTypedColumn[int64]("score")
+factor := sqlx.NewTypedColumn[float64]("factor")
+visits := sqlx.NewTypedColumn[uint64]("visits")
 q := sqlx.Update().Table("users").Set(
     score.Add(2), factor.Mul(1.5), visits.Inc(),
 ).Where(score.Ne(0))
@@ -238,34 +233,52 @@ q = sqlx.Update().Table("users").Set(
 | AddExpr / SubExpr / MulExpr / DivExpr | Explicit Expression  | column = column operator expression  |
 | Inc / Dec                             | None                 | column = column +/- 1                |
 
-Typed data operands bind without numeric conversion. An `int64` column accepts
-an integer constant such as `2` but rejects an `int` variable, string, arbitrary
-`any` or another defined number type. Expression methods accept column `Ref()`
-values and `Param` slots; use `Value(...)` for named arguments, nil, pointers or
-custom driver values. Expression results, explicit Value contents and template
-Bind inputs are not checked against T. Parentheses, parameter numbering, driver
-conversion deferral, SQL NULL propagation and division behavior follow the existing
-arithmetic helpers below. DEFAULT is not an arithmetic operand.
+Typed data operands bind through Value without numeric conversion. An `int64`
+column accepts an integer constant such as `2` but rejects an `int` variable,
+string, arbitrary `any` or another defined number type. An any-typed column
+binds ordinary Expression objects as data through these methods. Expression
+methods accept column `Ref()` values and `Param` slots; use `Value(...)` for
+named arguments, nil, pointers or custom driver values. Expression results,
+explicit Value contents and template Bind inputs are not checked against T.
+Parentheses, parameter numbering, driver conversion deferral, SQL NULL
+propagation and division behavior follow the existing arithmetic helpers below.
+DEFAULT is not an arithmetic operand.
 
-`Scope` returns `NumericColumn[T]`, so repeated scoping retains the numeric
-methods and original T without changing the original column. Use scoped
-references where required by SQL, for example `score.Scope("u").Ref()`.
-The embedded typed column preserves assignment, INSERT and condition methods;
-`SetFrom` continues to accept `TypedColumn[T]`:
+These methods check assignability to T, not database operator support. A string
+TypedColumn can call Add with a string or Inc; nullable wrappers and pointers
+can be used as data when declared as T. Build does not prove that SQL arithmetic
+is valid for the column's database type. Numeric declarations add the Number
+constraint below without changing the TypedColumn method set.
+
+## Numeric column declarations
+
+`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` constructs a typed
+column after checking that T satisfies Number. It accepts the same `C ~string`
+paths as NewTypedColumn, including string variables, Column and defined string
+types. C is inferred; constructor function values use both type arguments, such
+as `NumericColumn[int64, string]`.
+
+The result is a TypedColumn[T]. All assignment, predicate, arithmetic and Scope
+methods belong to that type; Scope preserves T:
 
 ```go
+score := sqlx.NumericColumn[int64]("score")
 backup := sqlx.NewTypedColumn[int64]("backup_score")
-backup.SetFrom(score.TypedColumn)
+backup.SetFrom(score)
 score.SetFrom(backup)
+var scoped sqlx.TypedColumn[int64] = score.Scope("u")
 columns := []sqlx.Column{score.Column(), backup.Column()}
+
+// sqlx.NumericColumn[string]("name") // Does not compile.
 ```
 
-The Number constraint excludes `uintptr`, complex numbers, pointers, nullable
-wrappers and struct-based decimal values. Keep those representations in
-`TypedColumn[T]` and use `.Column()` for explicit untyped arithmetic. The Go
-declaration does not verify database column types, ranges or nullability.
-Neither `TypedColumn[T]` nor existing `Column` and package helpers change their
-method sets or signatures to accommodate NumericColumn.
+The Number constraint includes signed and unsigned integers except `uintptr`,
+floating-point types and defined types with those underlying types. It excludes
+complex numbers, pointers, nullable wrappers, struct-based decimal values and
+any. Keep those representations in TypedColumn[T] and use its arithmetic methods
+with typed data or explicit expressions. The constructor does not verify database
+column types, ranges or nullability. Existing Column and package helpers keep
+their signatures and behavior.
 
 ## Arithmetic updates
 

@@ -9,8 +9,9 @@ import "database/sql"
 // methods check assignability to T and bind their arguments as data. Explicit
 // expression methods reuse [Expression] without checking its SQL result type.
 // T does not validate database metadata, driver support, ranges or nullability.
-// A zero TypedColumn has the same empty path as a zero [Column].
-// Use [Numeric] to enable arithmetic when T satisfies [Number].
+// A zero TypedColumn has the same empty path as a zero [Column]. Arithmetic
+// checks Go assignability, not database operator support. Use [NumericColumn]
+// to require T to satisfy [Number] at construction.
 type TypedColumn[T any] struct {
 	column Column
 }
@@ -58,6 +59,56 @@ func (c TypedColumn[T]) SetExpr(expr Expression) Updater { return c.column.Set(e
 // SetFrom assigns another column's current value. Both columns must declare
 // the same T. SQL type compatibility remains the caller's responsibility.
 func (c TypedColumn[T]) SetFrom(other TypedColumn[T]) Updater { return c.SetExpr(other.Ref()) }
+
+// Add adds data of type T to the column's current value using SQL +. It binds
+// value as data; database support for the operation on T is not checked.
+func (c TypedColumn[T]) Add(value T) Updater {
+	return c.SetExpr(Expr("? + ?", c.Ref(), Value(value)))
+}
+
+// Sub subtracts data of type T from the column's current value using SQL -.
+// It binds value as data without checking database operator support for T.
+func (c TypedColumn[T]) Sub(value T) Updater {
+	return c.SetExpr(Expr("? - ?", c.Ref(), Value(value)))
+}
+
+// Mul multiplies the column's current value by data of type T using SQL *.
+// It binds value as data without checking database operator support for T.
+func (c TypedColumn[T]) Mul(value T) Updater {
+	return c.SetExpr(Expr("? * ?", c.Ref(), Value(value)))
+}
+
+// Div divides the column's current value by data of type T using SQL /.
+// It binds value as data without checking database operator support for T.
+// Integer division, rounding and division by zero follow the database's rules.
+func (c TypedColumn[T]) Div(value T) Updater {
+	return c.SetExpr(Expr("? / ?", c.Ref(), Value(value)))
+}
+
+// AddExpr adds an explicit SQL expression to the column's current value.
+// Expression results and [Param] inputs are not checked against T.
+func (c TypedColumn[T]) AddExpr(expr Expression) Updater { return c.column.Add(expr) }
+
+// SubExpr subtracts an explicit SQL expression from the column's current value.
+// Expression results and [Param] inputs are not checked against T.
+func (c TypedColumn[T]) SubExpr(expr Expression) Updater { return c.column.Sub(expr) }
+
+// MulExpr multiplies the column's current value by an explicit SQL expression.
+// Expression results and [Param] inputs are not checked against T.
+func (c TypedColumn[T]) MulExpr(expr Expression) Updater { return c.column.Mul(expr) }
+
+// DivExpr divides the column's current value by an explicit SQL expression.
+// SQL division follows [TypedColumn.Div]; results and [Param] inputs are not
+// checked against T.
+func (c TypedColumn[T]) DivExpr(expr Expression) Updater { return c.column.Div(expr) }
+
+// Inc increments the column by the SQL literal 1 without binding a parameter.
+// Database support for arithmetic on T is not checked.
+func (c TypedColumn[T]) Inc() Updater { return c.column.Inc() }
+
+// Dec decrements the column by the SQL literal 1 without binding a parameter.
+// Database support for arithmetic on T is not checked.
+func (c TypedColumn[T]) Dec() Updater { return c.column.Dec() }
 
 // ColValue pairs an unqualified INSERT column with a data value of type T.
 func (c TypedColumn[T]) ColValue(value T) ColumnValue { return c.column.ColValue(Value(value)) }

@@ -223,9 +223,9 @@ existing dynamic validation.
 
 Typed columns also provide Gt/Ge/Lt/Le, Between/NotBetween, In/NotIn and
 InSlice/NotInSlice. Data operands must be assignable to T; slice methods take
-[]T, preserving the declared field type. NumericColumn inherits these methods.
-Use GtExpr/GeExpr/LtExpr/LeExpr, BetweenExpr/NotBetweenExpr and InExpr/NotInExpr
-for explicit expression operands:
+[]T, preserving the declared field type. NumericColumn returns a TypedColumn
+with these methods. Use GtExpr/GeExpr/LtExpr/LeExpr, BetweenExpr/NotBetweenExpr
+and InExpr/NotInExpr for explicit expression operands:
 
 ```go
 age.Ge(18)
@@ -247,33 +247,57 @@ its result type. Existing Column and package-level predicate APIs are unchanged.
 
 ## Optional numeric columns
 
-`NumericColumn[T Number]` embeds `TypedColumn[T]` and enables arithmetic only
-when T is a signed integer, unsigned integer other than `uintptr`, floating-point
-type or a defined type with one of those underlying types:
+`NumericColumn[T Number, C ~string](column C) TypedColumn[T]` is the single
+numeric constructor. It requires T to be a signed integer, unsigned integer
+other than uintptr, floating-point type or a defined type with one of those
+underlying types. It accepts the same string paths as NewTypedColumn, including
+string variables, Column and defined string types, and infers C:
 
 ```go
-age := sqlx.NewTypedColumn[int64]("age")
-numericAge := sqlx.Numeric(age) // Preserves int64 and the path.
-visits := sqlx.NewNumericColumn[uint64](sqlx.Column("visits"))
-numericAge.Add(2)
+age := sqlx.NumericColumn[int64]("age")
+visits := sqlx.NumericColumn[uint64](sqlx.Column("visits"))
+age.Add(2)
 visits.Inc()
-numericAge.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2))
-numericAge.AddExpr(sqlx.Param(0))
+age.SubExpr(sqlx.Expr("? + ?", sqlx.Ident("fee"), 2))
+age.AddExpr(sqlx.Param(0))
+
+// sqlx.NumericColumn[string]("name") // Does not compile.
 ```
 
-`NewNumericColumn[T Number, C ~string]` accepts the same paths as `NewTypedColumn`
-and infers C. `Add`, `Sub`, `Mul` and `Div` accept data assignable to T; use
-`AddExpr`, `SubExpr`, `MulExpr` and `DivExpr` for expressions and explicit
-`Value(...)` operands. Expression results and template Bind inputs retain their
-existing dynamic checks. `Inc` and `Dec` use the SQL literal 1. All methods return
-Updater and retain existing SQL arithmetic behavior.
+The NumericColumn type alias and the Numeric and NewNumericColumn functions
+have been removed. Use NumericColumn[T](path) for construction and TypedColumn[T]
+for variable, field and parameter types. An existing typed column already has all
+arithmetic methods; to pass its path to the constructor, use `.Column()`.
+Constructor function values specify both type arguments, for example
+`sqlx.NumericColumn[int64, string]`.
 
-Scope preserves `NumericColumn[T]`, including arithmetic methods. Inherited
-`SetFrom` still accepts `TypedColumn[T]`; pass `otherNumeric.TypedColumn` when
-assigning from another numeric column. `.Column()` remains the projection to
-untyped APIs. Pointer, nullable and struct-based decimal representations do not
-satisfy Number; keep them as TypedColumn and use the untyped arithmetic helpers.
-Existing Column, TypedColumn, Set and arithmetic APIs remain unchanged.
+All arithmetic methods now belong to TypedColumn[T], including Inc/Dec and the
+expression methods. Add/Sub/Mul/Div bind data through Value and require it to
+be assignable to T; ordinary Expression objects held in any remain data. Use
+AddExpr/SubExpr/MulExpr/DivExpr for expressions and explicit Value operands.
+Expression results and template Bind inputs retain their existing dynamic
+checks. Inc/Dec use the SQL literal 1. All methods return Updater and retain
+existing SQL arithmetic behavior.
+
+TypedColumn[string] can call Add with string data or Inc, but database support
+for that operation is not checked. NumericColumn checks Number at construction
+without adding a separate type or method set. Pointer, nullable and struct-based
+decimal representations can use TypedColumn arithmetic directly, although they
+do not satisfy Number.
+
+The previous NumericColumn wrapper's `.TypedColumn` field has been removed.
+Pass constructor results directly to SetFrom and other TypedColumn[T] parameters:
+
+```go
+backup := sqlx.NewTypedColumn[int64]("backup_age")
+backup.SetFrom(age)
+age.SetFrom(backup)
+var scoped sqlx.TypedColumn[int64] = age.Scope("u")
+```
+
+Scope returns TypedColumn[T] without changing the original column. `.Column()`
+remains the projection to untyped APIs. Existing Column, package Set and arithmetic
+helpers are unchanged.
 
 ## Arithmetic update constraints
 

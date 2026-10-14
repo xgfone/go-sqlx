@@ -53,36 +53,34 @@ func Set[C ~string](column C, value any) Updater {
 // Add adds a number or an [Expression] to the column's current value.
 // See [ArithmeticOperand] for column references and explicit bound values.
 func Add[C ~string, V ArithmeticOperand](column C, value V) Updater {
-	return arithmeticUpdate(string(column), "+", value)
+	return arithmeticUpdate(string(column), "? + ?", "? + (?)", value)
 }
 
 // Sub subtracts a number or an [Expression] from the column's current value.
 // See [ArithmeticOperand] for column references and explicit bound values.
 func Sub[C ~string, V ArithmeticOperand](column C, value V) Updater {
-	return arithmeticUpdate(string(column), "-", value)
+	return arithmeticUpdate(string(column), "? - ?", "? - (?)", value)
 }
 
 // Mul multiplies the column's current value by a number or an [Expression].
 // See [ArithmeticOperand] for column references and explicit bound values.
 func Mul[C ~string, V ArithmeticOperand](column C, value V) Updater {
-	return arithmeticUpdate(string(column), "*", value)
+	return arithmeticUpdate(string(column), "? * ?", "? * (?)", value)
 }
 
 // Div divides the column's current value by a number or an [Expression] using
 // SQL /. Integer division and division by zero follow the database's rules.
 // See [ArithmeticOperand] for column references and explicit bound values.
 func Div[C ~string, V ArithmeticOperand](column C, value V) Updater {
-	return arithmeticUpdate(string(column), "/", value)
+	return arithmeticUpdate(string(column), "? / ?", "? / (?)", value)
 }
 
-func arithmeticUpdate(column, operator string, value any) Updater {
-	var template string
+func arithmeticUpdate(column, scalarTemplate, expressionTemplate string, value any) Updater {
+	template := scalarTemplate
 	if e, ok := value.(Expression); ok && e.kind() != parameterExpression {
 		// Treat the whole expression as one operand, including for subtraction
 		// and division. Param slots are scalar and retain ordinary placeholders.
-		template = "? " + operator + " (?)"
-	} else {
-		template = "? " + operator + " ?"
+		template = expressionTemplate
 	}
 	return Set(column, Expr(template, Column(column).Ref(), value))
 }

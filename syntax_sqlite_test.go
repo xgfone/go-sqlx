@@ -20,7 +20,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	}
 
 	db := &DB{Dialect: dialect.SQLite}
-	numericValue := Numeric(Column("v").Typed[int64]())
+	numericValue := NumericColumn[int64](Column("v"))
 	typedID := NewTypedColumn[int64]("id")
 	typedValue := NewTypedColumn[int64]("v")
 	seq := Select().SelectExpr(Value(1)).UnionAll(Select().SelectExpr(Expr("? + 1", Ident("n"))).From("seq").Where(Lt("n", 4)))
@@ -154,6 +154,16 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			db.Update().Table("users").Set(Column("deleted_at").Typed[*string]().Set(nil)).
 				Where(Column("deleted_at").Typed[*string]().Eq(nil)).Returning("id", "deleted_at"),
 			[][]any{{1, nil}},
+		},
+		{
+			"typed string arithmetic follows sqlite operator rules",
+			db.Update().Table("t").Set(NewTypedColumn[string]("v").Add("2")).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{12}},
+		},
+		{
+			"typed nullable arithmetic data",
+			db.Update().Table("t").Set(NewTypedColumn[*int64]("v").Add(nil)).Where(Eq("id", 1)).Returning("v"),
+			[][]any{{nil}},
 		},
 		{
 			"numeric add data",
