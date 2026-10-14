@@ -122,7 +122,7 @@ func TestSelectExplicitNestedFields(t *testing.T) {
 type selectExplicitProvider struct{ selectExplicitUser }
 
 func (selectExplicitProvider) Columns(q string) []Namer {
-	return []Namer{Column("password").Scope(q).As("hash")}
+	return []Namer{Column("password").Qualify(q).As("hash")}
 }
 
 func TestSelectExplicitColumnProvider(t *testing.T) {

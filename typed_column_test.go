@@ -48,14 +48,14 @@ func TestTypedColumnAccessors(t *testing.T) {
 		t.Fatal("constructors and accessors disagree", age)
 	}
 
-	scoped := age.Scope("u").Scope("app")
-	if scoped.Name() != "app.u.age" || age.Name() != "age" || age.Scope("") != age {
-		t.Fatal("Scope must preserve T and leave the original unchanged")
+	qualified := age.Qualify("u").Qualify("app")
+	if qualified.Name() != "app.u.age" || age.Name() != "age" || age.Qualify("") != age {
+		t.Fatal("Qualify must preserve T and leave the original unchanged")
 	}
 
-	checkSQL(t, SelectColumns(scoped.Column()).SetDialect(dialect.Postgres),
+	checkSQL(t, SelectColumns(qualified.Column()).SetDialect(dialect.Postgres),
 		`SELECT "app"."u"."age"`)
-	quoted := Column(`a"b`).Typed[int64]().Scope(`u"x`)
+	quoted := Column(`a"b`).Typed[int64]().Qualify(`u"x`)
 	checkSQL(t, Select().SelectExpr(quoted.Ref()).SetDialect(dialect.Postgres),
 		`SELECT "u""x"."a""b"`)
 
@@ -110,7 +110,7 @@ func TestTypedColumnBuilders(t *testing.T) {
 	}
 
 	checkSQL(t,
-		Update().Table("users").Set(backup.SetFrom(age.Scope("other"))).
+		Update().Table("users").Set(backup.SetFrom(age.Qualify("other"))).
 			SetDialect(dialect.Postgres),
 		`UPDATE "users" SET "backup_age"="other"."age"`)
 	checkSQL(t,

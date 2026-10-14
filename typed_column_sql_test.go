@@ -13,9 +13,9 @@ import (
 
 func TestTypedColumnSelectionJoinOrdering(t *testing.T) {
 	type userID int64
-	id := NewTypedColumn[userID]("id").Scope("u")
-	owner := NewTypedColumn[userID]("user_id").Scope("o")
-	name := NewTypedColumn[string]("name").Scope("u")
+	id := NewTypedColumn[userID]("id").Qualify("u")
+	owner := NewTypedColumn[userID]("user_id").Qualify("o")
+	name := NewTypedColumn[string]("name").Qualify("u")
 	if id.Asc() != id.Column().Asc() || owner.Desc() != owner.Column().Desc() ||
 		name.As("user.name") != name.Column().As("user.name") {
 		t.Fatal("typed selection and ordering must preserve the underlying column terms")
@@ -36,8 +36,8 @@ func TestTypedColumnSelectionJoinOrdering(t *testing.T) {
 		})
 	}
 
-	quoted := NewTypedColumn[*string](`n"ame`).Scope(`u"x`)
-	other := NewTypedColumn[*string]("backup").Scope("o")
+	quoted := NewTypedColumn[*string](`n"ame`).Qualify(`u"x`)
+	other := NewTypedColumn[*string]("backup").Qualify("o")
 	checkSQL(t, Select().SelectNamers(quoted.As(`result."name`)).
 		FromAlias("users", `u"x`).Join("other", "o", quoted.On(other)).Sort(quoted.Desc()).
 		SetDialect(dialect.Postgres),
@@ -79,7 +79,7 @@ func TestTypedColumnOrderingEntrypoints(t *testing.T) {
 }
 
 func TestTypedColumnAggregateExpressions(t *testing.T) {
-	amount := NewTypedColumn[float64]("amount").Scope("o")
+	amount := NewTypedColumn[float64]("amount").Qualify("o")
 	for _, tc := range []struct {
 		d    Dialect
 		want string
@@ -104,7 +104,7 @@ func TestTypedColumnAggregateExpressions(t *testing.T) {
 
 func TestTypedColumnCoalesceAndNullIf(t *testing.T) {
 	type amount int64
-	c := NewTypedColumn[amount]("amount").Scope("o")
+	c := NewTypedColumn[amount]("amount").Qualify("o")
 	values := []amount{0, 1}
 	exprs := []Expression{NewTypedColumn[amount]("backup").Ref(), Value(2)}
 	coalesce, coalesceExpr := c.Coalesce(values...), c.CoalesceExpr(exprs...)

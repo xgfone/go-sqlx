@@ -86,9 +86,12 @@ q = sqlx.Update().Table("users").Set(
 // age.Set("Alice") // Does not compile.
 ```
 
-`Name` returns the path, `Ref` an untyped reference, and `Scope` a new column with
-the same `T`. `Column()` projects to untyped APIs such as `SelectColumns` and value
-rules; typed columns themselves do not satisfy string-based path constraints.
+`Name` returns the path, `Ref` an untyped reference, and `Qualify` a new column with
+the same `T`. `Qualify` prepends a table, alias, or dot-separated qualifying path;
+an empty qualifier leaves the column unchanged, and repeated calls prepend further
+qualifiers without replacing existing ones or setting `FROM`/`JOIN` aliases.
+`Column()` projects to untyped APIs such as `SelectColumns` and value rules;
+typed columns themselves do not satisfy string-based path constraints.
 Use a nullable `T` such as `*int64` or `sql.NullInt64` when needed. `Eq`/`Ne`
 retain the `nil` rewriting described above; `IsNull`/`IsNotNull` work independently
 of `T`. Nullable wrappers bind without calling `Valuer` to determine `NULL` predicates.
@@ -142,9 +145,9 @@ returns a `Namer`, quoting the alias as one identifier without changing the colu
 when the declared Go types differ:
 
 ```go
-id := sqlx.NewTypedColumn[int64]("id").Scope("u")
-owner := sqlx.NumericColumn[int64]("user_id").Scope("o")
-name := sqlx.NewTypedColumn[string]("name").Scope("u")
+id := sqlx.NewTypedColumn[int64]("id").Qualify("u")
+owner := sqlx.NumericColumn[int64]("user_id").Qualify("o")
+name := sqlx.NewTypedColumn[string]("name").Qualify("u")
 q := sqlx.Select().SelectNamers(name.As("user.name")).FromAlias("users", "u").
     Join("orders", "o", id.On(owner)).Sort(name.Asc(), id.Desc())
 ```
@@ -205,10 +208,10 @@ Nil queries fail `Build`/`Compile`. `InExpr` elements are scalar list expression
 Each accepts an optional `escape ...string`:
 
 ```go
-name := sqlx.NewTypedColumn[string]("name").Scope("u")
+name := sqlx.NewTypedColumn[string]("name").Qualify("u")
 q := sqlx.Select("u.name").FromAlias("users", "u").Where(
     name.Like("A%"), name.NotLike("A!_%", "!"),
-    name.LikeExpr(sqlx.Column("pattern").Scope("u").Ref()),
+    name.LikeExpr(sqlx.Column("pattern").Qualify("u").Ref()),
 )
 ```
 

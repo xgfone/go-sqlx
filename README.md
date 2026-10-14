@@ -98,12 +98,14 @@ update := sqlx.Update().Table("users").Set(UserName.Set("Alice")).
     Where(UserID.Eq(123))
 ```
 
-`Scope("u")` returns a qualified path without changing the original.
+`Qualify("u")` returns a qualified path without changing the original.
+It accepts a table, alias, or dot-separated qualifying path. An empty qualifier
+leaves the column unchanged; repeated calls prepend further qualifiers.
 Use `Ref()` for a column on the right of a comparison or assignment;
 an ordinary right-hand `Column` binds as data. `On` compares column paths:
 
 ```go
-join := UserID.Scope("u").On(sqlx.Column("user_id").Scope("o"))
+join := UserID.Qualify("u").On(sqlx.Column("user_id").Qualify("o"))
 ```
 
 `SelectColumns` accepts `...Column`, including an expanded `[]Column`.

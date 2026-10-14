@@ -60,7 +60,7 @@ func TestArithmeticUpdateOperands(t *testing.T) {
 		{"sub expression", Sub("v", Expr("? + ?", Ident("bonus"), 2)), `"v"="v" - ("bonus" + $1)`, []any{2}},
 		{"mul expression", Column("v").Mul(Expr("? + ?", Ident("bonus"), 2)), `"v"="v" * ("bonus" + $1)`, []any{2}},
 		{"div expression", Column("v").Div(Expr("? * ?", Ident("bonus"), 2)), `"v"="v" / ("bonus" * $1)`, []any{2}},
-		{"scoped quoted column", Column(`s"x`).Scope(`t"x`).Inc(), `"t""x"."s""x"="t""x"."s""x" + 1`, nil},
+		{"qualified quoted column", Column(`s"x`).Qualify(`t"x`).Inc(), `"t""x"."s""x"="t""x"."s""x" + 1`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkSQL(t, Update().Table("t").Set(tc.u).SetDialect(dialect.Postgres),

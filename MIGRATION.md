@@ -18,6 +18,7 @@ updates, sorting and pagination passed to SQLx with native clauses:
 | `Where(op.Equal("id", id))`           | `Where(sqlx.Eq("id", id))`              |
 | `Set(op.Set("name", value))`          | `Set(sqlx.Set("name", value))`          |
 | `Sort(op.KeyId.OrderDesc())`          | `Sort(sqlx.Column("id").Desc())`        |
+| `op.KeyId.Scope("u")`                 | `sqlx.Column("id").Qualify("u")`        |
 | `Pagination(op.PageSize(page, size))` | `Pagination(sqlx.PageSize(page, size))` |
 | `[]op.Condition` / `[]op.Updater`     | `[]sqlx.Condition` / `[]sqlx.Updater`   |
 
@@ -25,6 +26,14 @@ The new interfaces are independent of `go-op` operation trees. Replace
 `RegisterOpBuilder`, `GetOpBuilder`, `BuildOp`, `BuildOper` and `OpBuilderFunc`
 with implementations of `Condition` or `Updater`, or an application adapter.
 The module does not distribute a `go-op` adapter.
+
+Column qualification uses `Column.Qualify(qualifier)` and
+`TypedColumn[T].Qualify(qualifier)`. Replace the earlier v1 `Scope` method calls
+with `Qualify`; no `Scope` compatibility methods remain. Qualification prepends
+a table, alias, or dot-separated path without changing the original column or
+the typed column's `T`. Empty qualifiers leave the path unchanged; repeated calls
+prepend further qualifiers rather than replacing existing ones. For example,
+`sqlx.Column("id").Qualify("users").Qualify("app")` returns `"app.users.id"`.
 
 ## Build results and execution
 

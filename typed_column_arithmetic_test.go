@@ -55,7 +55,7 @@ func TestTypedColumnArithmeticExpressionOperands(t *testing.T) {
 		{"sub", NewTypedColumn[int64]("v").SubExpr(Expr("? + ?", bonus.Ref(), 2)), `"v"="v" - ("bonus" + $1)`, []any{2}},
 		{"mul", NewTypedColumn[int64]("v").MulExpr(Expr("? + ?", bonus.Ref(), 2)), `"v"="v" * ("bonus" + $1)`, []any{2}},
 		{"div", NewTypedColumn[int64]("v").DivExpr(Expr("? * ?", bonus.Ref(), 2)), `"v"="v" / ("bonus" * $1)`, []any{2}},
-		{"column reference", NewTypedColumn[int64]("v").AddExpr(bonus.Scope("other").Ref()), `"v"="v" + ("other"."bonus")`, nil},
+		{"column reference", NewTypedColumn[int64]("v").AddExpr(bonus.Qualify("other").Ref()), `"v"="v" + ("other"."bonus")`, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkSQL(t, Update().Table("t").Set(tc.u).SetDialect(dialect.Postgres),

@@ -22,14 +22,14 @@ func (c Column) Column() Column { return c }
 // checking database metadata. Use [TypedColumn.Column] to return to untyped APIs.
 func (c Column) Typed[T any]() TypedColumn[T] { return NewTypedColumn[T](c) }
 
-// Scope prefixes the path with a table, alias, or other qualifying path.
-// An empty scope leaves c unchanged. Repeated calls prepend further scopes;
+// Qualify prefixes the path with a table, alias, or other qualifying path.
+// An empty qualifier leaves c unchanged. Repeated calls prepend further qualifiers;
 // they do not replace existing ones or declare aliases in FROM or JOIN.
-func (c Column) Scope(scope string) Column {
-	if scope == "" {
+func (c Column) Qualify(qualifier string) Column {
+	if qualifier == "" {
 		return c
 	}
-	return Column(scope + "." + string(c))
+	return Column(qualifier + "." + string(c))
 }
 
 // Ref returns an explicit column reference, quoting each path component.

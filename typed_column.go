@@ -38,10 +38,10 @@ func (c TypedColumn[T]) Column() Column { return c.column }
 // qualification follow [Column.Ref]. Use [TypedColumn.SetFrom] for typed assignment.
 func (c TypedColumn[T]) Ref() Expression { return c.column.Ref() }
 
-// Scope prefixes the column path while preserving T and leaving c unchanged.
-// An empty scope leaves the path unchanged, following [Column.Scope].
-func (c TypedColumn[T]) Scope(scope string) TypedColumn[T] {
-	return NewTypedColumn[T](c.column.Scope(scope))
+// Qualify prefixes the column path while preserving T and leaving c unchanged.
+// Empty qualifiers and repeated calls follow [Column.Qualify].
+func (c TypedColumn[T]) Qualify(qualifier string) TypedColumn[T] {
+	return NewTypedColumn[T](c.column.Qualify(qualifier))
 }
 
 // As returns a named selection for [SelectBuilder.SelectNamers]. The alias is

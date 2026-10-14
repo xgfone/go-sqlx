@@ -35,7 +35,7 @@ func rejected() {
 		`age.SetNamed("age", "Alice")`, `age.SetExpr(18)`,
 		`age.SetFrom(name)`, `age.SetFrom(sqlx.Column("backup_age"))`,
 		`age.SetFrom(sqlx.NewTypedColumn[int]("backup_age"))`,
-		`age.Scope("u").Set("Alice")`, `age.Scope("u").SetFrom(name.Scope("v"))`,
+		`age.Qualify("u").Set("Alice")`, `age.Qualify("u").SetFrom(name.Qualify("v"))`,
 		`user.Set(orderID(7))`, `user.SetFrom(order)`, `user.Eq(orderID(7))`,
 		`age.EqExpr(18)`, `age.NeExpr("Alice")`, `age.ColValueExpr(18)`,
 		`sqlx.Set(age, 18)`, `sqlx.Eq(age, 18)`, `sqlx.SelectColumns(age)`,
@@ -45,7 +45,7 @@ func rejected() {
 		`age.On(age.Ref())`, `age.On(18)`, `age.On(nil)`,
 		`age.On(sqlx.NewTypedColumn[int]("backup_age"))`,
 		`age.On(sqlx.NewTypedColumn[*int64]("backup_age"))`,
-		`user.On(order)`, `age.Scope("u").On(name.Scope("v"))`,
+		`user.On(order)`, `age.Qualify("u").On(name.Qualify("v"))`,
 		`age.Asc(1)`, `age.Desc(1)`, `age.As(18)`, `age.Cast(18)`,
 	}
 	for _, method := range []string{
@@ -70,8 +70,8 @@ func rejected() {
 	} {
 		calls = append(calls,
 			fmt.Sprintf("user.%s(orderID(7))", method),
-			fmt.Sprintf(`age.Scope("u").%s("18")`, method),
-			fmt.Sprintf(`sqlx.NumericColumn[int64]("age").Scope("u").%s("18")`, method))
+			fmt.Sprintf(`age.Qualify("u").%s("18")`, method),
+			fmt.Sprintf(`sqlx.NumericColumn[int64]("age").Qualify("u").%s("18")`, method))
 	}
 	for _, method := range []string{"Add", "Sub", "Mul", "Div"} {
 		for _, value := range []string{
@@ -116,7 +116,7 @@ func rejected() {
 		calls = append(calls,
 			fmt.Sprintf(`display.%s(string("A%%"))`, method),
 			fmt.Sprintf(`display.%s(searchPattern("A%%"))`, method),
-			fmt.Sprintf(`name.Scope("u").%s(18)`, method))
+			fmt.Sprintf(`name.Qualify("u").%s(18)`, method))
 	}
 	for _, method := range []string{"Like", "NotLike", "LikeExpr", "NotLikeExpr"} {
 		pattern := `"A%"`
@@ -163,7 +163,7 @@ func rejected() {
 
 		calls = append(calls,
 			fmt.Sprintf("user.%s([]orderID{7})", method),
-			fmt.Sprintf(`age.Scope("u").%s([]int{18})`, method))
+			fmt.Sprintf(`age.Qualify("u").%s([]int{18})`, method))
 	}
 
 	for _, method := range []string{"InQuery", "NotInQuery"} {

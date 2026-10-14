@@ -13,7 +13,7 @@ import (
 
 func TestTypedColumnLike(t *testing.T) {
 	type displayName string
-	name := NewTypedColumn[displayName]("name").Scope("u")
+	name := NewTypedColumn[displayName]("name").Qualify("u")
 	pattern := displayName("A!_%")
 	for _, tc := range []struct {
 		d    Dialect
@@ -26,7 +26,7 @@ func TestTypedColumnLike(t *testing.T) {
 		t.Run(tc.d.Name(), func(t *testing.T) {
 			q := Select("u.name").FromAlias("users", "u").Where(
 				name.Like(pattern, "!"), name.NotLike("B%"),
-				name.LikeExpr(Column("pattern").Scope("p").Ref()),
+				name.LikeExpr(Column("pattern").Qualify("p").Ref()),
 				name.NotLikeExpr(Func("LOWER", Value("C%")), "!"),
 			).SetDialect(tc.d)
 			checkSQL(t, q, tc.want, pattern, "!", displayName("B%"), "C%", "!")

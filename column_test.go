@@ -9,12 +9,13 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
-func TestColumnScopedQuery(t *testing.T) {
+func TestColumnQualifiedQuery(t *testing.T) {
 	const id Column = "id"
 	const userID Column = "user_id"
-	uid, oid := id.Scope("u"), userID.Scope("o")
-	if id.Column() != id || id.Name() != "id" || id.Scope("") != id || id.Scope("users").Scope("app") != "app.users.id" {
-		t.Fatal("Scope must prepend without changing the original column")
+	uid, oid := id.Qualify("u"), userID.Qualify("o")
+	if id.Column() != id || id.Name() != "id" || id.Qualify("") != id ||
+		id.Qualify("users").Qualify("app") != "app.users.id" {
+		t.Fatal("Qualify must prepend without changing the original column")
 	}
 	columns := []Column{uid, oid}
 	q := Select().SelectColumns(columns...).Select("name").
@@ -95,7 +96,7 @@ func TestColumnSubquerySnapshot(t *testing.T) {
 
 func TestColumnExpressionsAndNamedValues(t *testing.T) {
 	const amount Column = "amount"
-	c := amount.Scope("o")
+	c := amount.Qualify("o")
 	checkSQL(t,
 		Select().SelectExpr(c.Count(), c.CountDistinct(), c.Sum(), c.Min(), c.Max(), c.Avg()).
 			FromAlias("orders", "o").SetDialect(dialect.Postgres),
@@ -128,7 +129,7 @@ func TestColumnReferenceAndValue(t *testing.T) {
 		Update().Table("users").Set(backup.Set(id)).Where(id.Eq(backup)).SetDialect(dialect.Postgres),
 		`UPDATE "users" SET "backup_id"=$1 WHERE ("id" = $2)`, id, backup)
 	checkSQL(t,
-		Select().SelectExpr(Column(`i"d`).Scope(`u"x`).Ref()).SetDialect(dialect.Postgres),
+		Select().SelectExpr(Column(`i"d`).Qualify(`u"x`).Ref()).SetDialect(dialect.Postgres),
 		`SELECT "u""x"."i""d"`)
 }
 

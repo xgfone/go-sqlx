@@ -23,7 +23,7 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 	numericValue := NumericColumn[int64](Column("v"))
 	typedID := NewTypedColumn[int64]("id")
 	typedValue := NewTypedColumn[int64]("v")
-	typedName := NewTypedColumn[string]("name").Scope("patterns")
+	typedName := NewTypedColumn[string]("name").Qualify("patterns")
 	likeValues := ValuesSource("patterns",
 		[]string{"name"},
 		[]any{"a_b"},
@@ -69,15 +69,15 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 		},
 		{
 			"typed selection alias and join",
-			db.Select().SelectNamers(typedID.Scope("t").As("user.id")).From("t").
-				Join("other", "o", typedID.Scope("t").On(NewTypedColumn[int64]("id").Scope("o"))).
-				Sort(typedID.Scope("t").Desc()),
+			db.Select().SelectNamers(typedID.Qualify("t").As("user.id")).From("t").
+				Join("other", "o", typedID.Qualify("t").On(NewTypedColumn[int64]("id").Qualify("o"))).
+				Sort(typedID.Qualify("t").Desc()),
 			[][]any{{2}},
 		},
 		{
 			"typed mixed ordering",
 			db.Select("id").FromAlias("t", "u").
-				Sort(NewTypedColumn[string]("team").Scope("u").Asc(), typedValue.Scope("u").Desc()),
+				Sort(NewTypedColumn[string]("team").Qualify("u").Asc(), typedValue.Qualify("u").Desc()),
 			[][]any{{2}, {1}, {3}},
 		},
 		{
