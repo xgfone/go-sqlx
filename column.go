@@ -18,6 +18,10 @@ func (c Column) Name() string { return string(c) }
 // Column returns c itself, matching [RuleColumn.Column].
 func (c Column) Column() Column { return c }
 
+// Typed declares T as the Go data type for this column without changing c or
+// checking database metadata. Use [TypedColumn.Column] to return to untyped APIs.
+func (c Column) Typed[T any]() TypedColumn[T] { return NewTypedColumn[T](c) }
+
 // Scope prefixes the path with a table, alias, or other qualifying path.
 // An empty scope leaves c unchanged. Repeated calls prepend further scopes;
 // they do not replace existing ones or declare aliases in FROM or JOIN.

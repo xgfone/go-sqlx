@@ -187,6 +187,40 @@ no inferable model type; use SelectType or a typed nil pointer instead.
 SelectStruct still honors dynamic ColumnProvider output, including when the
 argument is an interface. SelectType intentionally uses only mapped type fields.
 
+## Optional typed columns
+
+Existing `Column` declarations, `Set(column, any)`, `Column.Set(any)` and
+`SelectColumns(...Column)` remain unchanged. For opt-in Go data-type checking,
+derive an independent `TypedColumn[T]`:
+
+```go
+const ageColumn sqlx.Column = "age"
+age := ageColumn.Typed[int64]() // Also NewTypedColumn[int64](ageColumn).
+age.Set(18)
+age.SetNamed("age", 18)
+age.SetFrom(sqlx.Column("backup_age").Typed[int64]())
+age.Eq(18)
+age.SetExpr(sqlx.Param(0))
+```
+
+`NewTypedColumn` now constrains its column argument to `C ~string`, accepting
+`string` variables, `Column` and other defined string types. Existing calls
+with only T continue to infer C from the argument. Constructor function values
+may need an explicit C, for example `sqlx.NewTypedColumn[int64, string]`.
+Struct wrappers still require `.Column()` projection.
+
+Data-taking methods require assignability to T; they do not accept arbitrary SQL
+expressions. Use `SetExpr`, `ColValueExpr`, `EqExpr` and `NeExpr` for expressions
+and template slots. Use `.Column()` to explicitly return to untyped operations
+and to construct existing `[]Column` selections. Scope preserves T. Typed columns
+are variables and do not implicitly carry a `ValueRule`.
+
+Choose a Go representation of SQL NULL, such as a pointer or nullable wrapper.
+Nil pointers and nil interfaces in typed Eq/Ne retain IS NULL/IS NOT NULL
+semantics; nullable wrapper objects remain bound data. No database metadata or
+expression result-type checks are added, and template Bind inputs retain their
+existing dynamic validation.
+
 ## Arithmetic update constraints
 
 `Add`, `Sub`, `Mul` and `Div` and their generic `Column` methods return `Updater`.

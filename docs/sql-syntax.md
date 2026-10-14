@@ -80,6 +80,82 @@ dialect supports it. It cannot be embedded in an arbitrary expression. SQLite
 supports `DefaultValues()` for inserting a default row, but not per-value DEFAULT
 or `SET column = DEFAULT`.
 
+## Typed column operations
+
+Use `NewTypedColumn[T](column)` or `Column.Typed[T]()` to opt into Go field-type
+checks. `TypedColumn[T]` is an independent struct; it does not satisfy the
+string-based column constraints of existing package functions.
+
+The constructor's column path is constrained to `C ~string`, accepting string
+literals, `string` variables, `Column` and other defined string types. C is
+inferred, so calls still specify only the field's data type T. For example:
+
+```go
+type FieldName string
+path := "age"
+ageFromString := sqlx.NewTypedColumn[int64](path)
+ageFromColumn := sqlx.NewTypedColumn[int64](sqlx.Column(path))
+ageFromField := sqlx.NewTypedColumn[int64](FieldName(path))
+```
+
+An explicitly instantiated constructor function value can use
+`sqlx.NewTypedColumn[int64, string]`. `RuleColumn` and `TypedColumn` inputs still
+require explicit `.Column()` projection.
+
+```go
+const ageColumn sqlx.Column = "age"
+age := ageColumn.Typed[int64]()
+name := sqlx.NewTypedColumn[string]("name")
+backup := sqlx.Column("backup_age").Typed[int64]()
+
+q := sqlx.Update().Table("users").Set(
+    age.Set(18), name.SetNamed("name", "Alice"), backup.SetFrom(age),
+).Where(age.Eq(18), name.Ne("Bob"))
+
+// Rendering explicit SQL does not check its result type against int64.
+q = sqlx.Update().Table("users").Set(
+    age.SetExpr(sqlx.Expr("? + ?", age.Ref(), 1)),
+).Where(age.EqExpr(backup.Ref()), name.NeExpr(sqlx.Value("Bob")))
+
+insert := sqlx.Insert().Into("users").Row(
+    age.ColValue(18), name.ColValueExpr(sqlx.Func("UPPER", "alice")),
+)
+```
+
+`Set`, `SetNamed`, `ColValue`, `Eq` and `Ne` accept only data assignable to T,
+including defined types, pointers and custom driver values when declared as T.
+They bind data through `Value`; driver conversion is deferred. `SetFrom` accepts
+only another `TypedColumn[T]`. Expressions use `SetExpr`, `ColValueExpr`,
+`EqExpr` or `NeExpr`, which preserve ordinary expression rendering, dialect
+validation and parameter numbering without asserting a result type.
+
+For templates use `SetExpr(Param(i))`, `ColValueExpr(Param(i))` and the expression
+comparison methods. Template Bind inputs remain dynamically typed. DEFAULT is
+valid only where the existing dialect supports the corresponding assignment or
+insert operation.
+
+`Eq` and `Ne` map nil interfaces and nil pointers to IS NULL and IS NOT NULL.
+For example, `Column("age").Typed[*int64]().Eq(nil)` is an IS NULL condition,
+while an `int64` column rejects nil data at compile time. Every typed column
+provides `IsNull` and `IsNotNull`. Nullable wrappers bind normally, without
+calling their Valuer to decide NULL predicates; `EqExpr(Value(nil))` also binds
+NULL for an ordinary comparison.
+
+`Name` returns a string path, `Ref` an untyped SQL reference and `Scope` a new
+typed column preserving T. `Column()` explicitly returns to existing operations:
+
+```go
+columns := []sqlx.Column{age.Column(), name.Column(), "legacy"}
+selectQuery := sqlx.SelectColumns(columns...).From("users")
+joinCondition := age.Scope("u").EqExpr(backup.Scope("v").Ref())
+```
+
+Column paths and T declarations do not validate model or database metadata.
+Expression types, driver-supported values and SQL constraints remain the
+caller's responsibility. Declaring T as any or an interface weakens static
+checking. Existing Column and Set semantics are unchanged; typed columns do not
+implicitly inherit arithmetic methods or value rules.
+
 ## Arithmetic updates
 
 `Add(column, value)`, `Sub(column, value)`, `Mul(column, value)` and

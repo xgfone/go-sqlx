@@ -86,6 +86,96 @@ arguments as values or explicit Expressions, following the usual binding rules.
 Use `column.As("alias")` with `SelectNamers`, and an unqualified
 `column.ColValue(value)` with `InsertBuilder.Row`.
 
+## Typed columns
+
+`TypedColumn[T]` is an optional struct wrapper that checks Go assignability at
+data-taking methods. Declare it from a column path or an existing `Column`:
+
+```go
+const UserIDColumn sqlx.Column = "id"
+
+var (
+    UserID = UserIDColumn.Typed[int64]()
+    Age    = sqlx.NewTypedColumn[int64]("age")
+    Name   = sqlx.Column("name").Typed[string]()
+    Backup = sqlx.Column("backup_age").Typed[int64]()
+)
+
+update := db.Update().Table("users").Set(
+    Age.Set(18), Name.Set("Alice"), Backup.SetFrom(Age),
+).Where(UserID.Eq(7), Name.Ne("Bob"))
+
+// Explicit SQL expressions use separate entry points.
+update = db.Update().Table("users").Set(
+    Age.SetExpr(sqlx.Expr("? + ?", Age.Ref(), 1)),
+).Where(UserID.EqExpr(sqlx.Param(0)))
+
+insert := db.Insert().Into("users").Row(
+    Age.ColValue(18), Name.ColValueExpr(sqlx.Func("UPPER", "alice")),
+)
+
+// Age.Set("Alice")              // Does not compile.
+// Age.SetFrom(Name)             // Does not compile: different T.
+// Age.Set(sqlx.Param(0))        // Use SetExpr for a template slot.
+```
+
+`NewTypedColumn` constrains the column path to `C ~string`, accepting string
+literals, `string` variables, `Column` and other defined string types. Specify
+the data type T; C is inferred from the argument:
+
+```go
+type FieldName string
+name := "age"
+sqlx.NewTypedColumn[int64](name)
+sqlx.NewTypedColumn[int64](sqlx.Column(name))
+sqlx.NewTypedColumn[int64](FieldName(name))
+```
+
+An explicitly instantiated constructor function value can use
+`sqlx.NewTypedColumn[int64, string]`. Struct wrappers such as `RuleColumn` and
+`TypedColumn` still require an explicit `.Column()` projection.
+
+`Set`, `SetNamed(name, value)`, `ColValue`, `Eq` and `Ne` require a value
+assignable to T. Integer constants can initialize `int64`; an `int` variable
+needs an explicit conversion. Defined business types such as `UserID` and
+`OrderID` remain distinct. Data methods bind through `Value` and do not render
+ordinary SQL expressions held in an `any` value as SQL. Use a concrete T for
+useful checking; `any` and interface types weaken that check.
+
+`SetFrom` requires another `TypedColumn[T]`. `SetExpr`, `ColValueExpr`, `EqExpr`
+and `NeExpr` accept ordinary `Expression` values, including explicit column
+references and template slots. Their SQL result types and values later supplied
+to `StatementTemplate.Bind` are not checked against T. `SetExpr(Default())`
+retains the dialect's DEFAULT support checks. `SetNamed` preserves the existing
+named-argument binding and reuse rules while checking the data value's type.
+
+Choose a T that represents SQL NULL, such as `*int64` or `sql.NullInt64`:
+
+```go
+optionalAge := Age.Column().Typed[*int64]()
+optionalAge.Set(nil) // Binds a nil pointer as SQL NULL.
+optionalAge.Eq(nil)  // IS NULL; Ne(nil) produces IS NOT NULL.
+Age.IsNull()        // Explicit NULL test, independent of T.
+```
+
+Nil interfaces and nil pointers in `Eq`/`Ne` retain the existing NULL predicate
+semantics. Nullable objects such as `sql.NullInt64` bind as data without invoking
+their Valuer at build time; use `IsNull`/`IsNotNull` to test SQL NULL explicitly.
+`EqExpr(Value(nil))` remains an ordinary comparison with a bound NULL.
+
+`Name`, `Column`, `Ref` and `Scope` reuse existing identifier semantics. `Scope`
+returns a new typed column with the same T. Use `.Column()` to explicitly enter
+untyped APIs, including `SelectColumns(Age.Column(), Name.Column())`, sorting,
+arithmetic and value-rule operations. Existing `Column`, package `Set` and
+`SelectColumns(...Column)` behavior is unchanged. Typed columns have no value
+rule; `.Column().WithValueRule(rule)` returns the existing untyped `RuleColumn`.
+
+Typed columns are variables, not constants, and do not register models or
+inspect database schemas. T declares the application's Go data type; driver
+conversion, SQL type compatibility, ranges and database nullability remain
+execution-time responsibilities. Values remain shallow, and Build/Compile
+never invoke `driver.Valuer.Value`.
+
 ## Arithmetic updates
 
 `Add`, `Sub`, `Mul`, `Div`, `Inc`, and `Dec` return `Updater`, as do the matching

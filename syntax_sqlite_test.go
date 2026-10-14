@@ -53,6 +53,32 @@ func TestExtendedSyntaxSQLiteExecution(t *testing.T) {
 			[][]any{{99}},
 		},
 		{
+			"typed data and expression assignment",
+			db.Update().Table("t").Set(Column("v").Typed[int64]().Set(42),
+				Column("team").Typed[string]().SetExpr(Func("UPPER", Ident("team")))).
+				Where(Column("id").Typed[int64]().Eq(1)).Returning("v", "team"),
+			[][]any{{42, "A"}},
+		},
+		{
+			"typed column assignment",
+			db.Update().Table("t").Set(Column("v").Typed[int64]().SetFrom(Column("id").Typed[int64]())).
+				Where(Eq("id", 2)).Returning("v"),
+			[][]any{{2}},
+		},
+		{
+			"typed insert values",
+			db.Insert().Into("t").Row(Column("id").Typed[int64]().ColValue(4),
+				Column("team").Typed[string]().ColValue("c"),
+				Column("v").Typed[int64]().ColValueExpr(Expr("? + ?", 20, 2))).Returning("id", "v"),
+			[][]any{{4, 22}},
+		},
+		{
+			"typed null assignment and comparison",
+			db.Update().Table("users").Set(Column("deleted_at").Typed[*string]().Set(nil)).
+				Where(Column("deleted_at").Typed[*string]().Eq(nil)).Returning("id", "deleted_at"),
+			[][]any{{1, nil}},
+		},
+		{
 			"arithmetic add expression",
 			db.Update().Table("t").Set(Column("v").Add(Expr("? - ?", 5, 2))).Where(Eq("id", 1)).Returning("v"),
 			[][]any{{13}},
