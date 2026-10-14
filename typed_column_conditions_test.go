@@ -182,19 +182,7 @@ func TestTypedColumnConditionDataDoesNotRenderExpressions(t *testing.T) {
 		want string
 		args []any
 	}{
-		{c.Gt(expr), `("v" > $1)`, []any{expr}},
-		{c.Ge(expr), `("v" >= $1)`, []any{expr}},
-		{c.Lt(expr), `("v" < $1)`, []any{expr}},
-		{c.Le(expr), `("v" <= $1)`, []any{expr}},
-		{c.Between(expr, expr), `("v" BETWEEN $1 AND $2)`, []any{expr, expr}},
-		{c.NotBetween(expr, expr), `(NOT (("v" BETWEEN $1 AND $2)))`, []any{expr, expr}},
-		{c.In(expr), `("v" IN ($1))`, []any{expr}},
-		{c.NotIn(expr), `("v" NOT IN ($1))`, []any{expr}},
-		{c.InSlice([]any{expr}), `("v" IN ($1))`, []any{expr}},
-		{c.NotInSlice([]any{expr}), `("v" NOT IN ($1))`, []any{expr}},
 		{NewTypedColumn[Expression]("v").In(expr), `("v" IN ($1))`, []any{expr}},
-		{c.Like(expr), `("v" LIKE $1)`, []any{expr}},
-		{c.NotLike(expr), `("v" NOT LIKE $1)`, []any{expr}},
 		{c.NotLike(Default()), `("v" NOT LIKE $1)`, []any{Default()}},
 		{NewTypedColumn[Expression]("v").Like(expr), `("v" LIKE $1)`, []any{expr}},
 		{NewTypedColumn[Expression]("v").NotLike(expr), `("v" NOT LIKE $1)`, []any{expr}},

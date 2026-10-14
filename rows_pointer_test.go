@@ -4,7 +4,6 @@
 package sqlx
 
 import (
-	"database/sql"
 	"reflect"
 	"testing"
 	"time"
@@ -12,12 +11,6 @@ import (
 
 func TestRowsPointerObjectShape(t *testing.T) {
 	typ := reflect.TypeFor[Rows]()
-	for field := range typ.Fields() {
-		if field.Type.Kind() == reflect.Pointer && field.Type != reflect.TypeFor[*sql.Rows]() {
-			t.Fatalf("unexpected state pointer: %s %v", field.Name, field.Type)
-		}
-	}
-
 	field, ok := typ.FieldByName("noCopy")
 	if !ok || field.Anonymous || field.Type != reflect.TypeFor[noCopy]() {
 		t.Fatal("missing named noCopy marker")

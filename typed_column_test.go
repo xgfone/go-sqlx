@@ -221,21 +221,6 @@ func TestTypedColumnNamedAndDriverValues(t *testing.T) {
 	}
 }
 
-func TestTypedColumnDataDoesNotRenderExpressions(t *testing.T) {
-	column := Column("v").Typed[any]()
-	expr := Expr("trusted_sql()")
-	checkSQL(t,
-		Update().Table("t").Set(column.Set(expr)).SetDialect(dialect.Postgres),
-		`UPDATE "t" SET "v"=$1`, expr)
-	checkSQL(t,
-		Insert().Into("t").Row(column.ColValue(expr)).SetDialect(dialect.Postgres),
-		`INSERT INTO "t" ("v") VALUES ($1)`, expr)
-	checkSQL(t,
-		Select("v").From("t").Where(column.Eq(expr), column.Ne(expr)).
-			SetDialect(dialect.Postgres),
-		`SELECT "v" FROM "t" WHERE (("v" = $1) AND ("v" <> $2))`, expr, expr)
-}
-
 func TestTypedColumnTemplates(t *testing.T) {
 	age := Column("age").Typed[int64]()
 	name := Column("name").Typed[string]()

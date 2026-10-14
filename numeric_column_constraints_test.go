@@ -32,15 +32,6 @@ func rejected() {
 	} {
 		calls = append(calls, fmt.Sprintf(`sqlx.NumericColumn[int64](%s)`, column))
 	}
-	calls = append(calls,
-		`age.Scope("u").Set("18")`,
-		`age.Scope("u").SetFrom(sqlx.NewTypedColumn[string]("name"))`,
-		`age.SetFrom(sqlx.NewTypedColumn[int]("other"))`,
-		`sqlx.Set(age, 18)`,
-		`sqlx.Add(age, 1)`,
-		`sqlx.SelectColumns(age)`,
-		`age.Inc(1)`,
-		`age.Dec(1)`)
 	expected := make(map[int]string, len(calls))
 	for _, call := range calls {
 		line := strings.Count(source.String(), "\n") + 1

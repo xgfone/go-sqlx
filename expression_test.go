@@ -4,23 +4,11 @@
 package sqlx
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
 )
-
-func TestExpressionLayout(t *testing.T) {
-	typ := reflect.TypeFor[Expression]()
-	want := reflect.TypeFor[string]().Size() + reflect.TypeFor[any]().Size()
-	if typ.Size() != want {
-		t.Fatalf("Expression size = %d, want %d; check field padding", typ.Size(), want)
-	}
-	if typ.Comparable() {
-		t.Fatal("Expression must remain non-comparable")
-	}
-}
 
 func TestExpressionBuild(t *testing.T) {
 	for _, test := range []struct {

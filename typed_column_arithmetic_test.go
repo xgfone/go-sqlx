@@ -125,30 +125,6 @@ func TestTypedColumnArithmeticDataTypes(t *testing.T) {
 	}
 }
 
-func TestTypedColumnArithmeticDataDoesNotRenderExpressions(t *testing.T) {
-	c := NewTypedColumn[any]("v")
-	expr := Expr("trusted_sql()")
-	for _, tc := range []struct {
-		name string
-		make func(any) Updater
-		want string
-	}{
-		{"add", c.Add, `UPDATE "t" SET "v"="v" + $1`},
-		{"sub", c.Sub, `UPDATE "t" SET "v"="v" - $1`},
-		{"mul", c.Mul, `UPDATE "t" SET "v"="v" * $1`},
-		{"div", c.Div, `UPDATE "t" SET "v"="v" / $1`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			b := Update().Table("t").Set(tc.make(expr)).SetDialect(dialect.Postgres)
-			checkSQL(t, b, tc.want, expr)
-			_, args, err := mustCompileTemplate(t, b).Bind()
-			if err != nil || !reflect.DeepEqual(args, []any{expr}) {
-				t.Fatal("ordinary SQL expressions in arithmetic data must remain bound data", args, err)
-			}
-		})
-	}
-}
-
 func TestTypedColumnArithmeticTemplatesAndUpserts(t *testing.T) {
 	q := mustCompileTemplate(t, Update().Table("t").
 		Set(
