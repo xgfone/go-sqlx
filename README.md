@@ -591,11 +591,60 @@ mkdir -p "$HOME/.agents/skills"
 cp -R "$SQLX_SOURCE/.agents/skills/go-sqlx" "$HOME/.agents/skills/"
 ```
 
-Copy the whole skill directory when updating it. The installed skill resolves
-the dependency's source using `go list -m -json github.com/xgfone/go-sqlx`, including
-local replacements. It does not depend on the original checkout remaining at the
+For a copied installation, copy the whole skill directory when updating it.
+The installed skill resolves the dependency's source using
+`go list -m -json github.com/xgfone/go-sqlx`, including local replacements.
+The copied files do not depend on the original checkout remaining at the
 installation source path. If source documentation is missing locally, the agent
 needs access to a checkout or repository documentation at the matching revision.
+
+### Install from a local checkout with a symlink
+
+For personal use, Codex also supports a directory symlink in `~/.agents/skills`.
+This links the whole skill directory to a local checkout so updates need no
+copying. Use an absolute source path and keep that checkout at a stable location:
+
+```shell
+SQLX_SOURCE=/absolute/path/to/go-sqlx
+mkdir -p "$HOME/.agents/skills"
+test -f "$SQLX_SOURCE/.agents/skills/go-sqlx/SKILL.md" &&
+    test ! -e "$HOME/.agents/skills/go-sqlx" &&
+    test ! -L "$HOME/.agents/skills/go-sqlx" &&
+    ln -s "$SQLX_SOURCE/.agents/skills/go-sqlx" "$HOME/.agents/skills/go-sqlx"
+```
+
+The checks require a valid source and refuse any existing destination, including
+a broken symlink. To convert an existing copied directory, first move it to a
+backup outside the scanned skills directory, then run the installation above:
+
+```shell
+test -d "$HOME/.agents/skills/go-sqlx" &&
+    test ! -L "$HOME/.agents/skills/go-sqlx" &&
+    mkdir -p "$HOME/.agents/skill-backups" &&
+    SQLX_SKILL_BACKUP=$(mktemp -d "$HOME/.agents/skill-backups/go-sqlx.XXXXXX") &&
+    mv "$HOME/.agents/skills/go-sqlx" "$SQLX_SKILL_BACKUP/go-sqlx" &&
+    printf 'Backup: %s\n' "$SQLX_SKILL_BACKUP"
+```
+
+The conversion keeps the original files and leaves existing symlinks alone.
+Keep project-scoped copies in version control for team sharing; an absolute
+symlink to your personal checkout is specific to your machine.
+
+### Keep the skill up to date
+
+A copied installation needs a new copy of the entire skill directory from the
+chosen source revision. A symlink reads the linked checkout directly: updating
+its skill files also updates the user-level entry, with no reinstallation.
+It does not fetch Git changes automatically; update the source checkout to the
+desired branch, tag, or commit yourself. Branch switches and uncommitted skill
+edits are also visible through the link. Moving the checkout or selecting a
+revision without the skill directory makes the link unusable.
+
+Update the repository's `SKILL.md` and any supporting references when APIs or
+migration guidance change; linking files does not generate new guidance from
+code changes. The consuming project's actual dependency version still determines
+which API documentation to use. If an update is not reflected in Codex, restart
+it so the skill can be discovered again.
 
 ### Use the skill
 
