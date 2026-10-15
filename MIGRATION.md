@@ -290,9 +290,9 @@ and call cursor methods directly, including `NextResultSet` and `ColumnTypes`.
 the current set and close the whole result. `Capacity` is an allocation hint,
 never a row limit.
 
-Built-in `Bind` replaces collections atomically after scanning and closing
-succeed. Use `Append` for slices and `Merge` for maps. Map destinations must
-be non-`nil` pointers, including maps previously passed by value:
+Built-in `Bind` replaces collections atomically after scanning and closing succeed.
+Use `Append` for slices and `Merge` for maps. Built-in map binders require non-`nil`
+destination pointers, including for maps previously passed by value:
 
 ```go
 names := make(map[int64]string)
@@ -315,6 +315,10 @@ and returns independent non-`nil` state. `RowsBinding` implements `Scan(RowCurso
 error and `Commit()`. Stage results during `Scan`; `Commit` must not fail and runs
 only after scanning and owning-result closing succeed.
 
+The binder determines the supported destination types. Built-in collection binders
+require non-`nil` destination pointers; custom binders may accept non-pointer
+destinations.
+
 `RowScanner` now contains only `Columns` and `Scan`. `RowCursor` supplies `Next`,
 raw positional `Scan` and `Err`. `Rows.Bind` passes the underlying `*sql.Rows`;
 do not pass `*Rows` as a raw cursor because its `Scan` already applies SQLx mapping.
@@ -324,8 +328,9 @@ before retaining it. Temporary scanner adapters still require synchronous use.
 
 `ComposeRowsBinders` falls through only on `UnsupportedTypeError` during `Prepare`;
 once a binder recognizes a destination, errors are returned without retrying.
-Register exact pointer destination types. Registry operations support concurrent
-use; a prepared operation retains its selected binder after registration changes.
+Register exact destination types, using pointer types for built-in collection
+binders. Registry operations support concurrent use; a prepared operation retains
+its selected binder after registration changes.
 
 ## Scanner conversions and stored values
 
@@ -424,13 +429,17 @@ for the exact `*map[K]T` destination type in `RowsBinderRegistry`. The method us
 inherited binding configuration without inferring a key or replacing the binder.
 
 `Oper.GetMany(ctx, dst, pagination, conditions...)` binds model rows into the
-caller-provided destination. `GetList` and `GetMap` wrap this method. Named slices
-use the slice fallback; named maps require an explicit suitable binder or a
-registration for their exact destination pointer type. Unlike the earlier
-slice-returning `GetMany`, this method accepts a destination and returns only error.
+caller-provided destination. `GetList` and `GetMap` wrap this method. The binder
+determines the supported types of `dst`: built-in collection binders require a
+non-`nil` destination pointer, while custom binders may accept non-pointer
+destinations. Named slices use the slice fallback; named maps using built-in map
+binders require an explicit suitable binder or a registration for their exact
+destination pointer type. Unlike the earlier slice-returning `GetMany`, this
+method accepts a destination and returns only error.
 
 `Oper.GetManyWithCount(ctx, dst, pagination, conditions...)` returns `(int64, error)`
 and binds the requested page using the same destination configuration as `GetMany`.
+The supported types of `dst` are likewise determined by the binder.
 `GetListWithCount` wraps it with a slice destination. Pagination is evaluated once
 and validated before querying. A zero count or count-query error skips the data
 query and leaves dst unchanged; a data-query or binding error retains the count.

@@ -259,6 +259,10 @@ Use `Returning`/`ReturningExprAlias` with `Query` methods on supported dialects;
 closing succeed; errors leave the original collection unchanged. Empty
 replacement results are non-`nil` empty collections.
 
+The binder determines the supported destination types. Built-in collection
+binders require non-`nil` destination pointers; custom binders may accept
+non-pointer destinations.
+
 ```go
 users, err := db.Select("id", "name").From("users").
     QueryRowsContext(ctx).Collect[User]()
@@ -270,7 +274,7 @@ err = db.Select("id", "name").From("users").QueryRowsContext(ctx).
     })).Bind(&byID)
 ```
 
-Map destinations must be non-`nil` pointers; the underlying map may be `nil`.
+With built-in map binders, the map referenced by a destination pointer may be `nil`.
 Pairs and indexes reject duplicate keys by default; `DuplicateKeyFirst` and
 `DuplicateKeyLast` choose a winner, including during `Merge`. Sets deduplicate.
 The default registry includes common scalar slices, two-column maps with
@@ -384,8 +388,10 @@ err = oper.InsertBatch(ctx, []User{{Name: "A"}, {Name: "B"}})
 or their `Result` variants for `(sql.Result, error)`.
 `GetMany(ctx, dst, pagination, conditions...)` binds model rows into a caller-provided
 destination using the configured binder and options. `GetList` and `GetMap` are
-convenience wrappers over it. Pass a pointer to the destination; map key types
-come from the destination, while the binder defines how keys are obtained.
+convenience wrappers over it. The binder determines the supported types of `dst`.
+Built-in collection binders require a non-`nil` destination pointer; custom binders
+may accept non-pointer destinations. Map key types come from the destination,
+while the binder defines how keys are obtained.
 Named slice and map types are supported:
 
 ```go
@@ -401,10 +407,10 @@ err = oper.WithBinder(sqlx.NewMapIndexBinder[UserIndex](
 )).GetMany(ctx, &index, nil)
 ```
 
-Named slices work with the default slice fallback. For map registry dispatch,
-register the exact destination pointer type: `*UserIndex` and `*map[int64]User`
-are different types and require separate registrations. Explicit binders can also
-support custom destination types.
+Named slices work with the default slice fallback. For registry dispatch with
+built-in map binders, register the exact destination pointer type: `*UserIndex`
+and `*map[int64]User` are different types and require separate registrations.
+Custom binders can also support other destination types.
 
 `GetMap[K](ctx, pagination, conditions...)` returns `map[K]T`, with the same
 filtering, pagination and default ordering as `GetList`. Specify the key type
@@ -426,6 +432,7 @@ duplicate keys are rejected by default; `BindConfig.DuplicateKeys` can select
 `GetManyWithCount(ctx, dst, pagination, conditions...)` returns `(int64, error)`:
 it counts all matching rows, then binds the requested page when the count is
 positive. It uses the same destination binding and configuration as `GetMany`.
+The supported types of `dst` are likewise determined by the binder.
 Pagination is evaluated once and validated before either query. A zero count or
 a count-query error skips the data query and leaves the destination unchanged;
 target binding is not validated when the data query is skipped.

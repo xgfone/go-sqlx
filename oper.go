@@ -268,10 +268,13 @@ func (o Oper[T]) Get(ctx context.Context, cs ...Condition) (v T, ok bool, err er
 
 // GetMany replaces the collection at dst with matching model rows, with optional
 // pagination and StructSorter. It uses the configured RowsBinder or default
-// RowsBinderRegistry, preserving all binding options. Destination support is
-// determined by the binder; named slices are supported by the slice fallback,
-// and maps require a suitable map binder registered for the exact destination
-// pointer type or set explicitly.
+// RowsBinderRegistry, preserving all binding options.
+//
+// The binder determines the supported types of dst. Built-in collection binders
+// require a non-nil destination pointer; custom binders may accept non-pointer
+// destinations. Named slices are supported by the slice fallback, and maps require
+// a suitable map binder registered for the exact destination pointer type or set
+// explicitly.
 func (o Oper[T]) GetMany(ctx context.Context, dst any, p Pagination, cs ...Condition) error {
 	return o.SelectStruct().Where(cs...).Pagination(p).QueryRowsContext(ctx).Bind(dst)
 }
@@ -297,7 +300,11 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 }
 
 // GetManyWithCount counts matching rows and binds the requested page into dst
-// when the count is positive. It uses the same binding configuration as GetMany.
+// when the count is positive. It uses the same binding configuration as [Oper.GetMany].
+// The binder determines the supported types of dst. Built-in collection binders
+// require a non-nil destination pointer; custom binders may accept non-pointer
+// destinations.
+//
 // Pagination is evaluated once and validated before either query. A zero count
 // or count-query error leaves dst unchanged and skips the data query and binding.
 // Data-query or binding errors are returned with the successful count.
