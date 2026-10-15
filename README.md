@@ -16,6 +16,7 @@ go get github.com/xgfone/go-sqlx
 
 See the [SQL syntax guide](docs/sql-syntax.md) for detailed composition and
 binding rules, and [MIGRATION.md](MIGRATION.md) for upgrading from v0.51.1.
+For AI-assisted application development, install the [go-sqlx skill](#ai-agent-skill).
 
 ## Build and execute
 
@@ -549,3 +550,72 @@ and [syntax guide](docs/sql-syntax.md) for extension contracts.
 
 Run `go test ./...`. SQLite execution tests use Python's SQLite 3.39+ when
 available; core tests do not require database servers.
+
+## AI Agent skill
+
+The [go-sqlx skill](.agents/skills/go-sqlx/SKILL.md) guides agents through feature
+selection, version-aware documentation lookup, SQL execution and binding contracts,
+and migration from v0.51.1 to v1.0.0. It targets `github.com/xgfone/go-sqlx`.
+Detailed API documentation stays in this README, the syntax guide, and
+`MIGRATION.md`; the skill locates those files in the applicable module revision.
+
+Adding this Go dependency does **not** install the skill or load this library's
+`AGENTS.md` into a consuming project's agent session. Install the skill separately
+in the consuming project's `.agents/skills` directory, or in `~/.agents/skills`
+for use across your projects. These are supported discovery locations for
+[Codex skills](https://learn.chatgpt.com/docs/build-skills); other agents may
+require a different installation location or an explicit instruction to read it.
+
+### Install in a consuming project
+
+Obtain a checkout of this repository at a release tag or commit containing the
+skill. Run the following in the consuming project's root, replacing the example
+source path with that checkout's path:
+
+```shell
+SQLX_SOURCE=/path/to/go-sqlx
+mkdir -p .agents/skills
+cp -R "$SQLX_SOURCE/.agents/skills/go-sqlx" .agents/skills/
+```
+
+Commit the installed `.agents/skills/go-sqlx` directory in the consuming project
+to share it with the team. Record the source tag or commit when installing or
+updating it. For migration, install a skill from the target revision that contains
+the migration guidance; the old v0.51.1 tag may not provide the skill.
+
+For a personal installation instead, copy the same directory to the user scope:
+
+```shell
+SQLX_SOURCE=/path/to/go-sqlx
+mkdir -p "$HOME/.agents/skills"
+cp -R "$SQLX_SOURCE/.agents/skills/go-sqlx" "$HOME/.agents/skills/"
+```
+
+Copy the whole skill directory when updating it. The installed skill resolves
+the dependency's source using `go list -m -json github.com/xgfone/go-sqlx`, including
+local replacements. It does not depend on the original checkout remaining at the
+installation source path. If source documentation is missing locally, the agent
+needs access to a checkout or repository documentation at the matching revision.
+
+### Use the skill
+
+In Codex CLI or the IDE extension, invoke the installed skill explicitly:
+
+```text
+$go-sqlx Build a PostgreSQL query for active users and bind the results to []User.
+
+$go-sqlx Migrate this application from go-sqlx v0.51.1 to v1.0.0.
+```
+
+Codex can also select the skill when a task matches its description. For consistent
+use, add this rule to the consuming project's root `AGENTS.md`:
+
+```markdown
+When using, fixing, or upgrading github.com/xgfone/go-sqlx, use the go-sqlx skill.
+First resolve the effective dependency version, then read that version's docs.
+For migrations, also read MIGRATION.md from the exact target tag or commit.
+```
+
+If the skill does not appear, restart the agent session. Keep the skill and usage
+documents updated with library releases; the v1 overview in the skill must not be
+used as evidence that an API exists in an application's older dependency version.
