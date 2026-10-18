@@ -229,7 +229,8 @@ Unknown labels fail by default; enable `ScanOptions.IgnoreUnknownColumns` to
 ignore them. Duplicate labels mapping to the same field require explicit aliases.
 
 Without explicit `Columns`, single-row `Struct` still omits zero-valued fields
-tagged `omitempty`/`omitzero`. v0.51.1 `ValuesFromStructs` excluded every omit-tagged
+tagged `omitempty`/`omitzero`; if all mapped fields are omitted, it uses
+`DefaultValues`. v0.51.1 `ValuesFromStructs` excluded every omit-tagged
 field from its inferred batch projection. v1 `Structs` instead keeps all mapped
 columns, uses `DEFAULT` for tagged zero values, and retains tagged nonzero values:
 
@@ -247,9 +248,44 @@ builder := sqlx.Insert().Into("users").Structs([]User{
 ```
 
 Explicit `Columns` includes actual zero values in that order for both `Struct`
-and `Structs`. MySQL/PostgreSQL support `DEFAULT` inside `VALUES`; SQLite rejects
-batches requiring it. `Structs` accepts structs or pointers; `nil` top-level rows
-fail. Named rows require matching column sets.
+and `Structs`. MySQL/PostgreSQL support `DEFAULT` inside `VALUES`. SQLite instead
+omits default columns and splits rows into consecutive groups with the same column
+set; each entirely default row uses its own `DEFAULT VALUES` statement.
+`Structs(...).ExecContext` and `Oper.InsertBatch` execute split batches atomically,
+requiring a transaction-capable executor or an existing `*sql.Tx` exposed through
+`Unwrap`. Existing transactions use a savepoint. `RowsAffected` sums statement
+counts (or returns zero with the driver's error if a count is unavailable);
+`LastInsertId` comes from the final statement. Failed savepoint recovery rolls
+back the whole caller-owned transaction. Defaults and CTEs are evaluated per
+generated statement, so statement-scoped time defaults can differ across groups.
+Split batches first look for an existing `*sql.Tx` through `Unwrap`, retaining its
+original wrappers. Otherwise they check the wrapper chain and start a transaction
+on a concrete `*sql.DB` or `*sql.Conn`, with `WrapExecutor` and transparent
+`*sqlx.DB` layers. Custom wrapper rebuilding is unsupported; use `WrapExecutor`
+for SQL logging/statistics, or expose a caller-managed `*sql.Tx` through `Unwrap`.
+Unsupported executors fail before `BeginTx` or SQL. `WrapExecutor` callbacks
+retain their order without reapplying the global interceptor or changing the
+original wrappers. Caller-owned DB/Conn objects are never closed.
+`Build`/`Compile` and the query methods still require one statement; use `BuildBatch`
+for split SQL and arguments without executing them. For atomic manual execution
+of multiple statements, including `RETURNING`, use one transaction and roll it
+back on failure, or use a savepoint within an existing transaction for batch-only
+rollback. Single statements use the executor's normal transaction rules. SQLite
+still rejects entirely default rows with `ON CONFLICT`. `Structs` accepts structs
+or pointers; `nil` top-level rows fail. Named rows require matching column sets.
+
+INSERT source conflicts are now retained immediately: rows (`Struct`, `Structs`,
+`Values`, `Row`), `FromSelect` and `DefaultValues` cannot be mixed. Call
+`ClearValues` before switching sources. It preserves prior input errors; use
+`Reset` to recover from an already rejected source combination. Empty `Structs`
+slices still append nothing.
+
+Built-in `WrapExecutor` callbacks run after savepoint SQL completion is recorded.
+A callback panic after successful release leaves completed SQL intact; a panic
+after rollback still finishes releasing the savepoint. Both preserve the caller's
+transaction when the control SQL succeeds. Actual recovery SQL failures still
+roll back the entire caller-owned transaction. Opaque custom executors retain
+conservative handling when they hide SQL completion.
 
 Previously ignored `sql` tag options `maxlen`, `overflow` and `lenunit` now define
 `INSERT` string limits. Audit existing models using those names: invalid options

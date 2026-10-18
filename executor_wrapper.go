@@ -12,10 +12,10 @@ import (
 // each underlying [Executor] method returns. Results and errors are returned
 // unchanged. If e or after is nil, it returns e unchanged.
 //
-// [Executor.PrepareContext] passes nil arguments and reports only statement preparation.
-// [Executor.QueryRowContext] reports [sql.Row.Err] when a row is returned. Errors from later
-// [sql.Row.Scan], [sql.Rows.Scan], [sql.Rows.Next], or [sql.Rows.Close] calls, including
-// [sql.ErrNoRows], are not observed. Calls
+// [Executor.PrepareContext] passes nil arguments and reports only statement
+// preparation. [Executor.QueryRowContext] reports [sql.Row.Err] when a row is
+// returned. Errors from later [sql.Row.Scan], [sql.Rows.Scan], [sql.Rows.Next],
+// or [sql.Rows.Close] calls, including [sql.ErrNoRows], are not observed. Calls
 // on a returned *[sql.Stmt] are not observed either.
 //
 // The callback borrows the original arguments for its duration; it must not
@@ -25,6 +25,9 @@ import (
 //
 // The wrapper implements Unwrap() [Executor] for [AsExecutor] and [DB]'s capability
 // lookup. Each [WrapExecutor] call adds a layer, even to an already wrapped input.
+// Split INSERT transactions retain these callbacks in their original order without
+// modifying the original wrapper or applying the interceptor again. Use this
+// wrapper for SQL logging/statistics across automatic INSERT transactions.
 func WrapExecutor(e Executor, after func(query string, args []any, err error)) Executor {
 	if e == nil || after == nil {
 		return e

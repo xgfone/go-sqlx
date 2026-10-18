@@ -191,17 +191,25 @@ func (o Oper[T]) InsertResult(ctx context.Context, v T) (sql.Result, error) {
 	return o.Table.Insert().Struct(v).ExecContext(ctx)
 }
 
-// InsertBatch inserts rows in one statement, discarding the execution result.
-// It uses [InsertBuilder.Structs] mapping and DEFAULT semantics, even for one row.
+// InsertBatch inserts rows, discarding the execution result.
+//
+// It uses [InsertBuilder.Structs] mapping and database-default semantics, even for
+// one row. SQLite batches requiring different column sets execute atomically in
+// multiple statements; see [InsertBuilder.BuildBatch] for executor requirements.
 // Empty input does nothing and returns nil.
+//
 // Use [Oper.InsertBatchResult] to retrieve the execution result.
 func (o Oper[T]) InsertBatch(ctx context.Context, rows []T) error {
 	_, err := o.InsertBatchResult(ctx, rows)
 	return err
 }
 
-// InsertBatchResult inserts rows in one statement and returns the execution result.
-// It uses [InsertBuilder.Structs] mapping and DEFAULT semantics, even for one row.
+// InsertBatchResult inserts rows and returns the execution result.
+//
+// It uses [InsertBuilder.Structs] mapping and database-default semantics, even for
+// one row. Split SQLite batches sum RowsAffected and use the final LastInsertId.
+// See [InsertBuilder.BuildBatch] for executor requirements.
+//
 // Empty input skips execution and returns a result whose [sql.Result.LastInsertId]
 // and [sql.Result.RowsAffected] both return zero without an error.
 func (o Oper[T]) InsertBatchResult(ctx context.Context, rows []T) (sql.Result, error) {

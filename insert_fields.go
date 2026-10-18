@@ -28,6 +28,10 @@ const (
 
 var insertZeroType = reflect.TypeFor[interface{ IsZero() bool }]()
 
+// Share the immutable SQL marker rather than boxing it for every omitted cell.
+// The database still evaluates the actual default separately for each row.
+var omittedInsertValue any = Default()
+
 func insertField(v reflect.Value, field *rowbind.Field) any {
 	if !v.IsValid() {
 		return nil
@@ -185,7 +189,7 @@ func (f structInsertField) read(model reflect.Value, explicit bool) any {
 	}
 
 	if !explicit && f.field.IgnoreZero && f.zero(v) {
-		return Default()
+		return omittedInsertValue
 	}
 	if !v.IsValid() || f.flags&insertPointer != 0 && v.IsNil() {
 		return nil

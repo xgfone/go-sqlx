@@ -10,18 +10,24 @@ import (
 	"github.com/xgfone/go-sqlx/internal/rowbind"
 )
 
-// Struct appends one row. Explicit [InsertBuilder.Columns] select fields and include zero
-// values.
-// Otherwise omission tags are honored and every row must have the same column set.
-// SQL tag options maxlen, overflow and lenunit apply string limits immediately
-// without changing s. Errors are retained for
+// Struct appends one row. Explicit [InsertBuilder.Columns] select fields and
+// include zero values. Otherwise omission tags are honored and every row must
+// have the same column set. If all mapped fields are omitted, Struct uses
+// [InsertBuilder.DefaultValues] as the single INSERT source, discarding inferred
+// columns from cleared rows. SQL tag options maxlen, overflow and lenunit apply
+// string limits immediately without changing s. Errors are retained for
 // [InsertBuilder.Build]/[InsertBuilder.Compile]/[InsertBuilder.ExecContext].
+// Source conflicts are retained immediately; ClearValues preserves those errors
+// and Reset clears them. Clear sources before switching to another source kind.
 func (b *InsertBuilder) Struct(s any) *InsertBuilder {
 	b.mutate(func() { b.appendStruct(s) })
 	return b
 }
 
 func (b *InsertBuilder) appendStruct(s any) {
+	if !b.checkInsertRows() {
+		return
+	}
 	v, e := rowbind.StructValue(s)
 	if e != nil {
 		panic(e)
@@ -60,16 +66,31 @@ func (b *InsertBuilder) appendStruct(s any) {
 
 			row = append(row, NewColumnValue(f.Column, insertField(fv, &f)))
 		}
+		if len(row) == 0 && len(meta.Fields()) > 0 {
+			if b.values.rows != 0 {
+				b.fail(errInsertSourceConflict)
+				return
+			}
+			if b.values.rows == 0 && b.source == nil {
+				// ClearValues retains the previous projection. With no remaining
+				// source, these implicit columns no longer describe the default row.
+				b.columns = nil
+			}
+			b.DefaultValues()
+			return
+		}
 	}
 	b.appendNamedRow(row)
 }
 
 // Structs appends a slice of structs or pointers using a fixed set of mapped columns.
-// Without explicit [InsertBuilder.Columns], zero fields tagged omitempty or omitzero use SQL
-// DEFAULT
-// instead of being omitted. The dialect must support DEFAULT in VALUES when needed.
-// Explicit [InsertBuilder.Columns] select fields in that order and include their actual zero
-// values.
+// Without explicit [InsertBuilder.Columns], zero fields tagged omitempty or omitzero
+// use database defaults. MySQL/PostgreSQL render DEFAULT cells; SQLite omits those
+// columns, splitting statements when necessary. [InsertBuilder.ExecContext] executes
+// split statements atomically; [InsertBuilder.BuildBatch] exposes them without execution.
+// Explicit [InsertBuilder.Columns] select fields in that order and include their actual
+// zero values.
+//
 // Empty slices append no rows; an otherwise empty insert still fails [InsertBuilder.Build].
 // String limits in SQL tags apply during extraction, as with [InsertBuilder.Struct].
 func (b *InsertBuilder) Structs(slice any) *InsertBuilder {
@@ -83,6 +104,9 @@ func (b *InsertBuilder) appendStructs(slice any) {
 		panic("Structs requires a slice")
 	}
 	if v.Len() == 0 {
+		return
+	}
+	if !b.checkInsertRows() {
 		return
 	}
 

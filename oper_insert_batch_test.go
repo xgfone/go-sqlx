@@ -9,7 +9,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/xgfone/go-sqlx/dialect"
@@ -62,7 +61,6 @@ func TestOperInsertBatchDefaults(t *testing.T) {
 		rows    []model
 		query   string
 		args    []any
-		wantErr string
 	}{
 		{
 			name: "mysql single row", dialect: dialect.MySQL,
@@ -89,8 +87,10 @@ func TestOperInsertBatchDefaults(t *testing.T) {
 			args:  []any{"A", 10, "B", 20},
 		},
 		{
-			name: "sqlite unsupported defaults", dialect: dialect.SQLite,
-			rows: []model{{Name: "A"}}, wantErr: "DEFAULT in VALUES",
+			name: "sqlite defaults", dialect: dialect.SQLite,
+			rows:  []model{{Name: "A"}},
+			query: `INSERT INTO "users" ("name") VALUES (?)`,
+			args:  []any{"A"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -107,17 +107,7 @@ func TestOperInsertBatchDefaults(t *testing.T) {
 			}}
 			o := NewOper[model]("users").WithDB(db)
 			result, err := o.InsertBatchResult(ctx, tc.rows)
-			if tc.wantErr != "" {
-				if result != nil || err == nil || calls != 0 ||
-					!strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatal(result, err, calls)
-				}
-
-				err := o.InsertBatch(ctx, tc.rows)
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || calls != 0 {
-					t.Fatal(err, calls)
-				}
-			} else if err != nil || result != wantResult || calls != 1 {
+			if err != nil || result != wantResult || calls != 1 {
 				t.Fatal(result, err, calls)
 			}
 		})

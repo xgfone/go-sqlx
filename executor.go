@@ -33,8 +33,8 @@ type TxBeginner interface {
 var defaultExecutorInterceptor func(Executor) Executor
 
 // SetDefaultExecutorInterceptor sets the interceptor applied by [Open],
-// [DB.SetExecutor] (including [DB.WithExecutor]), and each builder's SetExecutor method
-// ([SelectBuilder.SetExecutor], [InsertBuilder.SetExecutor],
+// [DB.SetExecutor] (including [DB.WithExecutor]), and each builder's SetExecutor
+// method ([SelectBuilder.SetExecutor], [InsertBuilder.SetExecutor],
 // [UpdateBuilder.SetExecutor] and [DeleteBuilder.SetExecutor]).
 // Passing nil disables interception (the default). Nil executors are skipped.
 // Direct assignment to the embedded [Executor] field of [DB] bypasses this hook.
@@ -42,6 +42,10 @@ var defaultExecutorInterceptor func(Executor) Executor
 // The interceptor must return a usable executor and should preserve the original
 // through Unwrap() [Executor]. It may receive an already wrapped executor; use
 // [AsExecutor] to avoid installing the same middleware more than once.
+// Automatically split INSERTs preserve [WrapExecutor] layers when starting a
+// transaction. Other wrappers require an existing *[sql.Tx] exposed by Unwrap.
+// Use WrapExecutor for logging/statistics that must also observe automatic
+// transactions.
 //
 // Configure this global before concurrent use, or synchronize changes with all
 // callers. Changes only affect subsequently attached executors. The interceptor

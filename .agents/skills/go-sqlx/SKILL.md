@@ -89,8 +89,26 @@ which APIs exist in v0 or a later release.
 - Model fields use Go names or `sql` tags; nested fields flatten with `_`.
   Unknown result labels fail by default. `select=explicit` changes inferred
   projection, not insert/scan mapping. Without explicit columns, single-row
-  `Struct` omits tagged zero fields, whereas `Structs` retains their columns and
-  emits `DEFAULT`; SQLite rejects `DEFAULT` within `VALUES`.
+  `Struct` omits tagged zero fields; if all mapped fields are omitted, it uses
+  `DefaultValues`. `Structs` uses database defaults for tagged zeros: MySQL/PG
+  render `DEFAULT`, while SQLite omits columns and groups only adjacent matching
+  column sets; entirely default rows use individual `DEFAULT VALUES` statements.
+  Explicit `Columns` includes actual zeros. Source conflicts are retained immediately;
+  call `ClearValues` before switching sources and `Reset` to clear an existing
+  input error. Empty `Structs` slices remain a no-op.
+- Execute split SQLite inserts atomically with `ExecContext`: it reuses an exposed
+  `*sql.Tx` with a savepoint, or starts a transaction on `*sql.DB`/`*sql.Conn`.
+  Automatic transactions preserve built-in `WrapExecutor` callbacks; custom
+  rebuilding is unsupported. Caller DB/Conn objects are never closed. With known
+  built-in layers, callback panics after successful control SQL do not enlarge
+  rollback; genuine savepoint recovery failures roll back the caller transaction.
+  `RowsAffected` sums statement counts; `LastInsertId` uses the final result.
+- `Build`, `Compile` and query methods require one statement. `BuildBatch` renders
+  SQL/arguments without execution or transaction management. To execute multiple
+  statements atomically by hand, use one transaction and roll it back on failure,
+  or use a savepoint in an existing transaction for batch-only rollback. Single
+  statements follow normal executor transaction rules; query `RETURNING` per
+  returned statement. See the insertion guidance in `README.md` for restrictions.
 - Use `TypedColumn[T]` for Go assignability checks; its expression methods do
   not validate SQL result types. Value rules preprocess assignment data rather
   than comparisons or template slots. For a fixed SQL shape, `Compile` and

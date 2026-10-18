@@ -53,8 +53,30 @@ and `Cast` type specifications are trusted SQL; empty names/types fail `Build`.
 `CaseValue(value).WhenValue(match, result).Else(value).End()` builds a simple `CASE`.
 
 `Default` is permitted only as a direct `INSERT`/`SET` value where supported.
-SQLite supports `DefaultValues` for a default row, but rejects per-value `DEFAULT`
-and `SET column = DEFAULT`.
+SQLite supports `DefaultValues` for a default row, but its SQL grammar rejects
+per-value `DEFAULT` and `SET column = DEFAULT`. For INSERTs with known column
+names (including `Structs`), the builder omits DEFAULT columns on SQLite and
+groups adjacent rows with the same column set. Each entirely default row becomes
+one `DEFAULT VALUES` statement. `BuildBatch` returns all statements and arguments;
+`ExecContext` first looks for an existing `*sql.Tx` through `Unwrap`, executing
+atomically with a savepoint and its original wrappers. Otherwise it checks the
+wrapper chain and starts a transaction on a concrete `*sql.DB` or `*sql.Conn`.
+Only `WrapExecutor` and transparent `*sqlx.DB` layers are rebuilt; callbacks retain
+their order without calling the global interceptor again or changing the original
+wrappers. Custom wrapper rebuilding is unsupported. Use `WrapExecutor` for SQL
+logging/statistics, or expose a caller-managed `*sql.Tx` through `Unwrap` to retain
+custom behavior. Unsupported executors fail before `BeginTx` or SQL. Caller-owned
+DB/Conn objects are never closed. `Build`, `Compile` and query methods require
+one statement. `BuildBatch` only renders SQL. For atomic manual execution of
+multiple statements, including `RETURNING`, use one transaction and roll it back
+on failure, or use a savepoint within an existing transaction for batch-only
+rollback. Single statements use the executor's normal transaction rules.
+SQLite's prohibition on `DEFAULT VALUES` with `ON CONFLICT` still applies.
+Positional inserts without column names cannot infer which columns to omit and
+still reject DEFAULT on SQLite. If savepoint recovery fails, execution rolls back
+the entire caller-owned transaction and reports the execution and cleanup errors.
+Defaults and CTEs keep their database evaluation rules for each generated statement;
+statement-scoped time defaults need not match across a split batch.
 
 ## Typed column operations
 

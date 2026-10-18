@@ -362,9 +362,63 @@ projections. `select=explicit` affects inferred `SELECT` only, retaining `INSERT
 and scan mapping.
 
 Without explicit `Columns`, `Struct` omits zero-valued fields tagged
-`omitempty`/`omitzero`; `Structs` keeps all mapped columns and emits `DEFAULT`
-for those fields. Nonzero tagged values are retained. Explicit `Columns` includes
-actual zero values in its specified order. SQLite rejects `DEFAULT` inside `VALUES`.
+`omitempty`/`omitzero`; if all mapped fields are omitted, it uses `DefaultValues`.
+This default row is a single source and cannot be appended to other rows or an
+INSERT SELECT. After `ClearValues`, a new all-omitted `Struct` discards any
+retained implicit columns; explicit `Columns` still includes actual zero values.
+Source conflicts between rows (`Struct`, `Structs`, `Values`, `Row`), `FromSelect`
+and `DefaultValues` are retained immediately as input errors. Call `ClearValues`
+before switching sources; it retains input errors that have already occurred,
+while `Reset` clears them. Empty `Structs` slices remain a no-op. `Structs` uses
+database defaults for those fields and retains nonzero tagged values.
+MySQL/PostgreSQL emit `DEFAULT` cells. SQLite omits default columns, merging
+adjacent rows with the same column set and emitting one `DEFAULT VALUES` statement
+for each entirely default row. Explicit `Columns` includes actual zero values
+in its specified order.
+
+`Structs(...).ExecContext(ctx)` and `Oper.InsertBatch` automatically execute split
+SQLite batches atomically. They first look for an existing `*sql.Tx` through the
+executor's `Unwrap` chain and use a savepoint with its original wrappers. Otherwise,
+they check the wrapper chain and start a transaction on a concrete `*sql.DB` or
+`*sql.Conn`. `WrapExecutor` callbacks retain their order and run once per statement;
+transparent `*sqlx.DB` layers are also supported. Custom wrapper rebuilding is
+currently unsupported: use `WrapExecutor` for SQL logging/statistics, or expose
+a caller-managed `*sql.Tx` through `Unwrap`. Unsupported executors fail before
+`BeginTx` or SQL. The global interceptor is not applied again, and caller-owned
+DB/Conn objects are never closed. All statements are built and validated first;
+row order is preserved. `RowsAffected` sums the statement counts, and `LastInsertId`
+comes from the final statement. If any statement cannot report its affected-row
+count, `RowsAffected` returns zero and that error. Driver `LastInsertId` errors
+are preserved. If releasing a savepoint fails, successful recovery preserves the
+caller-owned transaction. Only failed savepoint recovery or cleanup causes the
+library to roll back the entire caller-owned transaction, preventing partial
+rows from being committed; both the execution and cleanup errors are reported.
+For built-in `WrapExecutor` layers, control SQL completion is recorded before
+callbacks run. Callback panics propagate, but a panic after successful release
+does not undo completed SQL or end the caller's transaction. A panic after a
+successful rollback still finishes releasing the savepoint. Opaque custom
+executors can hide SQL completion, so their failures remain conservatively
+handled; use `WrapExecutor` directly for these guarantees.
+
+`Build`, `Compile`, `QueryRowsContext` and `QueryRowContext` require one statement.
+Use `BuildBatch() ([]InsertStatement, error)` to inspect or manually execute split
+statements, each with its own `SQL` and `Args`. `BuildBatch` only renders SQL and
+does not manage transactions. To preserve atomicity when manually executing multiple
+statements, use one transaction and roll it back on any failure, or use a savepoint
+within an existing transaction to roll back only the batch. A single statement
+follows the executor's normal transaction rules. Clauses, including `RETURNING`,
+are retained per statement; callers query each statement themselves when a split
+batch returns rows. SQLite's `DEFAULT VALUES` cannot carry `ON CONFLICT`, so
+entirely default rows with that clause still fail validation. Column-based/named
+inserts with explicit `Default()` use the same fallback. The library never reads
+the schema or evaluates a default expression in Go.
+
+Splitting changes statement boundaries: SQLite time defaults such as `CURRENT_TIMESTAMP`
+and CTEs are evaluated per generated statement. A transaction does not freeze
+their values across the whole batch. SQLite constraints or triggers that explicitly
+roll back the transaction can also discard caller changes made before the batch,
+following the database's own conflict policy.
+
 Length tags `maxlen=N`, `overflow=reject|truncate` and `lenunit=runes|utf8bytes`
 apply during struct insertion, preserving the model. They support string fields
 and pointers, exclude `Valuer` fields, and never transform scan results.

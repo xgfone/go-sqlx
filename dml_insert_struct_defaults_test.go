@@ -5,7 +5,9 @@ package sqlx
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -64,6 +66,197 @@ type defaultTaggedValue struct{ Number int }
 func (v defaultTaggedValue) IsZero() bool                  { return v.Number < 0 }
 func (v *defaultTaggedValue) Value() (driver.Value, error) { return int64(v.Number), nil }
 
+func TestStructAllOmittedDefaults(t *testing.T) {
+	type model struct {
+		Name     string             `sql:"name,omitempty"`
+		Age      int                `sql:"age,omitzero"`
+		Optional *int               `sql:"optional,omitempty"`
+		Custom   defaultTaggedValue `sql:"custom,omitzero"`
+		Ignored  int                `sql:"-"`
+	}
+
+	value := model{Custom: defaultTaggedValue{-1}, Ignored: 99}
+	for _, tc := range []struct {
+		dialect Dialect
+		query   string
+		zeroSQL string
+	}{
+		{dialect.MySQL, "INSERT INTO `users` () VALUES ()", "INSERT INTO `users` (`age`) VALUES (?)"},
+		{dialect.Postgres, `INSERT INTO "users" DEFAULT VALUES`, `INSERT INTO "users" ("age") VALUES ($1)`},
+		{dialect.SQLite, `INSERT INTO "users" DEFAULT VALUES`, `INSERT INTO "users" ("age") VALUES (?)`},
+	} {
+		t.Run(tc.dialect.Name(), func(t *testing.T) {
+			ctx, calls := t.Context(), 0
+			wantResult := driver.RowsAffected(1)
+			db := &DB{
+				Dialect: tc.dialect,
+				Executor: templateTestExecutor{
+					exec: func(gotCtx context.Context, query string, args ...any) (sql.Result, error) {
+						calls++
+						if gotCtx != ctx || query != tc.query || len(args) != 0 {
+							t.Fatal(gotCtx, query, args)
+						}
+						return wantResult, nil
+					},
+				},
+			}
+
+			for _, input := range []any{value, &value} {
+				checkSQL(t, db.Insert().Into("users").Struct(input), tc.query)
+			}
+
+			result, err := NewOper[model]("users").WithDB(db).InsertResult(ctx, value)
+			if err != nil || result != wantResult || calls != 1 {
+				t.Fatal(result, err, calls)
+			}
+
+			checkSQL(t, db.Insert().Into("users").Columns("age").Struct(value), tc.zeroSQL, 0)
+		})
+	}
+}
+
+func TestStructAllOmittedSourceValidation(t *testing.T) {
+	type model struct {
+		Age int `sql:"age,omitempty"`
+	}
+
+	// These source/field errors are independent of SQL dialect and execution API.
+	for _, tc := range []struct {
+		name     string
+		conflict bool
+		build    func(*InsertBuilder) *InsertBuilder
+	}{
+		{"omitted then struct", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{}).Struct(model{Age: 1})
+		}},
+		{"struct then omitted", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{Age: 1}).Struct(model{})
+		}},
+		{"multiple omitted rows", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{}).Struct(model{})
+		}},
+		{"existing select source", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.FromSelect(Select().SelectExpr(Value(1))).Struct(model{})
+		}},
+		{"omitted then structs", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{}).Structs([]model{{Age: 1}})
+		}},
+		{"structs then omitted", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Structs([]model{{Age: 1}}).Struct(model{})
+		}},
+		{"omitted then values", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{}).Values(1)
+		}},
+		{"values then omitted", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Values(1).Struct(model{})
+		}},
+		{"struct then select", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{Age: 1}).FromSelect(Select().SelectExpr(Value(1)))
+		}},
+		{"struct then defaults", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{Age: 1}).DefaultValues()
+		}},
+		{"select then struct", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.FromSelect(Select().SelectExpr(Value(1))).Struct(model{Age: 1})
+		}},
+		{"omitted then row", true, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(model{}).Row(NewColumnValue("age", 1))
+		}},
+		{"empty model", false, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(struct{}{})
+		}},
+		{"ignored fields only", false, func(b *InsertBuilder) *InsertBuilder {
+			return b.Struct(struct {
+				Age int `sql:"-"`
+			}{})
+		}},
+		{"empty explicit projection", false, func(b *InsertBuilder) *InsertBuilder {
+			return b.Columns().Struct(model{})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := tc.build(Insert().Into("users").
+				SetDialect(dialect.MySQL)).
+				SetExecutor(recordingExecutor{
+					call: func(string, []any) {
+						t.Fatal("invalid default row executed SQL")
+					},
+				})
+
+			checkBuildError(t, b)
+			if tc.conflict && (b.err == nil ||
+				!strings.Contains(b.err.Error(), "INSERT source conflict") ||
+				!strings.Contains(b.err.Error(), "Reset")) {
+				t.Fatal("source conflict was not retained or does not explain recovery", b.err)
+			}
+			if result, err := b.ExecContext(t.Context()); result != nil || err == nil {
+				t.Fatal(result, err)
+			}
+			if tc.conflict {
+				stored := b.err
+				if _, _, err := b.ClearValues().Struct(model{Age: 2}).Build(); !errors.Is(err, stored) {
+					t.Fatal("ClearValues discarded the source conflict", err)
+				}
+				checkSQL(t, b.Reset().Into("users").Struct(model{Age: 2}), "INSERT INTO `users` (`age`) VALUES (?)", 2)
+			}
+		})
+	}
+}
+
+func TestStructAllOmittedClearValuesReuse(t *testing.T) {
+	type model struct {
+		Age int `sql:"age,omitempty"`
+	}
+
+	for _, tc := range []struct {
+		dialect Dialect
+		query   string
+	}{
+		{dialect.MySQL, "INSERT INTO `users` () VALUES ()"},
+		{dialect.Postgres, `INSERT INTO "users" DEFAULT VALUES`},
+		{dialect.SQLite, `INSERT INTO "users" DEFAULT VALUES`},
+	} {
+		t.Run(tc.dialect.Name(), func(t *testing.T) {
+			for _, rows := range []struct {
+				name   string
+				append func(*InsertBuilder) *InsertBuilder
+			}{
+				{"struct", func(b *InsertBuilder) *InsertBuilder { return b.Struct(model{Age: 1}) }},
+				{"structs", func(b *InsertBuilder) *InsertBuilder { return b.Structs([]model{{Age: 1}}) }},
+				{"default struct", func(b *InsertBuilder) *InsertBuilder { return b.Struct(model{}) }},
+				{"default structs", func(b *InsertBuilder) *InsertBuilder { return b.Structs([]model{{}}) }},
+			} {
+				t.Run(rows.name, func(t *testing.T) {
+					b := rows.append(Insert().Into("users").SetDialect(tc.dialect))
+					checkSQL(t, b.ClearValues().Struct(model{}), tc.query)
+
+					b.ClearValues().Structs([]model{{Age: 2}, {Age: 3}})
+					query, args, err := b.Build()
+					if err != nil || !reflect.DeepEqual(args, []any{2, 3}) {
+						t.Fatal(query, args, err)
+					}
+				})
+			}
+
+			// Empty slices preserve the single default row.
+			checkSQL(t, Insert().Into("users").SetDialect(tc.dialect).
+				Structs([]model(nil)).Struct(model{}).Structs([]model{}), tc.query)
+
+			// Explicit projections survive clearing and continue to include zeros.
+			b := Insert().Into("users").SetDialect(tc.dialect).Columns("age").Struct(model{Age: 1})
+			query, args, err := b.ClearValues().Struct(model{}).Build()
+			if err != nil || !reflect.DeepEqual(args, []any{0}) {
+				t.Fatal(query, args, err)
+			}
+
+			// Clearing sources must not erase an earlier input error.
+			b = Insert().Into("users").SetDialect(tc.dialect).Struct(model{}).Struct(model{})
+			checkBuildError(t, b.ClearValues().Struct(model{}))
+			checkSQL(t, b.Reset().Into("users").Struct(model{}), tc.query)
+		})
+	}
+}
+
 func TestStructsDefaultsWithPointersAndValuers(t *testing.T) {
 	type Child struct {
 		Count int `sql:"count,omitzero"`
@@ -115,12 +308,12 @@ func TestStructsDefaultsDialectAndEmptyRows(t *testing.T) {
 	calls := 0
 	b := Insert().SetDialect(dialect.SQLite).Into("t").Structs([]Record{{}}).
 		SetExecutor(recordingExecutor{call: func(string, []any) { calls++ }})
-	checkBuildError(t, b)
-	if _, err := b.ExecContext(context.Background()); err == nil || !strings.Contains(err.Error(), "DEFAULT in VALUES") {
-		t.Fatalf("expected unsupported DEFAULT error, got %v", err)
+	checkSQL(t, b, `INSERT INTO "t" DEFAULT VALUES`)
+	if _, err := b.ExecContext(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-	if calls != 0 {
-		t.Fatal("unsupported DEFAULT reached the executor")
+	if calls != 1 {
+		t.Fatal("default row was not executed exactly once", calls)
 	}
 
 	checkBuildError(t, Insert().Into("t").Structs([]Record(nil)))

@@ -35,12 +35,12 @@ const (
 
 // CompileInsertPlan resolves mapped columns, field paths and value capabilities.
 // With no columns it selects all mapped fields in declaration order; omitted
-// zero values use DEFAULT, as with [InsertBuilder.Structs]. Explicit columns
-// select and order fields and include zero values. Columns are copied and must
-// be unique. T must be a struct (except [time.Time]) or a pointer chain to one,
-// not an interface. Compilation does not read values or call an IsZero method
-// or [driver.Valuer.Value]. It validates and caches string limit options in SQL
-// tags.
+// zero values use database defaults, as with [InsertBuilder.Structs]. Explicit
+// columns select and order fields and include zero values. Columns are copied
+// and must be unique. T must be a struct (except [time.Time]) or a pointer chain
+// to one, not an interface. Compilation does not read values or call an IsZero
+// method or [driver.Valuer.Value]. It validates and caches string limit options
+// in SQL tags.
 func CompileInsertPlan[T any](columns ...string) (plan *InsertPlan[T], err error) {
 	defer func() {
 		if r := recover(); r != nil {
