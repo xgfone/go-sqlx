@@ -313,9 +313,15 @@ or appending. `ScanOptionsFunc` can supply policies once per successful query
 and must support concurrent calls.
 
 `Capacity` is an allocation hint and never truncates results. A positive explicit
-value takes precedence; otherwise a `SELECT`'s positive `LIMIT` supplies at most
-100, with `DefaultRowsCapacity` used when there is no limit hint.
-`Rows.SetCapacity(n)` changes only this hint.
+value is bounded by the outer `SELECT` LIMIT and a known count, when available.
+Otherwise a positive LIMIT supplies at most 100, with `DefaultRowsCapacity` used
+when there is no limit hint. For example, `SetCapacity(24)` with page size 20
+reserves 20 incoming elements; a smaller capacity of 8 remains 8. Counted Oper
+queries also bound that reservation by the returned total without changing
+LIMIT/OFFSET, skipping pages, or truncating rows if the count becomes stale.
+Raw SQL and later result sets have no inferred LIMIT. `Rows.SetCapacity(n)`
+changes only this hint, leaving DB/Oper configuration and existing append data
+intact.
 
 `*Rows` owns its cursor and must not be copied or used concurrently. Its `Set`
 methods mutate the same result object. Manual `Row.Scan`/`Rows.Scan` may

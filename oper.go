@@ -315,7 +315,8 @@ func (o Oper[T]) Count(ctx context.Context, cs ...Condition) (n int64, err error
 //
 // Pagination is evaluated once and validated before either query. A zero count
 // or count-query error leaves dst unchanged and skips the data query and binding.
-// Data-query or binding errors are returned with the successful count.
+// Data-query or binding errors are returned with the successful count. The count
+// bounds the initial binding capacity, never the SQL pagination or returned rows.
 func (o Oper[T]) GetManyWithCount(ctx context.Context, dst any, p Pagination, cs ...Condition) (n int64, err error) {
 	q := o.SelectStruct().Where(cs...).Pagination(p)
 	if err = q.err; err != nil {
@@ -324,7 +325,7 @@ func (o Oper[T]) GetManyWithCount(ctx context.Context, dst any, p Pagination, cs
 
 	n, err = o.Count(ctx, cs...)
 	if err == nil && n > 0 {
-		err = q.QueryRowsContext(ctx).Bind(dst)
+		err = q.QueryRowsContext(ctx).limitCapacity(n).Bind(dst)
 	}
 	return
 }

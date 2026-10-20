@@ -29,8 +29,8 @@ const (
 // no positive SELECT limit is available.
 const DefaultRowsCapacity = 20
 
-// Limits are hints rather than expected row counts. Bound inferred reservations;
-// callers can explicitly request larger capacities when they know the workload.
+// Bound automatically inferred reservations. Explicit capacities can be larger,
+// but the SELECT LIMIT and a known count still bound initial allocations.
 const maxLimitRowsCapacity = 100
 
 // BindOptions is passed to [RowsBinder.Prepare]. Implementations must leave the
@@ -45,6 +45,8 @@ type BindOptions struct {
 	// Capacity hints at the number of incoming rows to reserve, not a row limit.
 	// Zero uses [DefaultRowsCapacity]. SELECT results fill an unspecified capacity
 	// from their positive LIMIT, capped at 100, before calling [RowsBinder.Prepare].
+	// Query results also bound explicit hints by LIMIT and a known count. This
+	// affects reservations only; binders must consume every available row.
 	Capacity      int
 	Columns       []string
 	ScanOptions   ScanOptions
@@ -100,8 +102,9 @@ type BindConfig struct {
 
 	DuplicateKeys DuplicateKeyPolicy
 
-	// Capacity is an explicit allocation hint and is not capped. Zero lets a
-	// SELECT result use its positive LIMIT (up to 100), otherwise [DefaultRowsCapacity].
+	// Capacity is an explicit allocation hint. SELECT results bound it by their
+	// positive LIMIT and a known count. Zero uses the positive LIMIT (up to 100),
+	// otherwise [DefaultRowsCapacity]. Raw SQL has no inferred LIMIT bound.
 	Capacity int
 }
 

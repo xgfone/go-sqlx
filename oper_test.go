@@ -672,7 +672,7 @@ func TestOperGetMapAndGetListConfigurationParity(t *testing.T) {
 			db.SetBindConfig(config)
 			o := NewOper[model]("t").WithDB(db).Where(Eq("tenant", 1)).
 				WithStructSorter(Column("id").Desc())
-			wantCapacity := 37
+			wantCapacity := 3
 			switch scope {
 			case "oper_override":
 				// Oper configuration replaces the DB configuration, including capacity.
@@ -876,7 +876,7 @@ func TestOperGetManyWithCountNamedDestinations(t *testing.T) {
 
 			registry := NewRowsBinderRegistry()
 			registry.RegisterType[*index](RowsBinderFunc(func(dst any, opts BindOptions) (RowsBinding, error) {
-				if opts.Capacity != 37 ||
+				if opts.Capacity != 2 ||
 					opts.ScanOptions.Nulls != NullError ||
 					opts.DuplicateKeys != DuplicateKeyFirst {
 					t.Fatal(opts)
@@ -934,7 +934,7 @@ func TestOperGetManyWithCountNamedDestinations(t *testing.T) {
 					if !reflect.DeepEqual(byValue, index{5: {5}}) {
 						t.Fatal(byValue)
 					}
-				} else if !reflect.DeepEqual(values, list{{5}}) || cap(values) != 37 {
+				} else if !reflect.DeepEqual(values, list{{5}}) || cap(values) != 2 {
 					t.Fatal(values, cap(values))
 				}
 			}

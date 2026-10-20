@@ -44,6 +44,7 @@ func (b *SelectBuilder) QueryRowsContext(ctx context.Context) *Rows {
 	r := b.binding().rows(b.queryStatement(ctx, b))
 	if b.hasLimit && b.limit > 0 {
 		r.capacityHint = int(min(b.limit, maxLimitRowsCapacity))
+		r.capacityLimit = b.limit
 	}
 	return r
 }
@@ -82,7 +83,8 @@ type Rows struct {
 	scan     rowbind.ScanState
 
 	// Keep query hints separate so configuration setters can restore automatic sizing.
-	capacityHint int
+	capacityHint  int
+	capacityLimit int64
 }
 
 // NewRows takes ownership of rows and uses zero [BindConfig]. Nil columns use the
@@ -157,8 +159,9 @@ func (r *Rows) SetBinder(binder RowsBinder) *Rows {
 }
 
 // SetCapacity sets the incoming-row allocation hint and returns r. Positive
-// values are not capped; zero restores automatic sizing from the query's LIMIT
-// hint (up to 100), or [DefaultRowsCapacity] when no hint is available. Negative
+// values are bounded by the SELECT LIMIT and a known count, when available.
+// Zero restores automatic sizing from the LIMIT hint (up to 100), or
+// [DefaultRowsCapacity] when no hint is available. Negative
 // values are rejected during collection binding. Other configuration and
 // prepared scan state are preserved.
 func (r *Rows) SetCapacity(capacity int) *Rows {
@@ -245,6 +248,15 @@ func (r *Rows) bind(dst any, mode BindMode, fallback RowsBinder) (err error) {
 	return nil
 }
 
+// limitCapacity bounds reservations without limiting cursor consumption or SQL.
+// Counts may become stale between queries, so binding must still grow as needed.
+func (r *Rows) limitCapacity(n int64) *Rows {
+	if n > 0 && (r.capacityLimit == 0 || n < r.capacityLimit) {
+		r.capacityLimit = n
+	}
+	return r
+}
+
 // bindOptions prepares one collection operation without consuming its cursor.
 func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 	if err = r.Err(); err != nil {
@@ -257,6 +269,10 @@ func (r *Rows) bindOptions(mode BindMode) (options BindOptions, err error) {
 	options = r.config.options(mode)
 	if options.Capacity == 0 {
 		options.Capacity = r.capacityHint
+	}
+	if r.capacityLimit > 0 && options.Capacity >= 0 {
+		capacity := options.capacity()
+		options.Capacity = int(min(int64(capacity), r.capacityLimit))
 	}
 	if options.Columns, err = r.scanColumns(); err != nil {
 		return options, err
@@ -333,6 +349,7 @@ func (r *Rows) NextResultSet() bool {
 	r.labels = nil
 	r.columns = nil
 	r.capacityHint = 0
+	r.capacityLimit = 0
 	r.revision++
 	r.scan.Reset()
 	return r.rows.NextResultSet()
@@ -345,6 +362,7 @@ func (r *Rows) Close() error {
 	r.labels = nil
 	r.columns = nil
 	r.capacityHint = 0
+	r.capacityLimit = 0
 	r.revision++
 	r.scan.Reset()
 	if r.rows == nil {

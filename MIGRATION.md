@@ -368,6 +368,12 @@ Register exact destination types, using pointer types for built-in collection
 binders. Registry operations support concurrent use; a prepared operation retains
 its selected binder after registration changes.
 
+Positive result capacities are now bounded by an outer SELECT LIMIT and, for
+counted Oper queries, the known total. SetCapacity(24) with page size 20 reserves
+20; explicit capacity 8 remains 8. This changes allocation only, never page size,
+SQL offsets, returned rows or COUNT/data-query ordering. Raw SQL has no parsed
+LIMIT bound; later result sets discard first-result bounds.
+
 ## Scanner conversions and stored values
 
 SQL `NULL` now clears reused scalar destinations instead of leaving old values.
