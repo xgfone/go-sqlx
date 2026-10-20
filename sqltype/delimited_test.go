@@ -22,13 +22,13 @@ func TestDelimitedEmptyData(t *testing.T) {
 	}
 
 	strings := Strings{"old"}
-	if err := strings.Scan(" \t\n"); err != nil || !reflect.DeepEqual(strings, Strings{" \t\n"}) {
+	if err := strings.Scan(" \t\n"); err != nil || strings != nil {
 		t.Fatal(strings, err)
 	}
 }
 
 func TestDelimitedValues(t *testing.T) {
-	for _, values := range []Strings{{" a ", "b"}, {"", "b"}, {"a", ""}, nil, {}} {
+	for _, values := range []Strings{{"a ", " b"}, {"", "b"}, {"a", ""}, nil, {}} {
 		encoded, err := values.Value()
 		if err != nil {
 			t.Fatal(err)

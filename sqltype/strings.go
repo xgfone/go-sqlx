@@ -12,7 +12,10 @@ import (
 
 const SliceSep = ","
 
-// Strings stores strings separated by commas, without trimming whitespace.
+// Strings stores comma-separated strings. Scan trims the whole text before
+// splitting; whitespace inside the list and empty elements are preserved.
+// This removes leading whitespace from the first element and trailing whitespace
+// from the last. Value and JSON encoding/decoding do not trim element values.
 // Elements containing commas and a singleton empty string cannot be encoded;
 // use [JSON] with []string for arbitrary strings. Nil is SQL NULL, while an empty
 // non-nil slice is empty text. [Strings.Scan] replaces the previous value.
@@ -26,6 +29,13 @@ func (s Strings) Value() (driver.Value, error) {
 	return EncodeStrings(s, SliceSep)
 }
 func (s *Strings) Scan(src any) error {
+	switch v := src.(type) {
+	case string:
+		src = strings.TrimSpace(v)
+
+	case []byte:
+		src = strings.TrimSpace(string(v))
+	}
 	return DecodeStrings(s, src, SliceSep)
 }
 

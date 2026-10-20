@@ -416,10 +416,16 @@ for zero values, including `false`, `0` and `null`, instead of empty text. JSON 
 `{}` and `[]` are decoded normally for compatible destinations rather than ignored;
 whitespace-only JSON is invalid.
 
-Delimited strings preserve whitespace and reject separator-containing elements
-or a singleton empty string; use `JSON[[]string]` for arbitrary strings. Integer
-lists reject empty elements previously skipped. `Decode` errors preserve the old
-slice rather than publishing partial results.
+`sqltype.Strings.Scan` trims whitespace around the complete stored text before
+splitting; it preserves spaces within the list, order and empty elements. Leading
+whitespace in the first element and trailing whitespace in the last are therefore
+normalized on SQL reads, including values previously written by `Strings.Value`.
+`Value` and JSON encoding/decoding remain unchanged and do not trim elements. The
+lower-level `DecodeStrings` preserves all whitespace when normalization is unwanted.
+Encoding rejects separator-containing elements or a singleton empty string;
+use `JSON[[]string]` for arbitrary strings. Integer lists reject empty elements
+previously skipped. `Decode` errors preserve the old slice rather than publishing
+partial results.
 
 ## Oper
 
