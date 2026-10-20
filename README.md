@@ -367,6 +367,15 @@ query := db.Select().SelectType[User]().From("users")
 projections. `select=explicit` affects inferred `SELECT` only, retaining `INSERT`
 and scan mapping.
 
+For `sqltype.Strings` and `sqltype.JSONMap`, `IsZero` reports both nil and empty
+values. Mark a field `sql:"gender,omitempty"` (or `omitzero`) when its zero value
+should use the database column default. This is an insertion policy, separate
+from `driver.Valuer`: a nil adapter still represents SQL NULL when explicitly
+written. Explicit `Columns` retains actual values; an explicit update can use
+`Column("gender").Set(Default())`. Do not turn all zeros or nil assignments into
+DEFAULT: untagged false/0 and explicit NULL remain real values, and the schema
+owns the meaning of DEFAULT.
+
 Without explicit `Columns`, `Struct` omits zero-valued fields tagged
 `omitempty`/`omitzero`; if all mapped fields are omitted, it uses `DefaultValues`.
 This default row is a single source and cannot be appended to other rows or an
