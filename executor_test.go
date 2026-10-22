@@ -71,6 +71,28 @@ func (t *txState) Commit() error { t.f.committed++; return t.f.commitErr }
 
 func (t *txState) Rollback() error { t.f.rolled++; return t.f.rollbackErr }
 
+func TestDBBeginTxUnsupported(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		executor Executor
+	}{
+		{name: "nil executor"},
+		{name: "executor without TxBeginner", executor: nilRowsExecutor{}},
+		{name: "wrapped executor without TxBeginner", executor: executorLayer{
+			executorLayer{nilRowsExecutor{}},
+		}},
+		{name: "existing transaction", executor: new(sql.Tx)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := &DB{Executor: tc.executor}
+			tx, err := db.BeginTx(t.Context(), nil)
+			if tx != nil || !errors.Is(err, ErrTxUnsupported) {
+				t.Fatalf("got (%v, %v); want (nil, ErrTxUnsupported)", tx, err)
+			}
+		})
+	}
+}
+
 func TestTransactionExecutor(t *testing.T) {
 	f := &txFixture{}
 	std := sql.OpenDB(txConnector{f})

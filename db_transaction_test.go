@@ -96,7 +96,7 @@ func TestDBTransactionBeginFailure(t *testing.T) {
 		begun       int
 	}{
 		{name: "driver error", beginErr: beginErr, wantErr: beginErr, begun: 1},
-		{name: "unsupported executor", unsupported: true},
+		{name: "unsupported executor", unsupported: true, wantErr: ErrTxUnsupported},
 		{name: "canceled context", canceled: true, wantErr: context.Canceled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,11 +120,7 @@ func TestDBTransactionBeginFailure(t *testing.T) {
 				called = true
 				return nil
 			})
-			if tc.unsupported {
-				if err == nil || err.Error() != "sqlx: executor cannot begin transactions" {
-					t.Fatal("missing transaction capability was accepted", err)
-				}
-			} else if !errors.Is(err, tc.wantErr) {
+			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("got error %v; want %v", err, tc.wantErr)
 			}
 			if called || f.begun != tc.begun || f.committed != 0 || f.rolled != 0 {

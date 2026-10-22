@@ -96,7 +96,7 @@ func TestDBWrappedCapabilitiesPreferOuter(t *testing.T) {
 	if _, err := db.BeginTx(ctx, opts); !errors.Is(err, failure) {
 		t.Fatal("outer transaction error lost", err)
 	}
-	if err := db.Close(); !errors.Is(err, failure) {
+	if err := db.Close(); err != failure {
 		t.Fatal("outer close error lost", err)
 	}
 	if begun != 1 || closed != 1 || f.begun != 0 {
@@ -177,10 +177,10 @@ func TestExecutorInterceptorTransactionBindings(t *testing.T) {
 	if _, ok := AsExecutor[*sql.DB](txdb); ok {
 		t.Fatal("transaction resolved to the connection pool")
 	}
-	if _, err := txdb.BeginTx(ctx, nil); err == nil {
+	if _, err := txdb.BeginTx(ctx, nil); !errors.Is(err, ErrTxUnsupported) {
 		t.Fatal("transaction unexpectedly supports nested transactions")
 	}
-	if err := txdb.Close(); err == nil {
+	if err := txdb.Close(); !errors.Is(err, ErrCloseUnsupported) {
 		t.Fatal("transaction unexpectedly supports Close")
 	}
 

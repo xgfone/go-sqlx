@@ -17,6 +17,12 @@ import (
 	"github.com/xgfone/go-sqlx/dialect"
 )
 
+// ErrMultipleStatements is wrapped by errors from operations that require one
+// SQL statement when an INSERT must be split into multiple statements. Use
+// [InsertBuilder.BuildBatch] to render the statements or [InsertBuilder.ExecContext]
+// to execute them atomically without RETURNING.
+var ErrMultipleStatements = errors.New("INSERT requires multiple statements; use BuildBatch or ExecContext")
+
 // InsertStatement is one rendered INSERT and its independent, shallow argument
 // slice. BuildBatch returns statements in input order without executing them.
 type InsertStatement struct {
@@ -185,8 +191,10 @@ type splitInsertError struct {
 }
 
 func (*splitInsertError) Error() string {
-	return "INSERT requires multiple statements; use BuildBatch or ExecContext"
+	return ErrMultipleStatements.Error()
 }
+
+func (*splitInsertError) Unwrap() error { return ErrMultipleStatements }
 
 func (b *InsertBuilder) execDefaultBatch(ctx context.Context) (sql.Result, error) {
 	// Render once using the ordinary pooled execution path. Column omission alone

@@ -630,7 +630,8 @@ func (b *InsertBuilder) String() string { return stringStatement(b) }
 //
 // Dialects without per-value DEFAULT omit those columns. If rows require
 // different column sets or multiple default rows, use [InsertBuilder.BuildBatch]
-// or [InsertBuilder.ExecContext]; Build and Compile require a single statement.
+// or [InsertBuilder.ExecContext]; Build and Compile require a single statement
+// and return an error wrapping [ErrMultipleStatements] otherwise.
 //
 // For split inserts, Build and Compile only check clause metadata and stored
 // errors in built-in CTE bodies, without rendering expressions or statement

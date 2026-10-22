@@ -50,11 +50,22 @@ func TestInsertDefaultBatchBuild(t *testing.T) {
 	}
 
 	_, _, err := q.Build()
-	if err == nil || !strings.Contains(err.Error(), "BuildBatch") {
+	if !errors.Is(err, ErrMultipleStatements) {
 		t.Fatal("multi-statement Build succeeded", err)
 	}
-	if _, err := q.Compile(); err == nil || !strings.Contains(err.Error(), "BuildBatch") {
+
+	if _, err := q.Compile(); !errors.Is(err, ErrMultipleStatements) {
 		t.Fatal("multi-statement Compile succeeded", err)
+	}
+
+	returning := q.Clone().Returning("name")
+	for _, err := range []error{
+		returning.QueryRowsContext(t.Context()).Err(),
+		returning.QueryRowContext(t.Context()).Scan(new(string)),
+	} {
+		if !errors.Is(err, ErrMultipleStatements) {
+			t.Fatal("multi-statement query lost its sentinel error", err)
+		}
 	}
 
 	for _, d := range []Dialect{dialect.MySQL, dialect.Postgres, dialect.SQLite} {
@@ -626,7 +637,7 @@ func TestInsertDefaultNestedSplitDoesNotExecuteChild(t *testing.T) {
 		})
 
 	result, err := parent.ExecContext(t.Context())
-	if result != nil || err == nil || !strings.Contains(err.Error(), "multiple statements") {
+	if result != nil || !errors.Is(err, ErrMultipleStatements) {
 		t.Fatal(result, err)
 	}
 }

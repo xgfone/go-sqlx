@@ -6,6 +6,7 @@ package sqlx
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 var _ Executor = (*sql.DB)(nil)
@@ -13,6 +14,11 @@ var _ Executor = (*DB)(nil)
 var _ Executor = (*sql.Tx)(nil)
 var _ Executor = (*sql.Conn)(nil)
 var _ TxBeginner = (*DB)(nil)
+
+// ErrNoExecutor is returned when a builder, [DB.QueryRowsContext],
+// [DB.QueryRowOneContext] or [StatementTemplate] cannot execute because
+// no executor is configured.
+var ErrNoExecutor = errors.New("sqlx: no executor configured")
 
 // Executor is used to execute the sql statement. It does not imply ownership of
 // the underlying database/connection; query and transaction helpers do not close

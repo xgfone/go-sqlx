@@ -19,7 +19,7 @@ func (db *DB) QueryRowsContext(ctx context.Context, query string, args ...any) *
 
 func (db *DB) queryRowsContext(ctx context.Context, query string, args ...any) (*sql.Rows, []string, error) {
 	if db == nil || db.Executor == nil {
-		return nil, nil, errors.New("sqlx: no executor configured")
+		return nil, nil, ErrNoExecutor
 	}
 
 	rows, err := db.QueryContext(ctx, query, args...)

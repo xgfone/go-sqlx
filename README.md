@@ -445,6 +445,8 @@ executors can hide SQL completion, so their failures remain conservatively
 handled; use `WrapExecutor` directly for these guarantees.
 
 `Build`, `Compile`, `QueryRowsContext` and `QueryRowContext` require one statement.
+If an INSERT needs multiple statements, their errors wrap `sqlx.ErrMultipleStatements`;
+use `errors.Is(err, sqlx.ErrMultipleStatements)` to detect this condition.
 Use `BuildBatch() ([]InsertStatement, error)` to inspect or manually execute split
 statements, each with its own `SQL` and `Args`. `BuildBatch` only renders SQL and
 does not manage transactions. To preserve atomicity when manually executing multiple
@@ -626,6 +628,17 @@ supports manual control. `ForUpdate`/`ForShare` provide row locking on
 MySQL/PostgreSQL. Built-in dialects target MySQL 8.0, PostgreSQL 14+ and SQLite
 3.39+; see [dialect configuration](docs/sql-syntax.md#dialect-configuration)
 for capabilities.
+
+If no executor in the `Unwrap` chain implements `TxBeginner`, `BeginTx` and `Transaction` return `sqlx.ErrTxUnsupported`; use `errors.Is(err, sqlx.ErrTxUnsupported)` to detect
+this condition. Errors from an executor's `BeginTx` method are returned unchanged.
+
+`DB.Close` similarly returns `sqlx.ErrCloseUnsupported` if no executor in the
+`Unwrap` chain implements `io.Closer`. Errors from an executor's `Close` method
+are returned unchanged. Use `errors.Is(err, sqlx.ErrCloseUnsupported)` to detect
+the missing capability.
+
+Builder execution, `DB.QueryRowsContext`, `DB.QueryRowOneContext` and statement
+template execution return `sqlx.ErrNoExecutor` when no executor is configured.
 
 ## Executor middleware
 

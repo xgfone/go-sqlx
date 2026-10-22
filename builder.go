@@ -70,7 +70,7 @@ func (b *builderBase) runner() (Executor, error) {
 		return db.Executor, nil
 	}
 
-	return nil, errors.New("sqlx: no executor configured")
+	return nil, ErrNoExecutor
 }
 
 func (b *builderBase) buildBorrowed(s statementWriter) (query string, ctx *BuildContext, err error) {

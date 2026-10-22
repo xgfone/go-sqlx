@@ -12,6 +12,14 @@ import (
 	"sync/atomic"
 )
 
+// ErrTxUnsupported is returned by [DB.BeginTx] and [DB.Transaction] when no
+// executor in the Unwrap chain implements [TxBeginner].
+var ErrTxUnsupported = errors.New("sqlx: executor cannot begin transactions")
+
+// ErrCloseUnsupported is returned by [DB.Close] when no executor in the Unwrap
+// chain implements [io.Closer].
+var ErrCloseUnsupported = errors.New("sqlx: executor cannot be closed")
+
 var defaultDB atomic.Value
 
 func init() {
@@ -92,14 +100,15 @@ func (db *DB) Unwrap() Executor {
 }
 
 // BeginTx starts a transaction using the first [TxBeginner] in the executor's
-// Unwrap chain (see [AsExecutor]). Bind the returned *[sql.Tx] with [DB.WithExecutor] or a
-// builder method such as
-// [SelectBuilder.SetExecutor] to apply the configured interceptor to its SQL execution.
+// Unwrap chain (see [AsExecutor]). Bind the returned *[sql.Tx] with [DB.WithExecutor]
+// or a builder method such as [SelectBuilder.SetExecutor] to apply the configured
+// interceptor to its SQL execution. If no executor implements TxBeginner, it returns
+// [ErrTxUnsupported]. Errors from the selected TxBeginner are returned unchanged.
 func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	if b, ok := AsExecutor[TxBeginner](db.Executor); ok {
 		return b.BeginTx(ctx, opts)
 	}
-	return nil, errors.New("sqlx: executor cannot begin transactions")
+	return nil, ErrTxUnsupported
 }
 
 // Transaction starts a transaction with [DB.BeginTx] and calls f with a
@@ -141,11 +150,13 @@ func (db *DB) Transaction(ctx context.Context, opts *sql.TxOptions, f func(*DB) 
 
 // Close closes a caller-owned database/connection. Call it only when the caller
 // owns that resource; wrapping an executor does not transfer ownership.
-// Transactions must use [sql.Tx.Commit]/[sql.Tx.Rollback].
-// It uses the first [io.Closer] in the executor's Unwrap chain (see [AsExecutor]).
+// Transactions  must use [sql.Tx.Commit]/[sql.Tx.Rollback]. It uses the first
+// [io.Closer] in the executor's Unwrap chain (see [AsExecutor]). If none is found,
+// it returns [ErrCloseUnsupported]. Errors from the selected Closer are returned
+// unchanged.
 func (db *DB) Close() error {
 	if c, ok := AsExecutor[io.Closer](db.Executor); ok {
 		return c.Close()
 	}
-	return errors.New("sqlx: executor cannot be closed")
+	return ErrCloseUnsupported
 }

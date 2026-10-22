@@ -91,7 +91,8 @@ func (b *SelectBuilder) Compile() (*StatementTemplate, error) {
 // Compile freezes this INSERT, including its row count, DEFAULT cells and conflict
 // clauses. Use [StatementTemplate.QueryRowsContext] for a template with RETURNING.
 // SQLite default columns are omitted. Batches requiring multiple statements cannot
-// compile; use [InsertBuilder.BuildBatch] or [InsertBuilder.ExecContext].
+// compile and return an error wrapping [ErrMultipleStatements]; use
+// [InsertBuilder.BuildBatch] or [InsertBuilder.ExecContext].
 func (b *InsertBuilder) Compile() (*StatementTemplate, error) {
 	if b == nil {
 		return nil, errors.New("sqlx: nil INSERT builder")
@@ -216,7 +217,7 @@ func (q *StatementTemplate) borrowArgs(params []any) *BuildContext {
 
 func (q *StatementTemplate) executionDB(db *DB) error {
 	if db == nil || nilBindingValue(db.Executor) {
-		return errors.New("sqlx: no executor configured")
+		return ErrNoExecutor
 	}
 
 	d := getDialect(db)
