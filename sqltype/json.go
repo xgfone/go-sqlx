@@ -4,35 +4,36 @@
 package sqltype
 
 import (
+	"bytes"
 	"database/sql/driver"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 )
 
-// EncodeJSON encodes a complete JSON value, including zero values and null.
-func EncodeJSON(v any) (string, error) {
-	b, err := json.Marshal(v)
-	return string(b), err
+// EncodeJSON encodes a complete JSON value using encoding/json/v2 defaults.
+// By default, nil maps/slices become empty collections and bytes use base64 strings.
+// Custom marshalers are dispatched and validated by the standard encoder.
+// It does not omit top-level zero values or select SQL NULL/DEFAULT.
+func EncodeJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	return string(data), err
 }
 
 // DecodeJSON replaces dst from a string or []byte containing one JSON value.
-// SQL NULL and empty strings/byte slices reset dst to its zero value. Decoding
-// is transactional: errors leave dst unchanged, and maps/structs are not merged.
+// SQL NULL and text empty after TrimSpace reset dst to its zero value. JSON null,
+// objects and arrays use encoding/json/v2's defaults, including custom decoders.
+// Decoding is transactional: errors leave dst unchanged; values are not merged.
 // dst must be a non-nil *T; the destination type is inferred from the pointer.
 func DecodeJSON[T any](dst *T, src any) error {
 	if dst == nil {
 		return errors.New("sqltype.DecodeJSON: destination must be a non-nil pointer")
 	}
 
-	if src == nil {
-		var zero T
-		*dst = zero
-		return nil
-	}
-
 	var data []byte
 	switch s := src.(type) {
+	case nil:
+
 	case string:
 		data = []byte(s)
 
@@ -44,7 +45,7 @@ func DecodeJSON[T any](dst *T, src any) error {
 	}
 
 	var value T
-	if len(data) > 0 {
+	if data = bytes.TrimSpace(data); len(data) > 0 {
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
@@ -54,9 +55,10 @@ func DecodeJSON[T any](dst *T, src any) error {
 	return nil
 }
 
-// JSON wraps any Go value stored as JSON. A nil [JSON.V] is encoded as JSON null.
-// SQL NULL and empty strings/byte slices scan into the zero value of T; use a
-// nullable wrapper if SQL NULL must remain distinguishable from other values.
+// JSON wraps any Go value stored as JSON using EncodeJSON and DecodeJSON.
+// Value follows the encoder's defaults: nil maps/slices encode as {}/[], bytes
+// as base64 strings, and nil pointers/interfaces as JSON null, not SQL NULL.
+// SQL NULL and empty/whitespace-only text scan into the zero value of T.
 type JSON[T any] struct{ V T }
 
 func (v JSON[T]) Value() (driver.Value, error) { return EncodeJSON(v.V) }
@@ -67,16 +69,10 @@ func (v *JSON[T]) Scan(src any) error {
 	return DecodeJSON(&v.V, src)
 }
 
-// JSONMap stores a map as JSON. A nil map is SQL NULL; an empty non-nil map is {}.
+// JSONMap stores a map as JSON. Both nil and empty maps encode as {}.
+// Use an omission tag on the model field to select the database column default.
 type JSONMap[T any] map[string]T
 
-func (m JSONMap[T]) IsZero() bool { return len(m) == 0 }
-func (m JSONMap[T]) Value() (driver.Value, error) {
-	if m == nil {
-		return nil, nil
-	}
-	return EncodeJSON(m)
-}
-func (m *JSONMap[T]) Scan(src any) error {
-	return DecodeJSON(m, src)
-}
+func (m JSONMap[T]) IsZero() bool                 { return len(m) == 0 }
+func (m JSONMap[T]) Value() (driver.Value, error) { return EncodeJSON(m) }
+func (m *JSONMap[T]) Scan(src any) error          { return DecodeJSON(m, src) }

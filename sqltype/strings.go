@@ -17,14 +17,14 @@ const SliceSep = ","
 // This removes leading whitespace from the first element and trailing whitespace
 // from the last. Value and JSON encoding/decoding do not trim element values.
 // Elements containing commas and a singleton empty string cannot be encoded;
-// use [JSON] with []string for arbitrary strings. Nil is SQL NULL, while an empty
-// non-nil slice is empty text. [Strings.Scan] replaces the previous value.
+// use [JSON] with []string for arbitrary strings. Both nil and empty slices
+// write empty text. [Strings.Scan] replaces the previous value.
 type Strings []string
 
 func (s Strings) IsZero() bool { return len(s) == 0 }
 func (s Strings) Value() (driver.Value, error) {
-	if s == nil {
-		return nil, nil
+	if len(s) == 0 {
+		return "", nil
 	}
 	return EncodeStrings(s, SliceSep)
 }

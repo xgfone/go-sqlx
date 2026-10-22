@@ -11,14 +11,14 @@ import (
 	"strings"
 )
 
-// Int64s stores decimal integers separated by commas. Nil is SQL NULL; an
-// empty non-nil slice is empty text. Empty list elements are invalid.
+// Int64s stores decimal integers separated by commas. Both nil and empty slices
+// write empty text. Empty list elements are invalid.
 type Int64s []int64
 
 func (s Int64s) IsZero() bool { return len(s) == 0 }
 func (s Int64s) Value() (driver.Value, error) {
-	if s == nil {
-		return nil, nil
+	if len(s) == 0 {
+		return "", nil
 	}
 	return EncodeInt64s(s), nil
 }

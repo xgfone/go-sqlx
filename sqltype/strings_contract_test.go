@@ -18,7 +18,7 @@ func TestStringsTrimPreservesWriteAndJSONContracts(t *testing.T) {
 		json  string
 		zero  bool
 	}{
-		{nil, nil, "null", true},
+		{nil, "", "null", true},
 		{Strings{}, "", "[]", true},
 		{Strings{" a ", " b "}, " a , b ", `[" a "," b "]`, false},
 		{Strings{" "}, " ", `[" "]`, false},

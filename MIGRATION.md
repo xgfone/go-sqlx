@@ -407,25 +407,53 @@ Column adapters move to `github.com/xgfone/go-sqlx/sqltype`:
 | `EncodeInt64s`, `DecodeInt64s`                 | Corresponding `sqltype` names                                                |
 | `EncodeStrings`, `DecodeStrings`               | Corresponding `sqltype` names; `EncodeStrings` now returns `(string, error)` |
 
-Nil `Int64s`/`Strings`/`JSONMap` encode SQL `NULL`; empty non-`nil` slices encode
-empty text and an empty map encodes `{}`. `JSON[T]` encodes its `V` as JSON, including
-JSON `null`. `Decode`/`Scan` replaces old values; SQL `NULL` and empty inputs reset
-them. JSON decoding uses `encoding/json` without toolkit hooks; malformed or wrong-shaped
-input fails without modifying the destination. `EncodeJSON` now emits complete JSON
-for zero values, including `false`, `0` and `null`, instead of empty text. JSON `null`,
-`{}` and `[]` are decoded normally for compatible destinations rather than ignored;
-whitespace-only JSON is invalid.
+`Int64s`/`Strings` write empty text for both nil and empty slices; `JSONMap` writes
+`{}` for both nil and empty maps. Their `IsZero` methods still report both as zero:
+use `omitempty`/`omitzero` on model fields for omission/DEFAULT. Explicit columns
+and assignments write the encoded text; omission rules do not change an explicit
+SQL NULL or make every zero value select a database default.
+
+`EncodeJSON` directly delegates to `encoding/json/v2.Marshal`, without options,
+reflection-based preprocessing, direct marshaler calls, toolkit hooks or legacy
+codec switches. The v2 defaults apply at every depth: nil maps/slices encode as
+`{}`/`[]`, including through non-nil pointers and in struct fields. Nil pointers
+and interfaces encode as `null`. `[]byte` and `[N]byte` use base64 JSON strings
+(nil/empty bytes encode as `""`). The encoder dispatches JSON/text methods, handles
+nil method receivers and validates custom output; v2 streaming methods retain their
+priority. `JSON[T].Value` writes this JSON text, including `null`, rather than SQL
+NULL. Nil pointers to the adapters themselves retain `database/sql`'s SQL NULL
+behavior; nil map/slice values use the empty-collection rules above.
+
+This also adopts other v2 defaults: HTML characters are not escaped; `omitempty`
+omits JSON-empty values rather than zero numbers/booleans (use `omitzero` to omit
+Go zeros); map member order is not deterministic. Untagged `time.Duration` has no
+default JSON representation and fails; a domain requiring durations must define
+its JSON representation explicitly. Do not assume v1 byte representation or error
+types are retained.
+
+`DecodeJSON`/`Scan` accepts SQL NULL or string/[]byte sources, trims surrounding
+whitespace, and resets the target for NULL or empty/whitespace-only text. Non-empty
+JSON is decoded with `encoding/json/v2.Unmarshal` into a fresh T and published only
+on success. Thus object/map values replace, and syntax/type/custom-method errors
+leave the original target unchanged. JSON null, shapes, pointers, `any`, raw JSON
+and custom methods use v2 defaults. Fixed arrays require the exact element count;
+Go byte arrays/slices decode from base64 strings. Semantic errors use v2 error types.
+Field matching is case-sensitive and duplicate names are rejected by default; there
+is no case/duplicate/trailing-input compatibility layer. The original function
+signatures remain, there are no JSON Options APIs, and `JSON[T]` uses these same
+helpers. The outer replacement contract applies even though direct v2 unmarshaling
+can merge objects when given a pre-populated destination.
 
 `sqltype.Strings.Scan` trims whitespace around the complete stored text before
 splitting; it preserves spaces within the list, order and empty elements. Leading
 whitespace in the first element and trailing whitespace in the last are therefore
 normalized on SQL reads, including values previously written by `Strings.Value`.
-`Value` and JSON encoding/decoding remain unchanged and do not trim elements. The
-lower-level `DecodeStrings` preserves all whitespace when normalization is unwanted.
-Encoding rejects separator-containing elements or a singleton empty string;
-use `JSON[[]string]` for arbitrary strings. Integer lists reject empty elements
-previously skipped. `Decode` errors preserve the old slice rather than publishing
-partial results.
+`Value` and JSON encoding/decoding do not trim elements; JSON uses the v2 rules
+above. The lower-level `DecodeStrings` preserves all whitespace when normalization
+is unwanted. Encoding rejects separator-containing elements or a singleton empty
+string; use `JSON[[]string]` for arbitrary strings. Integer lists reject empty
+elements previously skipped. `Decode` errors preserve the old slice rather than
+publishing partial results.
 
 ## Oper
 
