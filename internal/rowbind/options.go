@@ -22,20 +22,22 @@ const (
 type NestedPointerPolicy uint8
 
 const (
-	// AllocateNestedPointers allocates parents when any child column is selected.
-	AllocateNestedPointers NestedPointerPolicy = iota
-
 	// NilNullNestedPointers sets a parent to nil when all its selected columns
-	// are SQL NULL. This is useful for the nullable side of an outer join.
-	NilNullNestedPointers
+	// are SQL NULL. This is the default and is useful for the nullable side of
+	// an outer join. Unselected parents are unchanged.
+	NilNullNestedPointers NestedPointerPolicy = iota
+
+	// AllocateNestedPointers allocates parents when any child column is selected,
+	// even when all selected child columns are SQL NULL.
+	AllocateNestedPointers
 )
 
 // ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns. Custom [sql.Scanner]
-// implementations
-// receive original source types and must copy borrowed bytes they retain.
-// Their implementations must return errors instead of panicking and manage
-// their own resources. [github.com/xgfone/go-sqlx] does not recover application [sql.Scanner]
+// maps NULL scalars to zero, uses [NilNullNestedPointers], and rejects unknown
+// result columns. Custom [sql.Scanner] implementations receive original source
+// types and must copy borrowed bytes they retain. Their implementations must
+// return errors instead of panicking and manage their own resources.
+// [github.com/xgfone/go-sqlx] does not recover application [sql.Scanner]
 // panics.
 type ScanOptions struct {
 	Location *time.Location
@@ -58,7 +60,7 @@ func (o ScanOptions) validate() error {
 	if o.Nulls > NullError {
 		return errors.New("sqlx: invalid NULL policy")
 	}
-	if o.NestedPointers > NilNullNestedPointers {
+	if o.NestedPointers > AllocateNestedPointers {
 		return errors.New("sqlx: invalid nested pointer policy")
 	}
 	if o.DurationUnit < 0 {

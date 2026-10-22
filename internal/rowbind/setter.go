@@ -38,11 +38,15 @@ func (s *fieldScanner) Scan(src any) error {
 	}
 
 	if err := s.setter(s.value, src, s.options); err != nil {
-		return fmt.Errorf("sqlx.GeneralScanner: converting %T to %T: %w",
-			src, s.value.Addr().Interface(), err)
+		return fieldConversionError(s.value, src, err)
 	}
 
 	return nil
+}
+
+func fieldConversionError(dst reflect.Value, src any, err error) error {
+	return fmt.Errorf("sqlx.GeneralScanner: converting %T to %T: %w",
+		src, dst.Addr().Interface(), err)
 }
 
 func compileFieldSetter(t reflect.Type) fieldSetter {

@@ -51,6 +51,7 @@ func TestPrepareSharesImmutableOptionsAndSnapshotsShape(t *testing.T) {
 func TestPrepareValidatesOptions(t *testing.T) {
 	for _, options := range []ScanOptions{
 		{Nulls: 99},
+		{NestedPointers: AllocateNestedPointers + 1},
 		{NestedPointers: 99},
 		{DurationUnit: -1},
 	} {

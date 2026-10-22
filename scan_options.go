@@ -21,16 +21,19 @@ const (
 type NestedPointerPolicy = rowbind.NestedPointerPolicy
 
 const (
-	// AllocateNestedPointers allocates parents when any child column is selected.
-	AllocateNestedPointers = rowbind.AllocateNestedPointers
-
 	// NilNullNestedPointers sets a parent to nil when all its selected columns
-	// are SQL NULL. This is useful for the nullable side of an outer join.
+	// are SQL NULL. This is the default and is useful for the nullable side of
+	// an outer join. Unselected parents are unchanged.
 	NilNullNestedPointers = rowbind.NilNullNestedPointers
+
+	// AllocateNestedPointers allocates parents when any child column is selected,
+	// even when all selected child columns are SQL NULL.
+	AllocateNestedPointers = rowbind.AllocateNestedPointers
 )
 
 // ScanOptions controls scalar conversion and struct mapping. The zero value
-// maps NULL scalars to zero and rejects unknown result columns.
+// maps NULL scalars to zero, uses [NilNullNestedPointers], and rejects unknown
+// result columns.
 //
 // TimeLayouts is shared without copying throughout sqlx. Once supplied to a
 // configuration setter, query result, binder or mapping, its backing array must

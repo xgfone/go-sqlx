@@ -85,6 +85,9 @@ func TestNestedNullableGroupsRetryAfterPartialFailures(t *testing.T) {
 					if mode == "null" {
 						input = []any{nil, nil, nil, int64(12), nil, nil, nil, nil}
 					}
+					if mode == "partial_null" {
+						input[0], input[1], input[4], input[6] = nil, nil, nil, nil
+					}
 					for i, value := range input {
 						if err := args[i].(sql.Scanner).Scan(value); err != nil {
 							return err
@@ -104,7 +107,7 @@ func TestNestedNullableGroupsRetryAfterPartialFailures(t *testing.T) {
 				check := func(scan RowScanFunc) error {
 					var retained []record
 					for _, next := range []string{
-						"values", "source_error", "values", "conversion_error",
+						"values", "partial_null", "values", "source_error", "values", "conversion_error",
 						"null", "source_panic", "null", "values",
 					} {
 						t.Run(next, func(t *testing.T) {
@@ -139,6 +142,9 @@ func TestNestedNullableGroupsRetryAfterPartialFailures(t *testing.T) {
 								}
 								if mode == "null" {
 									want = record{Marker: 12}
+								}
+								if mode == "partial_null" {
+									want.A = nil
 								}
 							}
 

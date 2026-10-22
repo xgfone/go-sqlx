@@ -36,7 +36,7 @@ func TestNullableParentOwnsCapturedBytes(t *testing.T) {
 }
 
 func TestCustomScannerCancellationPreservesBuiltinResults(t *testing.T) {
-	testScannersOwnCapturedBytes(t, ScanOptions{})
+	testScannersOwnCapturedBytes(t, ScanOptions{NestedPointers: AllocateNestedPointers})
 }
 
 func testScannersOwnCapturedBytes(t *testing.T, options ScanOptions) {

@@ -288,7 +288,13 @@ func (p *scanPlan) releaseScalarDestinations() {
 }
 
 func (p *scanPlan) releaseDestinations() {
-	if p.layout != nil && len(p.layout.groups) == 0 {
+	if p.layout != nil {
+		if len(p.layout.groups) > 0 {
+			// Deferred conversion keeps field addresses local and clears its own
+			// captured inputs. Its fixed vector points only into this plan.
+			return
+		}
+
 		// Built-in wrappers only point into this plan. Keep that stable argument
 		// vector across rows; clear the actual destinations below. Direct fields,
 		// including standard nullable Scanners, must release caller addresses.
@@ -299,16 +305,14 @@ func (p *scanPlan) releaseDestinations() {
 				}
 			}
 		}
-	} else if p.layout == nil && len(p.scanners) == len(p.values) {
+	} else if len(p.scanners) == len(p.values) {
 		// Positional scans normally have only one or two columns. Clear both
 		// vectors in one loop instead of adding a memclr call to every row.
 		p.releaseScalarDestinations()
 		return
-	} else if p.layout == nil {
+	} else {
 		clear(p.values)
 	}
-	// Nullable-parent vectors point only to the plan's own capture scanners.
-	// Their row inputs are cleared by scanNullableStruct; keep the fixed vector.
 
 	for i := range p.scanners {
 		p.scanners[i].Value = nil

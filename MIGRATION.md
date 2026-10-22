@@ -381,6 +381,13 @@ Pointer destinations remain `nil` on `NULL`; `NullError` can reject `NULL` for s
 values. `GeneralScanner.Value=nil` still discards a column; typed `nil` destinations
 are invalid. Use keyed `GeneralScanner` literals because it now has policy fields.
 
+Flattened nested struct pointers default to `NilNullNestedPointers` (zero):
+all selected child columns being SQL `NULL` clears the parent pointer to `nil`.
+Unselected parents are unchanged. Select a non-nullable joined key when using
+this to detect absent outer-join records. Set `ScanOptions.NestedPointers` to
+`AllocateNestedPointers` (one) to allocate parents even for all-`NULL` child
+columns; child fields still follow their scalar NULL conversion policy.
+
 Numeric conversions reject overflow, negative unsigned values, fractions when
 converting to integers, and non-finite floats. Numeric booleans accept only `0`/`1`.
 Empty numeric/boolean text is invalid. Built-in byte destinations, including

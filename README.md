@@ -350,6 +350,20 @@ Nested structs and pointers flatten with `_`-separated prefixes. Time and SQL
 are rejected. Binding uses driver result labels; unknown labels fail unless
 `ScanOptions.IgnoreUnknownColumns` is enabled.
 
+`ScanOptions.NestedPointers` defaults to `NilNullNestedPointers` (zero): a
+flattened nested struct pointer becomes `nil` when all its selected child columns
+are SQL `NULL`; otherwise its object is allocated if needed and populated. This
+supports the nullable side of an outer join. Only selected columns participate,
+so include a non-nullable joined key to distinguish an absent record from a present
+record whose selected optional fields are all `NULL`. Zero values such as `0` and
+`""` are not SQL `NULL`, and unselected parents are unchanged.
+
+Set `NestedPointers: sqlx.AllocateNestedPointers` (one) to allocate parents
+whenever any child column is selected, even when all selected child columns
+are `NULL`. Child fields still follow their scalar NULL conversion policy.
+These policies control flattened struct parents, not scalar pointers or scalar
+`Scanner` types.
+
 ```go
 type User struct {
     ID       int64  `sql:"id"`

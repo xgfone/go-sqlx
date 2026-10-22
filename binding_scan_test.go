@@ -153,6 +153,10 @@ func TestCustomScannerNullPolicy(t *testing.T) {
 }
 
 func TestNullNestedPointersAndReusedDestination(t *testing.T) {
+	if NilNullNestedPointers != 0 || AllocateNestedPointers != 1 {
+		t.Fatal("unexpected nested pointer policy values", NilNullNestedPointers, AllocateNestedPointers)
+	}
+
 	type leaf struct {
 		Value *int `sql:"value"`
 	}
@@ -217,15 +221,45 @@ func TestNullNestedPointersAndReusedDestination(t *testing.T) {
 		t.Fatal("unexpected iteration result", count, err)
 	}
 
-	rows = bindTestDB(t, &bindFixture{
-		columns: f.columns,
-		values:  [][]driver.Value{{int64(1), nil, nil}},
-	}).QueryRowsContext(context.Background(), "q")
+	for _, tc := range []struct {
+		name    string
+		options *ScanOptions
+	}{
+		{"default", nil},
+		{"zero_options", &ScanOptions{}},
+		{"allocate", &ScanOptions{NestedPointers: AllocateNestedPointers}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := bindTestDB(t, &bindFixture{
+				columns: f.columns,
+				values: [][]driver.Value{
+					{int64(1), nil, nil},
+					{int64(2), "", int64(0)},
+				},
+			}).
+				QueryRowsContext(context.Background(), "q")
+			if tc.options != nil {
+				rows.SetScanOptions(*tc.options)
+			}
 
-	var defaults []model
-	if err := rows.Bind(&defaults); err != nil || defaults[0].Child == nil ||
-		defaults[0].Child.Leaf == nil || defaults[0].Child.Leaf.Value != nil {
-		t.Fatal(defaults, err)
+			var got []model
+			if err := rows.Bind(&got); err != nil || len(got) != 2 || got[0].ID != 1 {
+				t.Fatal(got, err)
+			}
+
+			if tc.options == nil || tc.options.NestedPointers == NilNullNestedPointers {
+				if got[0].Child != nil {
+					t.Fatal("default policy retained an all-NULL parent", got)
+				}
+			} else if got[0].Child == nil || got[0].Child.Leaf == nil ||
+				got[0].Child.Name != "" || got[0].Child.Leaf.Value != nil {
+				t.Fatal("allocation policy did not allocate all selected parents", got)
+			}
+			if got[1].ID != 2 || got[1].Child == nil || got[1].Child.Name != "" ||
+				got[1].Child.Leaf == nil || got[1].Child.Leaf.Value == nil || *got[1].Child.Leaf.Value != 0 {
+				t.Fatal("non-NULL zero values did not retain selected parents", got)
+			}
+		})
 	}
 }
 

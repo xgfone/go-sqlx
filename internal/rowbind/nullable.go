@@ -61,7 +61,7 @@ func (p *scanPlan) scanNullableStruct(scan RowScanFunc, v reflect.Value) error {
 		return err
 	}
 
-	clear(p.skip)
+	hasNullParent := false
 	for _, g := range p.layout.groups {
 		allNull := true
 		for _, i := range g.columns {
@@ -73,6 +73,12 @@ func (p *scanPlan) scanNullableStruct(scan RowScanFunc, v reflect.Value) error {
 
 		if !allNull {
 			continue
+		}
+
+		if !hasNullParent {
+			// Fully present rows neither clear nor read the previous row's mask.
+			clear(p.skip)
+			hasNullParent = true
 		}
 
 		fv, err := FieldValue(v, g.path, false)
@@ -93,7 +99,7 @@ func (p *scanPlan) scanNullableStruct(scan RowScanFunc, v reflect.Value) error {
 	}
 
 	for i, f := range p.layout.fields {
-		if p.skip[i] || f == nil {
+		if f == nil || hasNullParent && p.skip[i] {
 			continue
 		}
 
@@ -112,8 +118,25 @@ func (p *scanPlan) scanNullableStruct(scan RowScanFunc, v reflect.Value) error {
 			return fmt.Errorf("sqlx: field %q is not writable", p.layout.columns[i])
 		}
 
-		p.fieldScanners[i].value = fv
-		if err := p.fieldScanners[i].Scan(p.captured[i].value); err != nil {
+		// Deferred conversion needs this destination only for the current call.
+		// Keep it off the reusable plan to avoid per-field writes and cleanup.
+		src := p.captured[i].value
+		var err error
+		if f.setter != nil && src != nil {
+			// The field and source are already known; call the compiled setter
+			// without constructing an adapter for the ordinary non-NULL case.
+			if err = f.setter(fv, src, &p.options); err != nil {
+				err = fieldConversionError(fv, src, err)
+			}
+		} else {
+			scanner := fieldScanner{
+				value:   fv,
+				setter:  f.setter,
+				options: &p.options,
+			}
+			err = scanner.Scan(src)
+		}
+		if err != nil {
 			return fmt.Errorf("sqlx: column %d (%q): %w", i, p.layout.columns[i], err)
 		}
 	}

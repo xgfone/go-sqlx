@@ -82,7 +82,7 @@ func TestScanLayoutDistinguishesOrderSubsetAndMappingPolicy(t *testing.T) {
 	types := []reflect.Type{reflect.TypeFor[*record]()}
 	for round := range 3 {
 		for _, nullable := range []bool{false, true} {
-			options := ScanOptions{}
+			options := ScanOptions{NestedPointers: AllocateNestedPointers}
 			if nullable {
 				options.NestedPointers = NilNullNestedPointers
 			}
@@ -117,7 +117,7 @@ func TestScanLayoutDistinguishesOrderSubsetAndMappingPolicy(t *testing.T) {
 						t.Fatal("NULL parent was not cleared")
 					}
 				} else if value.Child == nil || value.Child.Value != 0 {
-					t.Fatal("default parent policy changed")
+					t.Fatal("allocated parent was not retained")
 				}
 			}
 		}

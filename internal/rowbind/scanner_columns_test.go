@@ -115,7 +115,7 @@ func TestCustomStructColumnsAndMetadata(t *testing.T) {
 	}
 
 	for _, options := range []ScanOptions{
-		{IgnoreUnknownColumns: true},
+		{IgnoreUnknownColumns: true, NestedPointers: AllocateNestedPointers},
 		{IgnoreUnknownColumns: true, NestedPointers: NilNullNestedPointers},
 	} {
 		columns := []string{"id", "custom", "standard", "ignored", "indirect", "child_value"}

@@ -81,22 +81,6 @@ func initStructLayout(p *scanPlan, layout *structScanLayout, dstType reflect.Typ
 	p.initStorage(count, nil, options)
 	p.structDstType = dstType
 	p.layout = layout
-	p.fieldScanners = reuseScanStorage(p.fieldScanners, count)
-	for i, field := range layout.fields {
-		p.fieldScanners[i] = fieldScanner{options: &p.options}
-		if field != nil {
-			p.fieldScanners[i].setter = field.setter
-		}
-
-		if len(layout.groups) == 0 {
-			if field == nil {
-				p.values[i] = discardScanner{}
-			} else if field.scanMode == scanFieldGeneral {
-				p.values[i] = &p.fieldScanners[i]
-			}
-		}
-	}
-
 	if len(layout.groups) > 0 {
 		p.captured = reuseScanStorage(p.captured, count)
 		limit := nullableCaptureBytes / max(count, 1)
@@ -105,6 +89,21 @@ func initStructLayout(p *scanPlan, layout *structScanLayout, dstType reflect.Typ
 			p.values[i] = &p.captured[i]
 		}
 		p.skip = reuseScanStorage(p.skip, count)
+		return p
+	}
+
+	p.fieldScanners = reuseScanStorage(p.fieldScanners, count)
+	for i, field := range layout.fields {
+		p.fieldScanners[i] = fieldScanner{options: &p.options}
+		if field != nil {
+			p.fieldScanners[i].setter = field.setter
+		}
+
+		if field == nil {
+			p.values[i] = discardScanner{}
+		} else if field.scanMode == scanFieldGeneral {
+			p.values[i] = &p.fieldScanners[i]
+		}
 	}
 
 	return p

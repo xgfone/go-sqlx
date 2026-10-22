@@ -4,6 +4,8 @@
 package rowbind
 
 import (
+	"database/sql"
+	"errors"
 	"math"
 	"reflect"
 	"testing"
@@ -169,6 +171,74 @@ func TestCompiledFieldSetterMatchesGeneralScanner(t *testing.T) {
 			for _, src := range sources {
 				checkFieldSetter(t, typ, src, options)
 			}
+		}
+	}
+}
+
+func TestNullableFieldConversionsMatchGeneralScanner(t *testing.T) {
+	types := append(setterTestTypes(), reflect.TypeFor[sql.NullInt64](), reflect.TypeFor[sql.Null[string]]())
+	for _, typ := range types {
+		childType := reflect.StructOf([]reflect.StructField{
+			{Name: "Present", Type: reflect.TypeFor[int64](), Tag: `sql:"present"`},
+			{Name: "Value", Type: typ, Tag: `sql:"value"`},
+		})
+		parentType := reflect.StructOf([]reflect.StructField{
+			{Name: "Child", Type: reflect.PointerTo(childType), Tag: `sql:"child"`},
+		})
+		for _, tc := range []struct {
+			name    string
+			options ScanOptions
+		}{
+			{"default", ScanOptions{}},
+			{"strict", ScanOptions{
+				Nulls: NullError, DurationUnit: time.Second,
+				Location: time.FixedZone("target", 8*3600), TimeLayouts: []string{"02/01/2006"},
+			}},
+			{"zero_date", ScanOptions{AllowZeroDate: true, DurationUnit: time.Nanosecond}},
+		} {
+			t.Run(typ.String()+"/"+tc.name, func(t *testing.T) {
+				mapping, err := Prepare([]string{"child_present", "child_value"},
+					[]reflect.Type{reflect.PointerTo(parentType)}, tc.options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var src any
+				scan, err := mapping.Scanner(func(dst ...any) error {
+					return scanCacheSource(int64(1), src)(dst...)
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer scan.Close() //nolint:errcheck
+
+				for _, input := range []any{
+					int64(7), nil, int64(128), int64(-1), uint64(math.MaxUint64),
+					float64(1.5), math.NaN(), true, "", "02/01/2006", "0000-00-00",
+					[]byte(nil), []byte{}, []byte("12"), []byte("bad"),
+					time.Date(2026, 9, 9, 1, 2, 3, 0, time.UTC), int64(9),
+				} {
+					src = input
+					root, child := reflect.New(parentType), reflect.New(childType)
+					root.Elem().Field(0).Set(child)
+					got, want := child.Elem().Field(1), reflect.New(typ).Elem()
+					_ = tc.options.scanner(got.Addr().Interface()).Scan(int64(1))
+					_ = tc.options.scanner(want.Addr().Interface()).Scan(int64(1))
+
+					// Present keeps the parent non-NULL so NULL fields still exercise
+					// conversion, including NullError and custom Scanner policies.
+					actual := scan.Scan(root.Interface())
+					expected := tc.options.scanner(want.Addr().Interface()).Scan(src)
+					inner := errors.Unwrap(actual)
+					if (actual == nil) != (expected == nil) || actual != nil &&
+						(inner == nil || inner.Error() != expected.Error()) {
+						t.Fatalf("%v <- %#v: errors %v / %v", typ, src, actual, expected)
+					}
+					if root.Elem().Field(0).IsNil() || child.Elem().Field(0).Int() != 1 ||
+						!sameSetterValue(got, want) {
+						t.Fatalf("%v <- %#v: values %#v / %#v", typ, src, got.Interface(), want.Interface())
+					}
+				}
+			})
 		}
 	}
 }

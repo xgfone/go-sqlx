@@ -106,6 +106,7 @@ func TestBindingInvalidConfigAndColumnOwnership(t *testing.T) {
 		{Capacity: -1},
 		{DuplicateKeys: 99},
 		{ScanOptions: ScanOptions{Nulls: 99}},
+		{ScanOptions: ScanOptions{NestedPointers: AllocateNestedPointers + 1}},
 		{ScanOptions: ScanOptions{NestedPointers: 99}},
 		{ScanOptions: ScanOptions{DurationUnit: -1}},
 	} {
