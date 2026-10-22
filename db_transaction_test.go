@@ -9,6 +9,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,13 +26,18 @@ func TestDBTransactionLifecycle(t *testing.T) {
 		commitErr   error
 		rollbackErr error
 		wantErr     error
+		wantRBErr   error
 		committed   int
 		rolled      int
 	}{
 		{name: "success", committed: 1},
 		{name: "callback error", callbackErr: callbackErr, wantErr: callbackErr, rolled: 1},
-		{name: "rollback error", callbackErr: callbackErr, rollbackErr: rollbackErr, wantErr: callbackErr, rolled: 1},
+		{name: "rollback error", callbackErr: callbackErr, rollbackErr: rollbackErr, wantErr: callbackErr, wantRBErr: rollbackErr, rolled: 1},
+		{name: "rollback already done", callbackErr: callbackErr, rollbackErr: sql.ErrTxDone, wantErr: callbackErr, rolled: 1},
+		{name: "wrapped rollback already done", callbackErr: callbackErr, rollbackErr: errors.Join(sql.ErrTxDone), wantErr: callbackErr, rolled: 1},
 		{name: "commit error", commitErr: commitErr, wantErr: commitErr, committed: 1},
+		// database/sql marks a transaction done before calling the driver's Commit.
+		{name: "commit error marks transaction done", commitErr: commitErr, rollbackErr: rollbackErr, wantErr: commitErr, committed: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &txFixture{commitErr: tc.commitErr, rollbackErr: tc.rollbackErr}
@@ -55,8 +61,13 @@ func TestDBTransactionLifecycle(t *testing.T) {
 				}
 				return tc.callbackErr
 			})
-			if err != tc.wantErr {
-				t.Fatalf("got error %v; want %v", err, tc.wantErr)
+			if tc.wantRBErr != nil {
+				if !errors.Is(err, tc.wantErr) || !errors.Is(err, tc.wantRBErr) ||
+					!strings.Contains(err.Error(), "sqlx: rollback transaction: ") {
+					t.Fatalf("got error %v; want callback %v and rollback %v with context", err, tc.wantErr, tc.wantRBErr)
+				}
+			} else if err != tc.wantErr {
+				t.Fatalf("got error %v; want unchanged %v", err, tc.wantErr)
 			}
 			if called != 1 || f.begun != 1 || f.execs != 1 ||
 				f.committed != tc.committed || f.rolled != tc.rolled {
@@ -170,15 +181,24 @@ func TestDBTransactionArguments(t *testing.T) {
 }
 
 func TestDBTransactionPanic(t *testing.T) {
-	for _, name := range []string{"callback", "interceptor"} {
-		t.Run(name, func(t *testing.T) {
-			f := &txFixture{}
+	for _, tc := range []struct {
+		name        string
+		interceptor bool
+		rollbackErr error
+	}{
+		{name: "callback"},
+		{name: "interceptor", interceptor: true},
+		{name: "callback with rollback error", rollbackErr: errors.New("rollback failed")},
+		{name: "interceptor with rollback error", interceptor: true, rollbackErr: errors.New("rollback failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &txFixture{rollbackErr: tc.rollbackErr}
 			std := sql.OpenDB(txConnector{f})
 			t.Cleanup(func() { _ = std.Close() })
 			db := &DB{Executor: std}
 			panicValue := new(int)
 			wantCalls := 1
-			if name == "interceptor" {
+			if tc.interceptor {
 				previous := defaultExecutorInterceptor
 				t.Cleanup(func() { SetDefaultExecutorInterceptor(previous) })
 				SetDefaultExecutorInterceptor(func(Executor) Executor { panic(panicValue) })
@@ -259,5 +279,68 @@ func TestDBTransactionConfigurationAndInterceptor(t *testing.T) {
 	if call.method != "exec" || call.ctx != ctx || call.query != f.query ||
 		!reflect.DeepEqual(call.args, []any{7}) {
 		t.Fatal("transaction SQL was not intercepted", call)
+	}
+}
+
+// Closing a generic executor must never be used as transaction cleanup: its
+// Close method may close a shared connection pool.
+type transactionCloseGuard struct {
+	Executor
+	closes int
+}
+
+func (e *transactionCloseGuard) Unwrap() Executor { return e.Executor }
+func (e *transactionCloseGuard) Close() error {
+	e.closes++
+	return errors.New("borrowed executor was closed")
+}
+
+func TestDBTransactionDoesNotCloseExecutor(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		callbackErr error
+		commitErr   error
+		beginErr    error
+	}{
+		{name: "success"},
+		{name: "callback error", callbackErr: errors.New("callback failed")},
+		{name: "commit error", commitErr: errors.New("commit failed")},
+		{name: "begin error", beginErr: errors.New("begin failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &txFixture{commitErr: tc.commitErr, beginErr: tc.beginErr}
+			pool := sql.OpenDB(txConnector{f})
+			t.Cleanup(func() { _ = pool.Close() })
+			outer := &transactionCloseGuard{Executor: pool}
+			db := &DB{Executor: outer}
+			var bound *transactionCloseGuard
+			previous := defaultExecutorInterceptor
+			t.Cleanup(func() { SetDefaultExecutorInterceptor(previous) })
+			SetDefaultExecutorInterceptor(func(e Executor) Executor {
+				bound = &transactionCloseGuard{Executor: e}
+				return bound
+			})
+
+			err := db.Transaction(t.Context(), nil, func(*DB) error {
+				return tc.callbackErr
+			})
+
+			wantErr := tc.callbackErr
+			if tc.beginErr != nil {
+				wantErr = tc.beginErr
+			} else if wantErr == nil {
+				wantErr = tc.commitErr
+			}
+
+			if err != wantErr {
+				t.Fatalf("got error %v; want %v", err, wantErr)
+			}
+			if outer.closes != 0 || (bound != nil && bound.closes != 0) {
+				t.Fatal("transaction closed a borrowed executor")
+			}
+			if err := pool.PingContext(t.Context()); err != nil {
+				t.Fatal("transaction closed the shared connection pool", err)
+			}
+		})
 	}
 }

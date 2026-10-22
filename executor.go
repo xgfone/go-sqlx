@@ -14,7 +14,9 @@ var _ Executor = (*sql.Tx)(nil)
 var _ Executor = (*sql.Conn)(nil)
 var _ TxBeginner = (*DB)(nil)
 
-// Executor is used to execute the sql statement.
+// Executor is used to execute the sql statement. It does not imply ownership of
+// the underlying database/connection; query and transaction helpers do not close
+// a borrowed executor, even when it implements a Close method.
 //
 // Wrappers may implement Unwrap() [Executor] to expose their inner executor to
 // [AsExecutor] and to [DB]'s transaction and close operations.

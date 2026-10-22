@@ -194,6 +194,15 @@ replace direct field access with `DB()`, `SetDB` or `WithDB`. `Table` no longer
 promotes `DB` methods; call them through `table.DB()`. `DB.Reset` is removed;
 create a new `DB` or use the configuration setters.
 
+`DB.Transaction` owns its newly opened `*sql.Tx`, committing on success and
+attempting rollback on every exit. Rollback errors other than `sql.ErrTxDone`
+are wrapped with rollback context and joined with the callback/commit error;
+panics propagate unchanged. A successful rollback or `sql.ErrTxDone` preserves
+the original returned error. It never closes the supplied executor, even if
+that executor implements `Close`. Remove Close-as-Rollback adapters when
+switching to this helper; retain business locks, explicit isolation options and
+transaction-bound SQL. Close the application-owned pool separately at shutdown.
+
 `DB.Interceptor`, `InterceptorFunc`, `Interceptors`, `Intercept`, `SqlCollector`
 and `DefaultSqlCollector` are removed. For logging, wrap executors:
 

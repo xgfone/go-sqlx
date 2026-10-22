@@ -616,10 +616,16 @@ return db.Transaction(ctx, nil, func(txdb *sqlx.DB) error {
 ```
 
 `Transaction` commits on a `nil` callback error and rolls back on error or panic.
-Use the supplied `DB` throughout the callback; `BeginTx` supports manual control.
-`ForUpdate`/`ForShare` provide row locking on MySQL/PostgreSQL. Built-in dialects
-target MySQL 8.0, PostgreSQL 14+ and SQLite 3.39+; see
-[dialect configuration](docs/sql-syntax.md#dialect-configuration) for capabilities.
+Rollback errors other than `sql.ErrTxDone` are wrapped with rollback context and
+joined with the returned error; use `errors.Is`/`errors.As` to inspect both causes.
+A successful rollback or `sql.ErrTxDone` leaves the original error unchanged.
+Panics propagate unchanged, even if rollback fails. The supplied executor is
+borrowed and is never closed by `Transaction`; the owner closes the pool or
+connection separately. Use the supplied `DB` throughout the callback; `BeginTx`
+supports manual control. `ForUpdate`/`ForShare` provide row locking on
+MySQL/PostgreSQL. Built-in dialects target MySQL 8.0, PostgreSQL 14+ and SQLite
+3.39+; see [dialect configuration](docs/sql-syntax.md#dialect-configuration)
+for capabilities.
 
 ## Executor middleware
 

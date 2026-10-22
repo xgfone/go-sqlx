@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"sync/atomic"
 )
@@ -108,28 +109,39 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 //
 // If f returns nil, Transaction commits and returns the commit error. Otherwise,
 // it attempts to roll back and returns f's error. If f panics, it attempts to
-// roll back and lets the panic propagate. Rollback errors are ignored.
+// roll back and lets the original panic propagate, even if rollback fails.
+// A rollback error other than [sql.ErrTxDone] is wrapped with rollback context
+// and joined with the returned error; [errors.Is]/[errors.As] can inspect both.
+// When rollback succeeds or reports [sql.ErrTxDone], the original callback or
+// commit error is returned unchanged. Transaction never closes db's executor.
 //
 // All transaction operations must use the DB passed to f; existing Table/Oper
 // values must be rebound to it. f must not commit or roll back the transaction
 // itself or use the transaction-bound DB after returning. Nested transactions
 // are not supported by *[sql.Tx]. Use [DB.BeginTx] for manual transaction control.
-func (db *DB) Transaction(ctx context.Context, opts *sql.TxOptions, f func(*DB) error) error {
+func (db *DB) Transaction(ctx context.Context, opts *sql.TxOptions, f func(*DB) error) (err error) {
 	tx, err := db.BeginTx(ctx, opts)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
 
-	if err := f(db.WithExecutor(tx)); err != nil {
-		return err
+	defer func() {
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			err = errors.Join(err, fmt.Errorf("sqlx: rollback transaction: %w", rollbackErr))
+		}
+	}()
+
+	if err = f(db.WithExecutor(tx)); err != nil {
+		return
 	}
 
 	return tx.Commit()
 }
 
-// Close closes an owning database/connection. Transactions must use
-// [sql.Tx.Commit]/[sql.Tx.Rollback].
+// Close closes a caller-owned database/connection. Call it only when the caller
+// owns that resource; wrapping an executor does not transfer ownership.
+// Transactions must use [sql.Tx.Commit]/[sql.Tx.Rollback].
 // It uses the first [io.Closer] in the executor's Unwrap chain (see [AsExecutor]).
 func (db *DB) Close() error {
 	if c, ok := AsExecutor[io.Closer](db.Executor); ok {
